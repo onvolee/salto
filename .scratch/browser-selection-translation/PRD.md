@@ -189,11 +189,11 @@ Save behavior:
 - Track each field status separately.
 - Allow failed fields to be retried later.
 
-The same `canonicalKey` can only be saved once. A repeated save shows already-saved state and does not append another context record in MVP v0.1.
+The same `canonicalKey` can only create one vocabulary item. A repeated save shows already-saved state, but may append a new deduplicated vocabulary context when the page URL and sentence context differ.
 
 ## Saved-Word Schema
 
-Saved-word schema is fixed by the system. Users cannot add, delete, or redefine fields. Users can only control display and save behavior.
+Saved-word schema is fixed by the system. Users cannot add, delete, redefine, hide, edit fields, or change field sources in MVP v0.1.
 
 ```ts
 type SavedWordFieldKey =
@@ -204,7 +204,6 @@ type SavedWordFieldKey =
   | "examples"
   | "synonyms"
   | "wordForms"
-  | "note"
 ```
 
 Initial fields:
@@ -218,7 +217,6 @@ const savedWordSchema = [
   { key: "examples", label: "例句", type: "list", source: "llm" },
   { key: "synonyms", label: "近义词", type: "list", source: "dictionary" },
   { key: "wordForms", label: "词形变化", type: "list", source: "dictionary" },
-  { key: "note", label: "个人备注", type: "text", source: "user" },
 ]
 ```
 

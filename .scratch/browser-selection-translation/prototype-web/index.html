@@ -1,0 +1,1071 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Salto Prototype</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #172126;
+        --muted: #647178;
+        --line: #d7dee2;
+        --soft: #f5f7f8;
+        --paper: #ffffff;
+        --accent: #0f766e;
+        --accent-2: #b45309;
+        --danger: #b42318;
+        --blue: #2563eb;
+        --shadow: 0 18px 48px rgba(21, 32, 38, 0.14);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background: #eef2f3;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--paper);
+        color: var(--ink);
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: white;
+      }
+
+      button.warn {
+        border-color: #f0c36d;
+        background: #fff7e8;
+      }
+
+      button.ghost {
+        background: transparent;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.48;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 420px;
+        min-height: 100vh;
+      }
+
+      .stage {
+        min-width: 0;
+        padding: 24px 24px 92px;
+      }
+
+      .state-panel {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow: auto;
+        border-left: 1px solid var(--line);
+        background: #101820;
+        color: #d9e4ea;
+        padding: 18px;
+      }
+
+      .state-panel h2 {
+        margin: 0 0 12px;
+        font-size: 15px;
+      }
+
+      .state-panel pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 760;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        background: var(--ink);
+        color: white;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+        box-shadow: 0 1px 0 rgba(21, 32, 38, 0.04);
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 14px;
+      }
+
+      .panel-title {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 720;
+      }
+
+      .panel-body {
+        padding: 14px;
+      }
+
+      .reader-layout {
+        grid-template-columns: minmax(0, 1fr) 320px;
+      }
+
+      .article {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 36px 46px;
+        line-height: 1.75;
+        font-size: 18px;
+      }
+
+      .article h1 {
+        margin: 0 0 18px;
+        font-size: 34px;
+        letter-spacing: 0;
+        line-height: 1.12;
+      }
+
+      .selectable {
+        border-bottom: 2px solid rgba(15, 118, 110, 0.32);
+        background: rgba(15, 118, 110, 0.08);
+        padding: 1px 3px;
+        border-radius: 4px;
+      }
+
+      .popover {
+        max-width: 330px;
+        margin: 18px auto 0;
+        border: 1px solid #b7c8c6;
+        border-radius: 8px;
+        background: white;
+        box-shadow: var(--shadow);
+      }
+
+      .term-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+      }
+
+      .term {
+        font-size: 22px;
+        font-weight: 760;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        border-radius: 999px;
+        padding: 3px 8px;
+        background: #e6f2f1;
+        color: #0f5f59;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .badge.orange {
+        background: #fff2d6;
+        color: #8a4b00;
+      }
+
+      .badge.gray {
+        background: #edf1f3;
+        color: #516069;
+      }
+
+      .badge.red {
+        background: #fee4e2;
+        color: #912018;
+      }
+
+      .stack {
+        display: grid;
+        gap: 10px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .split {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .small {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .field-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 9px;
+        background: #fbfcfc;
+      }
+
+      .field strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 12px;
+        color: #3d4a50;
+      }
+
+      .dashboard {
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+
+      .metric {
+        grid-column: span 3;
+        padding: 16px;
+      }
+
+      .metric-value {
+        font-size: 30px;
+        font-weight: 780;
+      }
+
+      .main-list {
+        grid-column: span 7;
+      }
+
+      .review-box {
+        grid-column: span 5;
+      }
+
+      .vocab-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 0.7fr) minmax(0, 1.3fr) auto;
+        gap: 12px;
+        align-items: center;
+        padding: 11px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .vocab-row:last-child {
+        border-bottom: 0;
+      }
+
+      .card-front {
+        display: grid;
+        place-items: center;
+        min-height: 230px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #f7faf9;
+        text-align: center;
+        padding: 18px;
+      }
+
+      .card-front b {
+        display: block;
+        font-size: 30px;
+        margin-bottom: 8px;
+      }
+
+      .phone-wrap {
+        display: grid;
+        grid-template-columns: 360px minmax(0, 1fr);
+        gap: 28px;
+        align-items: start;
+        max-width: 1050px;
+        margin: 0 auto;
+      }
+
+      .phone {
+        border: 10px solid #1c252b;
+        border-radius: 34px;
+        background: #f9fbfb;
+        min-height: 720px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+      }
+
+      .phone-screen {
+        padding: 18px;
+      }
+
+      .phone-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: white;
+        padding: 16px;
+        margin-top: 14px;
+      }
+
+      .bottom-switcher {
+        position: fixed;
+        left: 50%;
+        bottom: 18px;
+        z-index: 10;
+        display: flex;
+        gap: 8px;
+        transform: translateX(-50%);
+        border: 1px solid rgba(23, 33, 38, 0.16);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: var(--shadow);
+        padding: 8px;
+        backdrop-filter: blur(10px);
+      }
+
+      .bottom-switcher a {
+        border-radius: 8px;
+        padding: 9px 11px;
+        color: var(--ink);
+        text-decoration: none;
+        font-size: 13px;
+      }
+
+      .bottom-switcher a.active {
+        background: var(--ink);
+        color: white;
+      }
+
+      .empty {
+        display: grid;
+        place-items: center;
+        min-height: 180px;
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        color: var(--muted);
+        text-align: center;
+        padding: 16px;
+      }
+
+      @media (max-width: 1050px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .state-panel {
+          position: static;
+          height: auto;
+          max-height: 420px;
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+
+        .reader-layout,
+        .phone-wrap {
+          grid-template-columns: 1fr;
+        }
+
+        .metric,
+        .main-list,
+        .review-box {
+          grid-column: span 12;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .stage {
+          padding: 16px 12px 96px;
+        }
+
+        .article {
+          padding: 24px 18px;
+          font-size: 16px;
+        }
+
+        .article h1 {
+          font-size: 26px;
+        }
+
+        .vocab-row {
+          grid-template-columns: 1fr;
+        }
+
+        .phone-wrap {
+          justify-items: center;
+        }
+
+        .phone {
+          width: min(100%, 360px);
+        }
+
+        .bottom-switcher {
+          width: calc(100% - 24px);
+          justify-content: center;
+        }
+
+        .bottom-switcher a {
+          flex: 1;
+          text-align: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="stage">
+        <div class="topline">
+          <div class="brand">
+            <div class="mark">S</div>
+            <div>
+              <div>Salto throwaway prototype</div>
+              <div class="hint">假逻辑，用来校验上下文、数据结构和产品形态</div>
+            </div>
+          </div>
+          <button id="resetState" class="ghost">重置假数据</button>
+        </div>
+        <div id="app"></div>
+      </section>
+      <aside class="state-panel">
+        <h2>Current in-memory state</h2>
+        <pre id="stateDump"></pre>
+      </aside>
+    </main>
+
+    <nav class="bottom-switcher" aria-label="Prototype variants">
+      <a href="?v=reader" data-variant="reader">阅读划词</a>
+      <a href="?v=review" data-variant="review">插件复习</a>
+      <a href="?v=mobile" data-variant="mobile">手机消费</a>
+    </nav>
+
+    <script>
+      const now = () => new Date().toISOString();
+      const byId = (id) => document.getElementById(id);
+      const variants = ["reader", "review", "mobile"];
+      const urlVariant = new URLSearchParams(location.search).get("v");
+      let variant = variants.includes(urlVariant) ? urlVariant : "reader";
+
+      const fieldLabel = {
+        term: "词条",
+        phonetic: "音标",
+        partOfSpeech: "词性",
+        meaning: "释义",
+        examples: "例句",
+        synonyms: "近义词",
+        wordForms: "词形变化",
+        note: "用户备注",
+      };
+
+      const state = {
+        clientId: "extension-client-demo",
+        vocabularyItems: [
+          {
+            canonicalKey: "resilient:en",
+            surfaceText: "resilient",
+            language: "en",
+            createdAt: now(),
+            updatedAt: now(),
+            enrichmentStatus: "ready",
+            localVersion: 3,
+            syncStatus: "pending",
+          },
+        ],
+        vocabularyFields: [
+          field("resilient:en", "term", "resilient", "system", "ready"),
+          field("resilient:en", "phonetic", "/rɪˈzɪliənt/", "dictionary", "ready"),
+          field("resilient:en", "partOfSpeech", "adjective", "dictionary", "ready"),
+          field("resilient:en", "meaning", "able to recover quickly after difficulty", "llm", "ready"),
+          field("resilient:en", "examples", ["A resilient team adapts after setbacks."], "llm", "ready"),
+        ],
+        vocabularyContexts: [
+          {
+            id: "ctx_resilient_article_1",
+            canonicalKey: "resilient:en",
+            sentence:
+              "A resilient reading habit turns scattered pages into reusable memory.",
+            paragraph:
+              "A resilient reading habit turns scattered pages into reusable memory. Salto should preserve where a word was met, not only what the word means.",
+            pageTitle: "Reading Systems",
+            pageUrl: "https://example.test/reading-systems",
+            selectionText: "resilient",
+            createdAt: now(),
+            syncStatus: "pending",
+          },
+        ],
+        learningCards: [
+          {
+            id: "card_resilient_term_meaning",
+            canonicalKey: "resilient:en",
+            cardType: "term-to-meaning",
+            front: "resilient",
+            back: "able to recover quickly after difficulty",
+            sourceFieldKeys: ["term", "meaning"],
+            sourceContextId: "ctx_resilient_article_1",
+            status: "active",
+            createdAt: now(),
+            updatedAt: now(),
+            localVersion: 1,
+            syncStatus: "pending",
+          },
+          {
+            id: "card_resilient_context_cloze",
+            canonicalKey: "resilient:en",
+            cardType: "context-cloze",
+            front:
+              "A ______ reading habit turns scattered pages into reusable memory.",
+            back: "resilient",
+            sourceFieldKeys: ["term"],
+            sourceContextId: "ctx_resilient_article_1",
+            status: "active",
+            createdAt: now(),
+            updatedAt: now(),
+            localVersion: 1,
+            syncStatus: "pending",
+          },
+        ],
+        learningStates: [
+          {
+            cardId: "card_resilient_term_meaning",
+            dueAt: now(),
+            lastReviewedAt: undefined,
+            stability: 0,
+            difficulty: 0,
+            scheduledDays: 0,
+            elapsedDays: 0,
+            reps: 0,
+            lapses: 0,
+            state: "new",
+            updatedAt: now(),
+            localVersion: 1,
+            syncStatus: "pending",
+          },
+          {
+            cardId: "card_resilient_context_cloze",
+            dueAt: now(),
+            lastReviewedAt: undefined,
+            stability: 0,
+            difficulty: 0,
+            scheduledDays: 0,
+            elapsedDays: 0,
+            reps: 0,
+            lapses: 0,
+            state: "new",
+            updatedAt: now(),
+            localVersion: 1,
+            syncStatus: "pending",
+          },
+        ],
+        reviewLogs: [],
+        enrichmentJobs: [],
+      };
+
+      function field(canonicalKey, fieldKey, value, source, status) {
+        return {
+          id: `${canonicalKey}:${fieldKey}`,
+          canonicalKey,
+          fieldKey,
+          value,
+          status,
+          source,
+          updatedAt: now(),
+          localVersion: 1,
+          syncStatus: "pending",
+        };
+      }
+
+      function ensureVocabulary(surfaceText, sentence) {
+        const canonicalKey = `${surfaceText.toLowerCase()}:en`;
+        let item = state.vocabularyItems.find((it) => it.canonicalKey === canonicalKey);
+        if (!item) {
+          item = {
+            canonicalKey,
+            surfaceText,
+            language: "en",
+            createdAt: now(),
+            updatedAt: now(),
+            enrichmentStatus: "pending",
+            localVersion: 1,
+            syncStatus: "pending",
+          };
+          state.vocabularyItems.push(item);
+          state.vocabularyFields.push(field(canonicalKey, "term", surfaceText, "system", "ready"));
+          state.vocabularyFields.push(field(canonicalKey, "meaning", null, "llm", "pending"));
+          state.enrichmentJobs.push({
+            id: `job_${canonicalKey}_meaning`,
+            canonicalKey,
+            fieldKey: "meaning",
+            source: "llm",
+            status: "queued",
+            attempts: 0,
+            nextRunAt: now(),
+            createdAt: now(),
+            updatedAt: now(),
+          });
+        } else {
+          item.updatedAt = now();
+          item.localVersion += 1;
+        }
+
+        const contextId = `ctx_${canonicalKey}_${state.vocabularyContexts.length + 1}`;
+        state.vocabularyContexts.push({
+          id: contextId,
+          canonicalKey,
+          sentence,
+          paragraph:
+            "Prototype paragraph: the extension captures enough local context for later review cards.",
+          pageTitle: "Reading Systems",
+          pageUrl: "https://example.test/reading-systems",
+          selectionText: surfaceText,
+          createdAt: now(),
+          syncStatus: "pending",
+        });
+
+        render();
+      }
+
+      function completeEnrichment(canonicalKey) {
+        const item = state.vocabularyItems.find((it) => it.canonicalKey === canonicalKey);
+        if (!item) return;
+        item.enrichmentStatus = "ready";
+        item.updatedAt = now();
+        item.localVersion += 1;
+
+        upsertField(canonicalKey, "phonetic", "/ˈkɑːn.tɛkst/", "dictionary");
+        upsertField(canonicalKey, "partOfSpeech", "noun", "dictionary");
+        upsertField(
+          canonicalKey,
+          "meaning",
+          canonicalKey.startsWith("context")
+            ? "the situation around a word or event that helps explain it"
+            : "able to recover quickly after difficulty",
+          "llm",
+        );
+        upsertField(canonicalKey, "examples", ["Context decides what a saved word means here."], "llm");
+
+        state.enrichmentJobs = state.enrichmentJobs.map((job) =>
+          job.canonicalKey === canonicalKey
+            ? { ...job, status: "succeeded", attempts: job.attempts + 1, updatedAt: now() }
+            : job,
+        );
+        generateCards(canonicalKey);
+        render();
+      }
+
+      function upsertField(canonicalKey, key, value, source) {
+        let existing = state.vocabularyFields.find(
+          (fieldRecord) => fieldRecord.canonicalKey === canonicalKey && fieldRecord.fieldKey === key,
+        );
+        if (!existing) {
+          state.vocabularyFields.push(field(canonicalKey, key, value, source, "ready"));
+          return;
+        }
+        existing.value = value;
+        existing.status = "ready";
+        existing.source = source;
+        existing.updatedAt = now();
+        existing.localVersion += 1;
+      }
+
+      function generateCards(canonicalKey) {
+        const term = getField(canonicalKey, "term") || canonicalKey.split(":")[0];
+        const meaning = getField(canonicalKey, "meaning") || "pending meaning";
+        const context = state.vocabularyContexts.find((ctx) => ctx.canonicalKey === canonicalKey);
+        const cards = [
+          {
+            id: `card_${canonicalKey}_term_meaning`,
+            canonicalKey,
+            cardType: "term-to-meaning",
+            front: term,
+            back: meaning,
+            sourceFieldKeys: ["term", "meaning"],
+            sourceContextId: context?.id,
+          },
+          {
+            id: `card_${canonicalKey}_context_cloze`,
+            canonicalKey,
+            cardType: "context-cloze",
+            front: context ? context.sentence.replace(new RegExp(term, "i"), "______") : term,
+            back: term,
+            sourceFieldKeys: ["term"],
+            sourceContextId: context?.id,
+          },
+        ];
+
+        cards.forEach((card) => {
+          if (state.learningCards.some((existing) => existing.id === card.id)) return;
+          state.learningCards.push({
+            ...card,
+            status: "active",
+            createdAt: now(),
+            updatedAt: now(),
+            localVersion: 1,
+            syncStatus: "pending",
+          });
+          state.learningStates.push({
+            cardId: card.id,
+            dueAt: now(),
+            stability: 0,
+            difficulty: 0,
+            scheduledDays: 0,
+            elapsedDays: 0,
+            reps: 0,
+            lapses: 0,
+            state: "new",
+            updatedAt: now(),
+            localVersion: 1,
+            syncStatus: "pending",
+          });
+        });
+      }
+
+      function getField(canonicalKey, key) {
+        return state.vocabularyFields.find(
+          (fieldRecord) => fieldRecord.canonicalKey === canonicalKey && fieldRecord.fieldKey === key,
+        )?.value;
+      }
+
+      function review(cardId, rating) {
+        const learning = state.learningStates.find((entry) => entry.cardId === cardId);
+        if (!learning) return;
+        const previousState = learning.state;
+        const daysByRating = { again: 0, hard: 1, good: 3, easy: 7 };
+        learning.reps += 1;
+        learning.lapses += rating === "again" ? 1 : 0;
+        learning.state = rating === "again" ? "relearning" : "review";
+        learning.lastReviewedAt = now();
+        learning.scheduledDays = daysByRating[rating];
+        learning.dueAt = new Date(Date.now() + daysByRating[rating] * 86400000).toISOString();
+        learning.stability = Number(((learning.stability || 0) + daysByRating[rating] + 0.6).toFixed(2));
+        learning.difficulty = Number(
+          Math.min(10, Math.max(1, (learning.difficulty || 5) + (rating === "again" ? 1.2 : -0.4))).toFixed(2),
+        );
+        learning.updatedAt = now();
+        learning.localVersion += 1;
+        learning.syncStatus = "pending";
+
+        state.reviewLogs.push({
+          id: `review_${state.reviewLogs.length + 1}_${Date.now()}`,
+          cardId,
+          rating,
+          reviewedAt: now(),
+          durationMs: Math.floor(900 + Math.random() * 4200),
+          previousState,
+          nextState: learning.state,
+          clientId: state.clientId,
+          createdAt: now(),
+          syncStatus: "pending",
+        });
+        render();
+      }
+
+      function visibleVocabularyFields(canonicalKey) {
+        return state.vocabularyFields.filter((fieldRecord) => fieldRecord.canonicalKey === canonicalKey);
+      }
+
+      function renderReader() {
+        const contextKey = "context:en";
+        const contextItem = state.vocabularyItems.find((it) => it.canonicalKey === contextKey);
+        return `
+          <div class="grid reader-layout">
+            <article class="panel article">
+              <h1>Reading Systems</h1>
+              <p>
+                A <span class="selectable">resilient</span> reading habit turns scattered pages into reusable memory.
+                Salto should preserve where a word was met, not only what the word means.
+              </p>
+              <p>
+                When a reader highlights <span class="selectable">context</span>, the extension saves the local sentence,
+                asks enrichment providers for structured fields, and later turns stable fields into review cards.
+              </p>
+              <div class="popover">
+                <div class="panel-head">
+                  <h2 class="panel-title">划词浮层</h2>
+                  <span class="badge">Shadow DOM UI</span>
+                </div>
+                <div class="panel-body stack">
+                  <div class="term-row">
+                    <div>
+                      <div class="term">context</div>
+                      <div class="small">selectionText -> canonicalKey: context:en</div>
+                    </div>
+                    <span class="badge ${contextItem ? "orange" : "gray"}">${contextItem ? contextItem.enrichmentStatus : "未保存"}</span>
+                  </div>
+                  <div class="row">
+                    <button class="primary" data-action="save-context">保存这个词和上下文</button>
+                    <button data-action="enrich-context" ${contextItem ? "" : "disabled"}>完成假 enrichment</button>
+                  </div>
+                  <div class="small">
+                    保存动作只创建/复用 VocabularyItem + VocabularyContext；释义、例句等字段由后台 enrichment job 补齐；卡片从稳定字段生成。
+                  </div>
+                </div>
+              </div>
+            </article>
+            <aside class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">当前词条</h2>
+                <span class="badge gray">${state.vocabularyItems.length} items</span>
+              </div>
+              <div class="panel-body stack">
+                ${state.vocabularyItems
+                  .map(
+                    (item) => `
+                      <div class="field">
+                        <div class="split">
+                          <strong>${item.surfaceText}</strong>
+                          <span class="badge ${item.enrichmentStatus === "ready" ? "" : "orange"}">${item.enrichmentStatus}</span>
+                        </div>
+                        <div class="small">${item.canonicalKey}</div>
+                        <div class="small">${state.vocabularyContexts.filter((ctx) => ctx.canonicalKey === item.canonicalKey).length} contexts, ${visibleVocabularyFields(item.canonicalKey).length} fields</div>
+                      </div>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            </aside>
+          </div>
+        `;
+      }
+
+      function renderReview() {
+        const dueCards = state.learningCards.filter((card) => {
+          const learning = state.learningStates.find((entry) => entry.cardId === card.id);
+          return card.status === "active" && (!learning?.dueAt || new Date(learning.dueAt) <= new Date(Date.now() + 86400000));
+        });
+        const card = dueCards[0];
+        const learning = card && state.learningStates.find((entry) => entry.cardId === card.id);
+        return `
+          <section class="dashboard">
+            <div class="grid">
+              <div class="panel metric">
+                <div class="small">VocabularyItem</div>
+                <div class="metric-value">${state.vocabularyItems.length}</div>
+              </div>
+              <div class="panel metric">
+                <div class="small">VocabularyContext</div>
+                <div class="metric-value">${state.vocabularyContexts.length}</div>
+              </div>
+              <div class="panel metric">
+                <div class="small">LearningCard</div>
+                <div class="metric-value">${state.learningCards.length}</div>
+              </div>
+              <div class="panel metric">
+                <div class="small">ReviewLog</div>
+                <div class="metric-value">${state.reviewLogs.length}</div>
+              </div>
+              <div class="panel main-list">
+                <div class="panel-head">
+                  <h2 class="panel-title">插件内词库</h2>
+                  <span class="badge">同一套 syncable 数据</span>
+                </div>
+                <div class="panel-body">
+                  ${state.vocabularyItems
+                    .map((item) => {
+                      const meaning = getField(item.canonicalKey, "meaning");
+                      return `
+                        <div class="vocab-row">
+                          <div>
+                            <strong>${item.surfaceText}</strong>
+                            <div class="small">${item.canonicalKey}</div>
+                          </div>
+                          <div>${meaning || "释义待补齐"}</div>
+                          <span class="badge ${item.enrichmentStatus === "ready" ? "" : "orange"}">${item.enrichmentStatus}</span>
+                        </div>
+                      `;
+                    })
+                    .join("")}
+                </div>
+              </div>
+              <div class="panel review-box">
+                <div class="panel-head">
+                  <h2 class="panel-title">复习卡片</h2>
+                  <span class="badge orange">${dueCards.length} due</span>
+                </div>
+                <div class="panel-body stack">
+                  ${
+                    card
+                      ? `
+                        <div class="card-front">
+                          <div>
+                            <b>${card.front}</b>
+                            <div>${card.cardType}</div>
+                            <div class="small">state: ${learning?.state || "unknown"}, reps: ${learning?.reps || 0}</div>
+                          </div>
+                        </div>
+                        <div class="field">
+                          <strong>答案</strong>
+                          ${card.back}
+                        </div>
+                        <div class="row">
+                          <button class="warn" data-review="${card.id}|again">Again</button>
+                          <button data-review="${card.id}|hard">Hard</button>
+                          <button class="primary" data-review="${card.id}|good">Good</button>
+                          <button data-review="${card.id}|easy">Easy</button>
+                        </div>
+                      `
+                      : `<div class="empty">暂无到期卡片。可以回到“阅读划词”保存 context，并完成 enrichment。</div>`
+                  }
+                </div>
+              </div>
+            </div>
+          </section>
+        `;
+      }
+
+      function renderMobile() {
+        const card = state.learningCards[0];
+        const item = card && state.vocabularyItems.find((entry) => entry.canonicalKey === card.canonicalKey);
+        const fields = item ? visibleVocabularyFields(item.canonicalKey) : [];
+        return `
+          <section class="phone-wrap">
+            <div class="phone" aria-label="Future mobile prototype">
+              <div class="phone-screen">
+                <div class="split">
+                  <strong>Salto Mobile</strong>
+                  <span class="badge">SQLite cache</span>
+                </div>
+                <div class="small">手机端不需要收藏逻辑，只消费同步后的词条、上下文、卡片和复习状态。</div>
+                ${
+                  card
+                    ? `
+                      <div class="phone-card">
+                        <div class="small">Today review</div>
+                        <h2>${card.front}</h2>
+                        <p>${card.back}</p>
+                        <div class="row">
+                          <button data-review="${card.id}|again">Again</button>
+                          <button class="primary" data-review="${card.id}|good">Good</button>
+                        </div>
+                      </div>
+                      <div class="phone-card">
+                        <div class="small">Source context</div>
+                        <p>${state.vocabularyContexts.find((ctx) => ctx.id === card.sourceContextId)?.sentence || "No context"}</p>
+                      </div>
+                    `
+                    : `<div class="empty">没有可消费卡片</div>`
+                }
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head">
+                <h2 class="panel-title">手机端看到的数据</h2>
+                <span class="badge gray">不是另一套 word 表</span>
+              </div>
+              <div class="panel-body stack">
+                <div class="field">
+                  <strong>VocabularyItem</strong>
+                  ${item ? `${item.surfaceText} / ${item.canonicalKey}` : "none"}
+                </div>
+                <div class="field-list">
+                  ${fields
+                    .map(
+                      (entry) => `
+                        <div class="field">
+                          <strong>${fieldLabel[entry.fieldKey] || entry.fieldKey} · ${entry.source} · ${entry.status}</strong>
+                          ${Array.isArray(entry.value) ? entry.value.join(" / ") : entry.value}
+                        </div>
+                      `,
+                    )
+                    .join("")}
+                </div>
+                <div class="field">
+                  <strong>设计校验点</strong>
+                  浏览器插件负责捕获和 enrich；手机端只需要同步 syncable records，然后按学习模块读取 LearningCard 和 LearningState。
+                </div>
+              </div>
+            </div>
+          </section>
+        `;
+      }
+
+      function bindActions() {
+        document.querySelectorAll("[data-action='save-context']").forEach((button) => {
+          button.addEventListener("click", () =>
+            ensureVocabulary(
+              "context",
+              "When a reader highlights context, the extension saves the local sentence.",
+            ),
+          );
+        });
+        document.querySelectorAll("[data-action='enrich-context']").forEach((button) => {
+          button.addEventListener("click", () => completeEnrichment("context:en"));
+        });
+        document.querySelectorAll("[data-review]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const [cardId, rating] = button.dataset.review.split("|");
+            review(cardId, rating);
+          });
+        });
+      }
+
+      function render() {
+        const app = byId("app");
+        app.innerHTML =
+          variant === "review" ? renderReview() : variant === "mobile" ? renderMobile() : renderReader();
+        byId("stateDump").textContent = JSON.stringify(state, null, 2);
+        document.querySelectorAll("[data-variant]").forEach((link) => {
+          link.classList.toggle("active", link.dataset.variant === variant);
+        });
+        bindActions();
+      }
+
+      byId("resetState").addEventListener("click", () => location.reload());
+      render();
+    </script>
+  </body>
+</html>

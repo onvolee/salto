@@ -1,0 +1,3 @@
+# Use responsibility-specific vocabulary and learning records
+
+Salto will model syncable study data as `VocabularyItem`, `VocabularyField`, `VocabularyContext`, `LearningCard`, `LearningState`, and `ReviewLog` instead of storing all word, enrichment, context, and review data in one large record. Browser extension and mobile clients should share this core model while using platform-specific storage adapters. A single word table would look simpler initially, but it would make field-level enrichment, multiple reading contexts, multiple card types, review history, and sync conflict resolution harder to evolve.
