@@ -157,21 +157,24 @@ LLM requests must be made from the extension service worker. Content scripts mus
 
 ## Dictionary Provider
 
-MVP v0.1 implements one dictionary provider.
+MVP v0.1 implements lightweight online dictionary providers.
 
-Preferred first provider:
+Initial providers:
 
-- Cambridge page parsing.
+- Youdao Web adapter.
+- Cambridge Web adapter.
 
 Future candidates:
 
-- Youdao.
 - Collins.
 - Local MDX.
+- Official dictionary APIs.
 
 ```ts
-type DictionaryProvider = "cambridge"
+type DictionaryProvider = "youdao-web" | "cambridge-web"
 ```
+
+Both initial providers are free, lightweight Web adapters. They fetch online dictionary pages or Web endpoints from the extension background request path and parse only the fields Salto needs. They are not official licensed APIs, bundled offline dictionaries, or long-term domain dependencies. Provider-specific HTML, request signing, cookies, anti-abuse behavior, and failure modes must stay behind the dictionary adapter boundary.
 
 ## Saved Words
 
@@ -347,9 +350,12 @@ Tech stack:
 
 - WXT.js.
 - React.
-- TypeScript.
+- TypeScript 7.x.
 - IndexedDB.
 - Dexie.
+- Vitest.
+
+Implementation boundary: see `docs/adr/0030-implement-mvp-stack-with-wxt-workspace-boundaries.md`.
 
 Entrypoints:
 

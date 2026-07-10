@@ -1,0 +1,11 @@
+# Implement MVP stack with WXT workspace boundaries
+
+Salto MVP v0.1 will implement the selected stack as a lightweight pnpm workspace with `apps/extension` for the WXT extension and `packages/core` for platform-independent domain types, schemas, service contracts, prompt/template logic, and sync-ready DTOs. The extension app will use WXT, React, TypeScript 7.x, Dexie, and Vitest; the core package must not import WXT, React, Dexie, browser extension APIs, or IndexedDB-specific table shapes.
+
+WXT owns extension entrypoints and build concerns. `entrypoints/background.ts` owns LLM requests, dictionary requests, enrichment scheduling, API-key access, and IndexedDB writes. `entrypoints/content.ts` owns selection detection, the floating trigger, the translation panel host, saved-word highlighting, and message calls into the background. `entrypoints/options/` owns settings, query template management, saved-word field settings, highlight settings, appearance, and language preferences. React UI should be mounted only at UI entrypoint edges and organized as ordinary typed components below those edges.
+
+Dexie is the browser-extension storage adapter over IndexedDB. Dexie database schema, table definitions, indexes, migrations, and transactions live under `apps/extension/src/db/`; feature code talks through repository or service functions instead of importing Dexie tables directly. Core models remain storage-adapter neutral so future Expo, SQLite, sync server, or import/export work can reuse the domain contracts without carrying browser storage assumptions.
+
+Vitest is the test framework for the workspace. Core domain, service, prompt/template, repository, and adapter-contract tests should run in the default Node-like environment. React and DOM-heavy extension UI tests can use Vitest browser mode or a DOM environment when unit tests need real browser behavior; full extension installation and cross-entrypoint flows remain separate browser automation work, not ordinary unit tests.
+
+This keeps the MVP implementation simple enough to ship while preserving the main boundaries already chosen by the product and architecture decisions: Chrome-first WXT validation, background-owned request paths for secrets, local-first storage, and sync-ready vocabulary and learning records.

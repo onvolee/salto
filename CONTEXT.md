@@ -35,7 +35,7 @@ Salto is a browser extension for reading-time translation, word saving, and late
 - Vocabulary field keys, sources, display behavior, and field values are fixed in MVP; users cannot hide, add, delete, redefine, edit, or change field sources.
 - Saving a word succeeds immediately and enriches fields asynchronously.
 - Vocabulary enrichment status and retry behavior are tracked per field, while execution may batch fields by provider.
-- Cambridge parsing is the first dictionary adapter, not a domain dependency.
+- MVP supports lightweight Web dictionary adapters for `youdao-web` and `cambridge-web`; neither adapter is a domain dependency.
 - MVP supports one active OpenAI-compatible LLM configuration stored as extension-local settings.
 - LLM API keys are extension-local secrets used only by background request paths; content scripts never receive them.
 - MVP validation targets Chrome and Chromium while implementation keeps browser APIs behind WXT boundaries where practical.
@@ -52,4 +52,4 @@ Salto is a browser extension for reading-time translation, word saving, and late
 - MVP is local-first and sync-ready, but does not implement accounts, cloud sync, sync APIs, or mobile clients.
 - MVP does not include user-facing or debug import/export.
 - Local storage uses IndexedDB, preferably via Dexie.
-- The extension stack is WXT.js, React, and TypeScript.
+- The extension stack is WXT.js, React, TypeScript 7.x, Dexie, and Vitest, implemented as `apps/extension` plus storage-neutral core contracts in `packages/core`.
