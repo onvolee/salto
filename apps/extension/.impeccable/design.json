@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-14T00:00:00+08:00",
+  "title": "Design System: Salto Extension",
+  "extensions": {
+    "colorMeta": {
+      "surface": {
+        "role": "neutral",
+        "displayName": "Page White",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.28 0 0)",
+          "oklch(0.42 0 0)",
+          "oklch(0.56 0 0)",
+          "oklch(0.7 0 0)",
+          "oklch(0.84 0 0)",
+          "oklch(0.94 0 0)",
+          "oklch(1 0 0)"
+        ]
+      },
+      "surface-subtle": {
+        "role": "neutral",
+        "displayName": "Cool Header",
+        "canonical": "oklch(0.976 0.007 240)",
+        "tonalRamp": [
+          "oklch(0.18 0.007 240)",
+          "oklch(0.3 0.007 240)",
+          "oklch(0.44 0.007 240)",
+          "oklch(0.58 0.007 240)",
+          "oklch(0.72 0.007 240)",
+          "oklch(0.84 0.007 240)",
+          "oklch(0.92 0.007 240)",
+          "oklch(0.976 0.007 240)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(0.2 0.015 240)",
+        "tonalRamp": [
+          "oklch(0.15 0.015 240)",
+          "oklch(0.2 0.015 240)",
+          "oklch(0.34 0.015 240)",
+          "oklch(0.48 0.015 240)",
+          "oklch(0.62 0.015 240)",
+          "oklch(0.76 0.015 240)",
+          "oklch(0.88 0.015 240)",
+          "oklch(0.95 0.015 240)"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Reading Blue",
+        "canonical": "oklch(0.588 0.158 241.966)",
+        "tonalRamp": [
+          "oklch(0.16 0.158 241.966)",
+          "oklch(0.26 0.158 241.966)",
+          "oklch(0.38 0.158 241.966)",
+          "oklch(0.5 0.158 241.966)",
+          "oklch(0.588 0.158 241.966)",
+          "oklch(0.72 0.12 241.966)",
+          "oklch(0.84 0.07 241.966)",
+          "oklch(0.95 0.03 241.966)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Soft Fill",
+        "canonical": "oklch(0.951 0.018 237)",
+        "tonalRamp": [
+          "oklch(0.17 0.018 237)",
+          "oklch(0.29 0.018 237)",
+          "oklch(0.43 0.018 237)",
+          "oklch(0.57 0.018 237)",
+          "oklch(0.71 0.018 237)",
+          "oklch(0.83 0.018 237)",
+          "oklch(0.91 0.018 237)",
+          "oklch(0.951 0.018 237)"
+        ]
+      },
+      "destructive": {
+        "role": "tertiary",
+        "displayName": "Failure Red",
+        "canonical": "oklch(0.577 0.245 27.325)",
+        "tonalRamp": [
+          "oklch(0.16 0.16 27.325)",
+          "oklch(0.26 0.18 27.325)",
+          "oklch(0.38 0.21 27.325)",
+          "oklch(0.5 0.23 27.325)",
+          "oklch(0.577 0.245 27.325)",
+          "oklch(0.72 0.16 27.325)",
+          "oklch(0.84 0.09 27.325)",
+          "oklch(0.95 0.04 27.325)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "Compact headings and saved-word labels."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Translation output, explanatory text, and compact prose."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons, controls, metadata, and status labels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "panel-shadow",
+        "value": "0 4px 8px oklch(0.2 0.03 240 / 0.2)",
+        "purpose": "Separates the selection panel from arbitrary page content."
+      },
+      {
+        "name": "trigger-shadow",
+        "value": "0 3px 8px oklch(0.2 0.03 240 / 0.24)",
+        "purpose": "Resting elevation for the floating selection trigger."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-ease-out",
+        "value": "150ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Default hover, focus, and active transitions."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "panel-viewport-guard",
+        "value": "calc(100vw - 16px)",
+        "purpose": "Keeps floating panel usable near viewport edges."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Compact primary action for extension surfaces.",
+      "html": "<button class=\"ds-btn-primary\">Save word</button>",
+      "css": ".ds-btn-primary { height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 1px solid transparent; border-radius: 6px; background: oklch(0.588 0.158 241.966); color: oklch(0.985 0.01 237.3); font: 500 12px/1.625 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; white-space: nowrap; transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1), transform 150ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-btn-primary:hover { background: oklch(0.53 0.158 242); } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: 2px solid oklch(0.65 0.15 239); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.5; pointer-events: none; }"
+    },
+    {
+      "name": "Ghost Icon Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Quiet toolbar action for panel headers.",
+      "html": "<button class=\"ds-btn-ghost\" aria-label=\"Close\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6.4 6.4 17.6 17.6M17.6 6.4 6.4 17.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg></button>",
+      "css": ".ds-btn-ghost { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 6px; background: transparent; color: oklch(0.49 0.035 240); transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1), color 150ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-btn-ghost svg { width: 16px; height: 16px; } .ds-btn-ghost:hover { background: oklch(0.951 0.018 237); color: oklch(0.2 0.015 240); } .ds-btn-ghost:focus-visible { outline: 2px solid oklch(0.65 0.15 239); outline-offset: 2px; } .ds-btn-ghost:disabled { opacity: 0.48; cursor: not-allowed; }"
+    },
+    {
+      "name": "Floating Trigger",
+      "kind": "button",
+      "refersTo": "floating-trigger",
+      "description": "Temporary circular action that appears near selected text.",
+      "html": "<button class=\"ds-floating-trigger\" aria-label=\"Open Salto\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12h14M12 5v14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg></button>",
+      "css": ".ds-floating-trigger { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 999px; background: oklch(0.588 0.158 241.966); color: oklch(0.985 0.01 237.3); box-shadow: 0 3px 8px oklch(0.2 0.03 240 / 0.24); transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1), transform 150ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-floating-trigger svg { width: 16px; height: 16px; } .ds-floating-trigger:hover { background: oklch(0.53 0.158 242); box-shadow: 0 4px 8px oklch(0.2 0.03 240 / 0.28); transform: translateY(-1px); } .ds-floating-trigger:focus-visible { outline: 2px solid oklch(0.65 0.15 239); outline-offset: 2px; }"
+    },
+    {
+      "name": "Selection Panel",
+      "kind": "custom",
+      "refersTo": "selection-panel",
+      "description": "Floating dialog shell for reading-time translation.",
+      "html": "<section class=\"ds-selection-panel\" role=\"dialog\" aria-label=\"Selection panel\"><header class=\"ds-selection-panel__header\"><span class=\"ds-selection-panel__grip\" aria-hidden=\"true\"></span><button class=\"ds-btn-ghost\" aria-label=\"Close\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6.4 6.4 17.6 17.6M17.6 6.4 6.4 17.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg></button></header><div class=\"ds-selection-panel__content\"></div></section>",
+      "css": ".ds-selection-panel { width: min(360px, calc(100vw - 16px)); height: min(220px, calc(100vh - 16px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid oklch(0.86 0.025 238); border-radius: 8px; background: oklch(1 0 0); color: oklch(0.2 0.015 240); box-shadow: 0 4px 8px oklch(0.2 0.03 240 / 0.2); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; } .ds-selection-panel__header { position: relative; min-height: 44px; display: flex; align-items: center; justify-content: flex-end; padding: 6px 8px 6px 12px; border-bottom: 1px solid oklch(0.86 0.025 238); background: oklch(0.976 0.007 240); } .ds-selection-panel__grip { position: absolute; top: 50%; left: 50%; width: 34px; height: 4px; border-radius: 2px; background: oklch(0.86 0.025 238); transform: translate(-50%, -50%); } .ds-selection-panel__content { min-height: 0; flex: 1; background: oklch(1 0 0); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Marginal Note",
+    "overview": "Salto's extension UI should feel like a precise note that appears beside the text, not a separate application arriving on top of the page. The visual system is compact, restrained, and native to a productivity tool: white panels, cool-blue action color, crisp borders, small controls, and short state transitions.",
+    "keyCharacteristics": [
+      "Compact density with stable dimensions for floating controls.",
+      "Restrained color: blue means primary action, focus, or selected state.",
+      "System sans typography only; no display type in task UI.",
+      "Clear focus, disabled, hover, and active states on every control."
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Reading Blue is the only brand accent on extension UI; do not add decorative hues to translation panels or saved-word controls.",
+        "section": "colors"
+      },
+      {
+        "name": "The Above Any Page Rule",
+        "body": "Foreground panels must maintain strong contrast against arbitrary web pages; if a page background fights the panel, strengthen the panel border or shadow before adding decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Display Type Rule",
+        "body": "Product UI labels, buttons, and floating panels always use the system sans stack; display fonts are forbidden in extension surfaces.",
+        "section": "typography"
+      },
+      {
+        "name": "The Purposeful Lift Rule",
+        "body": "Shadows exist to separate extension UI from page content. Do not use wide soft shadows as decoration.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve the reading flow; every panel should help the user understand or save selected text without pulling attention away for longer than necessary.",
+      "Do use Reading Blue for primary action, focus, selected, or active states only.",
+      "Do keep extension panels compact, with stable viewport-aware dimensions and restrained 8px panel radii.",
+      "Do make saved, loading, failed, enriched, ready, and retry states visible and unambiguous.",
+      "Do provide hover, focus-visible, active, disabled, loading, and error treatments for interactive components."
+    ],
+    "donts": [
+      "Don't use gradient-led visual styling, decorative color washes, or AI-SaaS-style gradient cards.",
+      "Don't use excessively rounded components; buttons, panels, settings controls, and learning cards must feel native to a compact productivity tool.",
+      "Don't interrupt reading with large modal workflows when an inline or floating panel can do the job.",
+      "Don't over-gamify vocabulary learning or make simple translation/save actions feel like a separate study session.",
+      "Don't introduce decorative motion that does not communicate state."
+    ]
+  }
+}
