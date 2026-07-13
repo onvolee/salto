@@ -1,0 +1,231 @@
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+
+import { FloatingTrigger } from "./FloatingTrigger";
+import {
+  clampToViewport,
+  getInitialPanelPosition,
+  getPanelSize,
+  getTriggerPosition,
+  type Point,
+  type Size,
+} from "./positioning";
+import { SelectionPanel } from "./SelectionPanel";
+import {
+  getRangeAnchorRect,
+  readSelectionSnapshot,
+  type SelectionSnapshot,
+} from "./selection";
+
+const TRIGGER_SIZE: Size = { width: 32, height: 32 };
+
+type SurfaceMode = "hidden" | "trigger-visible" | "panel-open";
+
+function getViewportSize(): Size {
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
+function eventIncludesElement(event: Event, element: Element | null): boolean {
+  if (!element) {
+    return false;
+  }
+
+  return event.composedPath().includes(element) || element.contains(event.target as Node | null);
+}
+
+export function SelectionPopupApp() {
+  const [mode, setMode] = useState<SurfaceMode>("hidden");
+  const [session, setSession] = useState<SelectionSnapshot | null>(null);
+  const [triggerPosition, setTriggerPosition] = useState<Point>({ x: 0, y: 0 });
+  const [panelPosition, setPanelPosition] = useState<Point>({ x: 0, y: 0 });
+  const panelRef = useRef<HTMLElement>(null);
+
+  const refreshTrigger = useCallback(() => {
+    const snapshot = readSelectionSnapshot(window.getSelection());
+    if (!snapshot) {
+      setSession(null);
+      setMode("hidden");
+      return;
+    }
+
+    setSession(snapshot);
+    setTriggerPosition(getTriggerPosition(snapshot.anchorRect, TRIGGER_SIZE, getViewportSize()));
+    setMode("trigger-visible");
+  }, []);
+
+  const closePanel = useCallback(() => {
+    window.getSelection()?.removeAllRanges();
+    setSession(null);
+    setMode("hidden");
+  }, []);
+
+  const openPanel = useCallback(() => {
+    if (!session) {
+      return;
+    }
+
+    const viewport = getViewportSize();
+    setPanelPosition(
+      getInitialPanelPosition(triggerPosition, TRIGGER_SIZE, getPanelSize(viewport), viewport),
+    );
+    setMode("panel-open");
+  }, [session, triggerPosition]);
+
+  useEffect(() => {
+    refreshTrigger();
+  }, [refreshTrigger]);
+
+  useEffect(() => {
+    let pointerIsDown = false;
+    let pointerStartedOutsidePanel = false;
+    let selectionChangedDuringPointer = false;
+    let suppressNextOutsideClick = false;
+
+    const handleSelectionChange = () => {
+      if (mode === "panel-open") {
+        if (pointerIsDown && pointerStartedOutsidePanel) {
+          selectionChangedDuringPointer = true;
+        }
+        return;
+      }
+
+      if (pointerIsDown) {
+        return;
+      }
+      refreshTrigger();
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      pointerIsDown = true;
+      if (mode !== "panel-open" || eventIncludesElement(event, panelRef.current)) {
+        return;
+      }
+
+      pointerStartedOutsidePanel = true;
+      selectionChangedDuringPointer = false;
+    };
+
+    const handlePointerUp = () => {
+      pointerIsDown = false;
+
+      if (mode !== "panel-open") {
+        refreshTrigger();
+        return;
+      }
+
+      if (!pointerStartedOutsidePanel) {
+        return;
+      }
+
+      const selection = window.getSelection();
+      suppressNextOutsideClick = selectionChangedDuringPointer
+        && Boolean(selection && selection.rangeCount > 0 && !selection.isCollapsed);
+      pointerStartedOutsidePanel = false;
+      selectionChangedDuringPointer = false;
+    };
+
+    const handlePointerCancel = () => {
+      pointerIsDown = false;
+      pointerStartedOutsidePanel = false;
+      selectionChangedDuringPointer = false;
+    };
+
+    const handleClick = (event: MouseEvent) => {
+      if (mode !== "panel-open" || eventIncludesElement(event, panelRef.current)) {
+        return;
+      }
+
+      if (suppressNextOutsideClick) {
+        suppressNextOutsideClick = false;
+        return;
+      }
+
+      closePanel();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (mode === "panel-open" && event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closePanel();
+      }
+    };
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("pointerup", handlePointerUp, true);
+    document.addEventListener("pointercancel", handlePointerCancel, true);
+    document.addEventListener("click", handleClick, true);
+    window.addEventListener("keydown", handleKeyDown, true);
+
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("pointerup", handlePointerUp, true);
+      document.removeEventListener("pointercancel", handlePointerCancel, true);
+      document.removeEventListener("click", handleClick, true);
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closePanel, mode, refreshTrigger]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (mode !== "trigger-visible" || !session) {
+        return;
+      }
+
+      const anchorRect = getRangeAnchorRect(session.range);
+      if (!anchorRect) {
+        setSession(null);
+        setMode("hidden");
+        return;
+      }
+
+      setTriggerPosition(getTriggerPosition(anchorRect, TRIGGER_SIZE, getViewportSize()));
+    };
+
+    const handleResize = () => {
+      const viewport = getViewportSize();
+      if (mode === "trigger-visible") {
+        handleScroll();
+      } else if (mode === "panel-open") {
+        setPanelPosition((position) => clampToViewport(position, getPanelSize(viewport), viewport));
+      }
+    };
+
+    document.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      document.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [mode, session]);
+
+  const preserveSelection = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+  };
+
+  if (mode === "trigger-visible") {
+    return (
+      <FloatingTrigger
+        onOpen={openPanel}
+        onPointerDown={preserveSelection}
+        position={triggerPosition}
+      />
+    );
+  }
+
+  if (mode === "panel-open" && session) {
+    return (
+      <SelectionPanel
+        onClose={closePanel}
+        onPositionChange={setPanelPosition}
+        panelRef={panelRef}
+        position={panelPosition}
+        selectionText={session.text}
+      />
+    );
+  }
+
+  return null;
+}

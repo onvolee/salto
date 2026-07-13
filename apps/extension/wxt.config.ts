@@ -3,6 +3,9 @@ import { resolve } from "path";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  alias: {
+    "salto-src": resolve("src"),
+  },
   webExt: {
     chromiumProfile: resolve(".wxt/chrome-dev-data"),
     keepProfileChanges: true,
