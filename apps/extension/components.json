@@ -11,11 +11,11 @@
     "prefix": ""
   },
   "aliases": {
-    "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
+    "components": "salto-src/components",
+    "utils": "salto-src/lib/utils",
+    "ui": "salto-src/components/ui",
+    "lib": "salto-src/lib",
+    "hooks": "salto-src/hooks"
   },
   "iconLibrary": "hugeicons"
 }
