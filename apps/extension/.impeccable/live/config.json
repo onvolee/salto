@@ -1,6 +1,0 @@
-{
-  "files": ["entrypoints/selection-lab/index.html"],
-  "insertBefore": "</body>",
-  "commentSyntax": "html",
-  "cspChecked": true
-}
