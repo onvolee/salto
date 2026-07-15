@@ -10,20 +10,18 @@ function SelectionLab() {
     <div className="salto-live-token-scope">
       <main className="selection-lab-shell">
         <section aria-labelledby="selection-lab-title" className="selection-lab-reader">
-          <p className="selection-lab-kicker">Selection test page</p>
-          <h1 id="selection-lab-title">Reading should not become a detour.</h1>
+          <p className="selection-lab-kicker">选择测试页</p>
+          <h1 id="selection-lab-title">阅读不该变成一次绕路。</h1>
           <p>
-            Select any unfamiliar word or short phrase in this paragraph. Salto should place a
-            compact translation icon near the selected text, wait for an intentional click, and
-            then open a nearby panel without clearing the reading context.
+            选中这段文字中的生词或短语。Salto 会在选区附近放置一个紧凑的翻译图标，等待你明确点击，
+            然后打开邻近面板，同时保留当前阅读上下文。
           </p>
           <p>
-            The useful interaction is deliberately small: choose text, inspect the nearby panel,
-            save the word if it matters, and return to the article. The floating controls should
-            stay precise, legible, and quiet above arbitrary page content.
+            这个交互刻意保持很小：选中文字，查看附近面板，需要时保存词汇，然后回到文章。浮动控件应当
+            在任意网页内容上方保持准确、清晰、安静。
           </p>
           <blockquote>
-            A vocabulary tool earns trust when it feels like a margin note, not a modal workflow.
+            一个词汇工具只有像页边批注，而不是模态流程时，才真正值得信任。
           </blockquote>
         </section>
       </main>
