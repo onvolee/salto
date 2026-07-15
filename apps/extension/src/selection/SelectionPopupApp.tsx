@@ -7,12 +7,8 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  DEFAULT_SETTINGS,
-  loadSettings,
-  subscribeToSettings,
-  type ThemeMode,
-} from "salto-src/theme/theme-settings";
+import type { ThemeMode } from "salto-src/theme/theme-settings";
+import { useThemeMode } from "salto-src/theme/use-theme-mode";
 
 import { FloatingTrigger } from "./FloatingTrigger";
 import {
@@ -48,7 +44,7 @@ function eventIncludesElement(event: Event, element: Element | null): boolean {
 
 export function SelectionPopupApp() {
   const [mode, setMode] = useState<SurfaceMode>("hidden");
-  const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_SETTINGS.themeMode);
+  const themeMode = useThemeMode();
   const [session, setSession] = useState<SelectionSnapshot | null>(null);
   const [triggerPosition, setTriggerPosition] = useState<Point>({ x: 0, y: 0 });
   const [panelPosition, setPanelPosition] = useState<Point>({ x: 0, y: 0 });
@@ -88,27 +84,6 @@ export function SelectionPopupApp() {
   useEffect(() => {
     refreshTrigger();
   }, [refreshTrigger]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    void loadSettings().then((settings) => {
-      if (isMounted) {
-        setThemeMode(settings.themeMode);
-      }
-    });
-
-    const unsubscribe = subscribeToSettings((settings) => {
-      if (isMounted) {
-        setThemeMode(settings.themeMode);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
 
   useEffect(() => {
     let pointerIsDown = false;
