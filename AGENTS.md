@@ -13,3 +13,7 @@ The tracker uses the default five-label vocabulary: `needs-triage`, `needs-info`
 ### Domain docs
 
 This repo uses a single-context domain layout with `CONTEXT.md` at the root and ADRs under `docs/adr/`. See `docs/agents/domain.md`.
+
+### Short cut keys
+
+`cmt`: commit all the existing uncommitted code.

@@ -1,0 +1,83 @@
+/* Linear runtime colors mapped to Salto's semantic theme contract. */
+:where(:root, .salto-theme-scope) {
+  --linear-color-bg-primary: lch(98.94% 0.5 282);
+  --linear-color-bg-quaternary: lch(96.94% 0.5 282 / 1);
+  --linear-color-bg-secondary: lch(93.44% 0.5 282 / 1);
+  --linear-color-bg-tertiary: lch(91.94% 0.5 282 / 1);
+  --linear-color-border-primary: lch(96.24% 0 282 / 1);
+  --linear-color-border-secondary: lch(89.49% 0 282 / 1);
+  --linear-color-border-tertiary: lch(85.44% 0 282 / 1);
+  --linear-color-text-primary: lch(9.894% 0 282 / 1);
+  --linear-color-text-secondary: lch(19.788% 1.25 282 / 1);
+  --linear-color-text-tertiary: lch(39.576% 1.25 282 / 1);
+  --linear-color-text-quaternary: lch(65.3% 1.25 282 / 1);
+  --linear-focus-color: lch(53% 52.26 286.91);
+  --linear-focus-ring-color: #6d78d5;
+  --linear-selection-bg: lch(39.576% 1.25 282 / 0.2);
+
+  --salto-background: var(--linear-color-bg-primary);
+  --salto-surface: var(--linear-color-bg-primary);
+  --salto-surface-subtle: var(--linear-color-bg-quaternary);
+  --salto-muted: var(--linear-color-bg-secondary);
+  --salto-muted-hover: var(--linear-color-bg-tertiary);
+  --salto-foreground: var(--linear-color-text-primary);
+  --salto-foreground-secondary: var(--linear-color-text-secondary);
+  --salto-muted-foreground: var(--linear-color-text-tertiary);
+  --salto-faint-foreground: var(--linear-color-text-quaternary);
+  --salto-border-soft: var(--linear-color-border-primary);
+  --salto-border: var(--linear-color-border-secondary);
+  --salto-border-strong: var(--linear-color-border-tertiary);
+  --salto-primary: var(--linear-focus-color);
+  --salto-primary-hover: color-mix(in oklch, var(--salto-primary), var(--salto-foreground) 8%);
+  --salto-primary-foreground: white;
+  --salto-ring: var(--linear-focus-ring-color);
+  --salto-selection: var(--linear-selection-bg);
+  --salto-destructive: #dc2626;
+  --salto-focus-halo: color-mix(in oklab, var(--salto-ring), transparent 68%);
+  --salto-panel-shadow: 0 4px 8px lch(9.894% 0 282 / 0.2);
+  --salto-trigger-shadow: 0 3px 8px lch(9.894% 0 282 / 0.24);
+  --salto-trigger-shadow-hover: 0 4px 8px lch(9.894% 0 282 / 0.28);
+
+  color-scheme: light;
+  accent-color: var(--salto-primary);
+}
+
+:where(:root, .salto-theme-scope)[data-theme="dark"] {
+  --linear-color-bg-primary: lch(4.52% 0.3 272);
+  --linear-color-bg-quaternary: lch(7.22% 0.75 272 / 1);
+  --linear-color-bg-secondary: lch(9.02% 2.1 272 / 1);
+  --linear-color-bg-tertiary: lch(11.27% 3 272 / 1);
+  --linear-color-border-primary: lch(8.84% 1.38 272 / 1);
+  --linear-color-border-secondary: lch(13.16% 1.38 272 / 1);
+  --linear-color-border-tertiary: lch(15.32% 1.38 272 / 1);
+  --linear-color-text-primary: lch(100% 0 272 / 1);
+  --linear-color-text-secondary: lch(90.35% 1.15 272 / 1);
+  --linear-color-text-tertiary: lch(61.399% 1.15 272 / 1);
+  --linear-color-text-quaternary: lch(36.308% 1.15 272 / 1);
+  --linear-focus-color: lch(47.918% 59.303 288.421);
+  --linear-focus-ring-color: #5e69d1;
+  --linear-selection-bg: lch(61.399% 1.15 272 / 0.2);
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(:root, .salto-theme-scope)[data-theme="system"] {
+    --linear-color-bg-primary: lch(4.52% 0.3 272);
+    --linear-color-bg-quaternary: lch(7.22% 0.75 272 / 1);
+    --linear-color-bg-secondary: lch(9.02% 2.1 272 / 1);
+    --linear-color-bg-tertiary: lch(11.27% 3 272 / 1);
+    --linear-color-border-primary: lch(8.84% 1.38 272 / 1);
+    --linear-color-border-secondary: lch(13.16% 1.38 272 / 1);
+    --linear-color-border-tertiary: lch(15.32% 1.38 272 / 1);
+    --linear-color-text-primary: lch(100% 0 272 / 1);
+    --linear-color-text-secondary: lch(90.35% 1.15 272 / 1);
+    --linear-color-text-tertiary: lch(61.399% 1.15 272 / 1);
+    --linear-color-text-quaternary: lch(36.308% 1.15 272 / 1);
+    --linear-focus-color: lch(47.918% 59.303 288.421);
+    --linear-focus-ring-color: #5e69d1;
+    --linear-selection-bg: lch(61.399% 1.15 272 / 0.2);
+
+    color-scheme: dark;
+  }
+}

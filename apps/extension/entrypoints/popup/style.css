@@ -2,16 +2,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "../../src/theme/linear-theme.css";
 
 :root {
-  --bg: #08090a;
-  --surface: #191a1b;
-  --fg: #f7f8f8;
-  --muted: #8a8f98;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-soft: rgba(255, 255, 255, 0.05);
-  --accent: #5e6ad2;
-  --focus-ring: 0 0 0 2px color-mix(in oklab, var(--accent), transparent 30%), 0 4px 12px rgba(0, 0, 0, 0.1);
   --font-body: "Inter Variable", "Inter", "SF Pro Display", -apple-system, system-ui, "Segoe UI", sans-serif;
 }
 
@@ -30,8 +23,8 @@ body,
 
 body {
   overflow: hidden;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--salto-background);
+  color: var(--salto-foreground);
   font-family: var(--font-body);
 }
 
@@ -40,8 +33,9 @@ button {
 }
 
 button:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
+  outline: 1px solid var(--salto-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--salto-focus-halo);
 }
 
 .popup {
@@ -50,9 +44,9 @@ button:focus-visible {
   height: 100%;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--salto-border);
   border-radius: 8px;
-  background: var(--bg);
+  background: var(--salto-background);
 }
 
 .popup-main {
@@ -65,8 +59,8 @@ button:focus-visible {
   align-items: center;
   justify-content: flex-end;
   padding: 0 12px 0 16px;
-  border-top: 1px solid var(--border-soft);
-  background: color-mix(in oklab, var(--surface), transparent 30%);
+  border-top: 1px solid var(--salto-border-soft);
+  background: var(--salto-surface-subtle);
 }
 
 .settings-button {
@@ -77,14 +71,14 @@ button:focus-visible {
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
-  color: var(--muted);
+  color: var(--salto-muted-foreground);
   cursor: pointer;
   transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
 }
 
 .settings-button:hover {
-  background: var(--surface);
-  color: var(--fg);
+  background: var(--salto-muted);
+  color: var(--salto-foreground);
 }
 
 .settings-button:active {

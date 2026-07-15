@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
+@import "../theme/linear-theme.css";
 
 @source "../components/ui/button.tsx";
 @source "./SelectionPopupApp.tsx";
@@ -18,46 +19,7 @@
 }
 
 :host {
-  --salto-surface: #191a1b;
-  --salto-surface-subtle: #0f1011;
-  --salto-foreground: #f7f8f8;
-  --salto-primary: #5e6ad2;
-  --salto-primary-foreground: #ffffff;
-  --salto-muted: rgba(255, 255, 255, 0.06);
-  --salto-muted-foreground: #8a8f98;
-  --salto-border: rgba(255, 255, 255, 0.08);
-  --salto-ring: #7170ff;
-  --salto-destructive: #dc2626;
-  color-scheme: dark;
   font-family: var(--font-sans);
-}
-
-.salto-theme-scope[data-theme="light"] {
-  --salto-surface: #ffffff;
-  --salto-surface-subtle: #f3f4f5;
-  --salto-foreground: #1f2227;
-  --salto-primary: #5e6ad2;
-  --salto-primary-foreground: #ffffff;
-  --salto-muted: rgba(25, 32, 40, 0.06);
-  --salto-muted-foreground: #69717d;
-  --salto-border: rgba(25, 32, 40, 0.14);
-  --salto-ring: #5e6ad2;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: light) {
-  .salto-theme-scope[data-theme="system"] {
-    --salto-surface: #ffffff;
-    --salto-surface-subtle: #f3f4f5;
-    --salto-foreground: #1f2227;
-    --salto-primary: #5e6ad2;
-    --salto-primary-foreground: #ffffff;
-    --salto-muted: rgba(25, 32, 40, 0.06);
-    --salto-muted-foreground: #69717d;
-    --salto-border: rgba(25, 32, 40, 0.14);
-    --salto-ring: #5e6ad2;
-    color-scheme: light;
-  }
 }
 
 .salto-selection-trigger {
@@ -66,7 +28,7 @@
   border-radius: 999px;
   background: var(--salto-primary);
   color: var(--salto-primary-foreground);
-  box-shadow: 0 3px 8px oklch(0.2 0.03 240 / 0.24);
+  box-shadow: var(--salto-trigger-shadow);
   cursor: pointer;
   transition:
     background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -75,8 +37,8 @@
 }
 
 .salto-selection-trigger:hover {
-  background: oklch(0.53 0.158 242);
-  box-shadow: 0 4px 8px oklch(0.2 0.03 240 / 0.28);
+  background: var(--salto-primary-hover);
+  box-shadow: var(--salto-trigger-shadow-hover);
   transform: translateY(-1px);
 }
 
@@ -101,7 +63,7 @@
   border-radius: 8px;
   background: var(--salto-surface);
   color: var(--salto-foreground);
-  box-shadow: 0 4px 8px oklch(0.2 0.03 240 / 0.2);
+  box-shadow: var(--salto-panel-shadow);
   font-family: var(--font-sans);
 }
 
