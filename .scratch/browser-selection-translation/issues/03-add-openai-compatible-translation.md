@@ -1,6 +1,6 @@
 # Phase 03: Add OpenAI-Compatible Translation
 
-Status: planned
+Status: ready-for-agent
 
 Depends on: Phase 02
 
@@ -84,3 +84,6 @@ Replace the fake LLM execution path with one active OpenAI-compatible configurat
 
 The fake executor remains available only for tests and development fixtures. The production LLM adapter can be disabled without removing the local vertical slice or saved-vocabulary data.
 
+## Comments
+
+- 2026-07-16: Created from the ordered MVP development plan.

@@ -397,3 +397,58 @@ Entrypoints should not directly scatter IndexedDB operations.
 - Dictionary parser failure and fallback strategy.
 - Saved-word schema migration.
 - Query template import/export.
+
+## Implementation Plan
+
+Implementation is tracked as ordered local issues under `issues/`. The plan favors vertical slices over completing every abstraction up front. Each issue must produce either user-observable behavior or verified reduction of a concrete technical risk.
+
+| Order | Issue | User-observable result | Depends on |
+| --- | --- | --- | --- |
+| 01 | [Freeze the specification](issues/01-freeze-spec-baseline.md) | One unambiguous MVP contract | Current PRD and ADRs |
+| 02 | [Build the local vertical slice](issues/02-build-local-vertical-slice.md) | Select, fake-translate, save, reload, highlight | 01 |
+| 03 | [Add real LLM translation](issues/03-add-openai-compatible-translation.md) | Real mixed-field LLM output | 02 |
+| 04 | [Add save and enrichment recovery](issues/04-add-save-and-enrichment.md) | Immediate save and restart-safe enrichment | 03 |
+| 05 | [Add templates and required settings](issues/05-add-templates-and-settings.md) | User-controlled query behavior | 03, 04 |
+| 06 | [Add dictionary adapters](issues/06-add-dictionary-adapters.md) | Dictionary-backed query and enrichment fields | 04, 05 |
+| 07 | [Harden page highlighting](issues/07-harden-highlighting.md) | Correct, incremental highlighting on real pages | 02, 04 |
+| 08 | [Harden and release the MVP](issues/08-harden-and-release.md) | Reproducible Chrome-ready MVP | 01-07 |
+
+The table is the default critical path. Issue 07 may begin after Issue 04 while Issue 05 or 06 is in progress, but it must not be released independently from the completed save semantics it consumes.
+
+### Issue Sizing Rules
+
+An issue is correctly sized when:
+
+- It has one primary behavior or risk.
+- It can be implemented and verified without waiting for another unfinished issue in the same branch.
+- It keeps behavior and the tests that prove it together.
+- It can be reverted without removing unrelated functionality.
+- Its acceptance steps fit in one short manual browser script.
+
+If an issue contains a repository layer, a service layer, several UI surfaces, and multiple providers, split it by user-visible path or provider boundary before implementation.
+
+### Definition Of Done
+
+Every implementation issue must satisfy all of the following before it is closed:
+
+- [ ] Preconditions and acceptance criteria are written before implementation.
+- [ ] The smallest failing automated test or reproducible fixture exists.
+- [ ] The implementation does not broaden the issue scope.
+- [ ] Errors are represented explicitly rather than swallowed.
+- [ ] Affected unit and integration tests pass.
+- [ ] `pnpm test`, `pnpm typecheck`, and `pnpm build` pass before issue closure.
+- [ ] The issue's browser acceptance script passes in unpacked Chrome.
+- [ ] Security and privacy effects are recorded when page content, secrets, permissions, or remote requests change.
+- [ ] Relevant PRD, CONTEXT, ADR, and issue comments are updated.
+- [ ] The change is committed as one coherent GitButler change or a small, ordered stack.
+
+### Engineering Guardrails
+
+- Content scripts own page selection, page-context extraction, isolated UI, and highlighting only.
+- The background service worker owns IndexedDB writes, API-key access, external requests, and enrichment scheduling.
+- Core contracts must not import WXT, React, Dexie, IndexedDB, or browser APIs.
+- Translation-panel output never writes directly into vocabulary fields.
+- Service-worker correctness must not depend on module-level mutable state.
+- Default automated tests must not depend on live LLM or dictionary networks.
+- API keys and full page content must not appear in logs, errors, analytics, or content-script responses.
+- DOM scans must be bounded, incremental, and cooperative with the page's main thread.

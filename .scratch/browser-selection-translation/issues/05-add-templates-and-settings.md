@@ -1,6 +1,6 @@
 # Phase 05: Add Query Templates And Required Settings
 
-Status: planned
+Status: ready-for-agent
 
 Depends on: Phases 03 and 04
 
@@ -97,3 +97,6 @@ This phase does not turn the options page into a general product dashboard. Requ
 
 Template-management UI can be reverted while preserving seeded default-template execution. Schema changes must retain existing user templates through forward migration.
 
+## Comments
+
+- 2026-07-16: Created from the ordered MVP development plan.

@@ -1,6 +1,6 @@
 # Phase 06: Add Dictionary Adapters
 
-Status: planned
+Status: ready-for-agent
 
 Depends on: Phases 04 and 05
 
@@ -91,3 +91,6 @@ There is no multi-provider aggregation or automatic fallback in MVP. The active 
 
 Each adapter is independently selectable and removable. Disabling a broken adapter must not corrupt templates, vocabulary fields, or jobs; affected jobs remain failed and retryable after a replacement provider is selected deliberately.
 
+## Comments
+
+- 2026-07-16: Created from the ordered MVP development plan.
