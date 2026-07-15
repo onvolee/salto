@@ -22,13 +22,14 @@ Replace the fake LLM execution path with one active OpenAI-compatible configurat
 - [ ] Separate secret reads from public settings reads so content responses cannot serialize the key accidentally.
 - [ ] Add the minimum options UI needed to enter and validate the configuration.
 - [ ] Add a user-initiated connection test with clear timeout, authentication, permission, and model errors.
-- [ ] Decide and implement host-permission acquisition for the configured origin.
-- [ ] Normalize base URLs and reject non-HTTP(S), credential-bearing, or malformed URLs.
+- [ ] Implement the PRD's frozen optional-host-permission flow: request only `<origin>/*` from the Save/Test user gesture and persist only after grant.
+- [ ] Normalize base URLs; reject credential-bearing, malformed, and non-HTTP(S) URLs; allow plain HTTP only for the frozen loopback hosts.
+- [ ] Remove an obsolete LLM-origin grant with explicit confirmation after configuration replacement when no active provider uses it.
 
 ## Request Tasks
 
 - [ ] Implement an `LlmClient` adapter under the extension boundary.
-- [ ] Build one request containing every enabled LLM field ID, type, instruction, and rendered PromptContext.
+- [ ] Build one request containing every enabled LLM field ID, frozen `text | list` type, instruction, and rendered required-string `PromptContext`.
 - [ ] Require a machine-parseable response keyed by field ID.
 - [ ] Validate each returned value against its declared `text` or `list` type.
 - [ ] Preserve template order after mapping provider output back to field results.
@@ -42,7 +43,7 @@ Replace the fake LLM execution path with one active OpenAI-compatible configurat
 - [ ] Escape or delimit page content so source text cannot impersonate system instructions accidentally.
 - [ ] Bound `webContent` to the PRD limit before messaging and before request construction.
 - [ ] Treat unknown variables as a saved-template warning; runtime rendering must leave a visible diagnostic rather than silently substitute incorrect data.
-- [ ] Document that selected page context is transmitted to the user-configured provider only after explicit trigger activation.
+- [ ] Show the PRD-defined page-context transmission disclosure and transmit only context referenced by enabled instructions after explicit trigger activation.
 
 ## Error And Security Tasks
 
@@ -71,6 +72,7 @@ Replace the fake LLM execution path with one active OpenAI-compatible configurat
 5. Regenerate rapidly and verify stale output does not replace the latest result.
 6. Test invalid key, invalid model, timeout, and denied host permission states.
 7. Inspect extension messages and confirm the API key never enters the content-script context.
+8. Replace the configured origin and verify the obsolete grant can be removed without changing unrelated host permissions.
 
 ## Exit Criteria
 

@@ -22,10 +22,10 @@ This is the first architecture proof. It must use the real message, service, rep
 
 ## Core Contract Tasks
 
-- [ ] Align query-template and vocabulary types with Phase 01 decisions.
-- [ ] Add typed selection-translation request and per-field result contracts.
+- [ ] Align query-template and vocabulary types exactly with the frozen contracts in the PRD: `text | list`, provider-neutral query sources, ID-based `Vocabulary*` relationships, and schema-governed vocabulary values.
+- [ ] Add typed selection-translation request and `QueryFieldResult` contracts using the frozen required-string `PromptContext` mapping.
 - [ ] Represent success and failure per query field.
-- [ ] Define minimal settings and default query-template values.
+- [ ] Seed the PRD's exact `DEFAULT_EXTENSION_SETTINGS` and `DEFAULT_QUERY_TEMPLATE` values idempotently.
 - [ ] Add injectable clock and ID-generation boundaries where deterministic tests need them.
 - [ ] Keep all contracts storage- and browser-adapter neutral.
 
@@ -33,7 +33,7 @@ This is the first architecture proof. It must use the real message, service, rep
 
 - [ ] Add only the tables required by this slice: vocabulary items, fields, contexts, templates, and minimal settings.
 - [ ] Implement the minimum repository operations used by translate, save, and highlight-term reads.
-- [ ] Enforce canonical-key uniqueness at the repository transaction boundary.
+- [ ] Enforce the frozen `en:` canonicalization behavior and canonical-key uniqueness at the repository transaction boundary.
 - [ ] Store the system `term` field as ready during save.
 - [ ] Seed defaults idempotently on extension installation and on missing-data recovery.
 - [ ] Test a database reopen to prove data survives a new service instance.
@@ -50,7 +50,7 @@ This is the first architecture proof. It must use the real message, service, rep
 ## Content And UI Tasks
 
 - [ ] Reuse the existing selection trigger and panel positioning behavior.
-- [ ] Extract selection, sentence, nearby paragraphs, title, URL, and bounded page content.
+- [ ] Extract every frozen `PromptContext` value, using empty strings for unavailable context and bounding `webContent` to 2000 UTF-16 code units.
 - [ ] Render template name and fields in schema order.
 - [ ] Render loading, complete, partial-error, and request-error states without resizing the panel unpredictably.
 - [ ] Enable the existing save action and make repeated clicks idempotent.
@@ -59,7 +59,7 @@ This is the first architecture proof. It must use the real message, service, rep
 
 ## Automated Verification
 
-- [ ] Core contract tests cover list and text field results.
+- [ ] Core contract tests cover list, text, unavailable, and failed field results.
 - [ ] Repository tests cover first save, repeated save, and database reopen.
 - [ ] Message tests cover valid, malformed, and unknown requests.
 - [ ] UI tests cover no automatic query, explicit trigger query, ordered rendering, field failure, and saved state.

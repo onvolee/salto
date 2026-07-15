@@ -8,22 +8,30 @@ Depends on: Phase 03
 
 Saving succeeds after a local transaction and never waits for remote enrichment. Per-field jobs run in the background, recover after service-worker or browser interruption, support targeted retry, and generate a meaning-recall card when term and meaning are ready.
 
+## Provider Preconditions
+
+- Use the dependency-injected deterministic dictionary fake from Phase 02 to prove dictionary-backed job, retry, and meaning-card behavior in tests and development acceptance.
+- Real OpenAI-compatible execution from Phase 03 may fill LLM-backed fields.
+- In production, a dictionary job with no accepted active adapter remains queued with its field pending; missing provider configuration is not counted as a remote attempt or converted into a failed field.
+- Live dictionary execution and production adapter acceptance belong to Phase 06.
+
 ## Save Transaction Tasks
 
 - [ ] Implement `SaveVocabularyService` over repository ports.
-- [ ] Normalize term and language into the frozen canonical key without lemmatization.
+- [ ] Apply the frozen English NFKC, whitespace, and `en-US` lowercase algorithm to form the canonical key without lemmatization or punctuation rewriting.
 - [ ] Create or reuse one `VocabularyItem` per canonical key.
 - [ ] Create the system term field as ready with a deterministic field ID.
-- [ ] Append a deterministic, deduplicated `VocabularyContext` when page URL and sentence differ.
+- [ ] Derive a deterministic `VocabularyContext` ID from vocabulary item ID, normalized page URL, and normalized sentence exactly as frozen in the PRD.
 - [ ] Create missing fixed vocabulary fields with pending status.
 - [ ] Create extension-local jobs only for fields requiring remote enrichment.
+- [ ] Derive every job's field/source pair from `VocabularyFieldSpec`; the system `term` field can never have a job.
 - [ ] Commit item, fields, context, and jobs in one Dexie transaction.
 - [ ] Return saved or already-saved state immediately after the local transaction.
 - [ ] Make repeated save messages and repeated transactions idempotent.
 
 ## Enrichment Job Model
 
-- [ ] Persist job ID, vocabulary item ID, field key, source, status, attempts, next run time, and last error.
+- [ ] Persist job ID, vocabulary item ID, field key, source, status, attempts, next run time, and sanitized last error without sync metadata.
 - [ ] Support `queued`, `running`, `succeeded`, and `failed` states.
 - [ ] Define a maximum attempt policy and deterministic exponential backoff with a cap.
 - [ ] Define stale-running recovery for workers terminated mid-request.
@@ -63,6 +71,7 @@ Saving succeeds after a local transaction and never waits for remote enrichment.
 - [ ] Save tests cover new item, repeated item, same context, and new context.
 - [ ] Transaction tests prove partial writes do not survive failure.
 - [ ] Job tests cover claim, success, partial success, retry, backoff, max attempts, and stale recovery.
+- [ ] Job tests prove missing production provider configuration consumes no attempt and leaves the field pending.
 - [ ] Concurrency tests prove two queue wakeups do not duplicate work.
 - [ ] Restart tests create a new worker/service instance over the same database and complete queued work.
 - [ ] Card tests prove generation waits for both fields and remains idempotent.
@@ -75,8 +84,9 @@ Saving succeeds after a local transaction and never waits for remote enrichment.
 3. Save it on another page or sentence and verify one additional context.
 4. Terminate the service worker while a job is pending or running.
 5. Restart Chrome or the extension and verify the job resumes or is safely retried.
-6. Force one field to fail and verify successful fields remain ready.
+6. With the deterministic development dictionary adapter, force one field to fail and verify successful fields remain ready.
 7. Retry the failed field and verify one meaning-recall card appears after meaning succeeds.
+8. In a production build without an accepted dictionary adapter, verify dictionary jobs remain queued and pending without consuming attempts.
 
 ## Exit Criteria
 
@@ -85,6 +95,7 @@ Saving succeeds after a local transaction and never waits for remote enrichment.
 - [ ] Repeated commands, wakeups, and retries are idempotent.
 - [ ] Field-level success and failure match ADR-0023.
 - [ ] Meaning-recall card generation matches ADR-0018 through ADR-0020.
+- [ ] Production dictionary work remains pending until Phase 06 instead of using a fake or failing without a provider request.
 - [ ] Full test, typecheck, and build commands pass.
 
 ## Rollback Boundary
