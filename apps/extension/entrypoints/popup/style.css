@@ -1,0 +1,98 @@
+@import "@fontsource-variable/inter";
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+:root {
+  --bg: #08090a;
+  --surface: #191a1b;
+  --fg: #f7f8f8;
+  --muted: #8a8f98;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-soft: rgba(255, 255, 255, 0.05);
+  --accent: #5e6ad2;
+  --focus-ring: 0 0 0 2px color-mix(in oklab, var(--accent), transparent 30%), 0 4px 12px rgba(0, 0, 0, 0.1);
+  --font-body: "Inter Variable", "Inter", "SF Pro Display", -apple-system, system-ui, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 360px;
+  min-width: 320px;
+  height: 480px;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+}
+
+button {
+  font: inherit;
+}
+
+button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.popup {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.popup-main {
+  flex: 1;
+}
+
+.popup-footer {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px 0 16px;
+  border-top: 1px solid var(--border-soft);
+  background: color-mix(in oklab, var(--surface), transparent 30%);
+}
+
+.settings-button {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.settings-button:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.settings-button:active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-button {
+    transition: none;
+  }
+}
