@@ -1,6 +1,6 @@
 # Phase 04: Add Save And Restart-Safe Enrichment
 
-Status: planned
+Status: ready-for-agent
 
 Depends on: Phase 03
 
@@ -91,3 +91,6 @@ Saving succeeds after a local transaction and never waits for remote enrichment.
 
 Job processing can be disabled while preserving saved vocabulary and pending jobs. Database changes require a forward Dexie migration; never solve rollback by deleting the user's IndexedDB.
 
+## Comments
+
+- 2026-07-16: Created from the ordered MVP development plan.

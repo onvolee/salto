@@ -1,6 +1,6 @@
 # Phase 07: Harden Saved-Vocabulary Highlighting
 
-Status: planned
+Status: ready-for-agent
 
 Depends on: Phases 02 and 04
 
@@ -95,3 +95,6 @@ The minimal Phase 02 highlighter is replaced or evolved behind a testable scanni
 
 The hardened scanner remains behind the same saved-term input and enable/disable boundary as the minimal scanner. It can be disabled without changing saved vocabulary data.
 
+## Comments
+
+- 2026-07-16: Created from the ordered MVP development plan.

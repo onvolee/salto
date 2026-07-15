@@ -1,6 +1,6 @@
 # Phase 08: Harden And Release The MVP
 
-Status: planned
+Status: ready-for-agent
 
 Depends on: Phases 01-07
 
@@ -106,3 +106,6 @@ Restricted browser pages where content scripts cannot run must fail silently or 
 - Never roll back by clearing IndexedDB or asking users to reinstall unless data loss is explicitly accepted as an emergency response.
 - If the golden path regresses, stop release, reopen the owning issue, and attach the reproducible fixture before fixing it.
 
+## Comments
+
+- 2026-07-16: Created from the ordered MVP development plan.

@@ -1,6 +1,6 @@
 # Phase 01: Freeze The MVP Specification
 
-Status: planned
+Status: ready-for-agent
 
 Depends on: current PRD, CONTEXT, and ADRs
 
@@ -67,3 +67,6 @@ This phase has no browser behavior. Verification is a structured document review
 
 This phase changes documentation and issue definitions only. If a decision is rejected, revert that decision and dependent issue text before runtime code relies on it.
 
+## Comments
+
+- 2026-07-16: Created from the ordered MVP development plan.
