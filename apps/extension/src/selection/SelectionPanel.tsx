@@ -117,7 +117,6 @@ export function SelectionPanel({
             ref={closeButtonRef}
             size="icon"
             title="Close panel"
-            type="button"
             variant="ghost"
           >
             <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.8} />
