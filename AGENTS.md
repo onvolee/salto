@@ -15,5 +15,6 @@ The tracker uses the default five-label vocabulary: `needs-triage`, `needs-info`
 This repo uses a single-context domain layout with `CONTEXT.md` at the root and ADRs under `docs/adr/`. See `docs/agents/domain.md`.
 
 ### Short cut keys
+Execute the command after triggering the key shortcut key.
 
-`cmt`: commit all the existing uncommitted code.
+- `cmt`: commit all the existing uncommitted code. use `but` and `gitbutler` tools
