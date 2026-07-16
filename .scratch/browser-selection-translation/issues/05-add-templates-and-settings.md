@@ -17,7 +17,7 @@ This phase does not turn the options page into a general product dashboard. Requ
 - [ ] Copy and rename templates with collision-safe IDs.
 - [ ] Delete user-created templates while preventing deletion of the last usable template.
 - [ ] Set and persist one default template.
-- [ ] Edit field label, type, source, instruction, enabled state, and order.
+- [ ] Edit field label, source, enabled state, and order; edit LLM type/instruction or select a dictionary field whose type is derived from the frozen map.
 - [ ] Reorder fields with keyboard-accessible controls in addition to any pointer interaction.
 - [ ] Normalize order values transactionally after edits.
 - [ ] Preserve unknown provider or field data defensively during future migrations rather than silently dropping it.
@@ -32,12 +32,13 @@ This phase does not turn the options page into a general product dashboard. Requ
 
 ## Required Settings Tasks
 
-- [ ] Complete the single active LLM configuration from Phase 03.
+- [ ] Complete the single active LLM configuration and exact-origin permission flow from Phase 03.
 - [ ] Persist target translation language.
-- [ ] Persist active dictionary provider after Phase 06 is available.
+- [ ] Keep `activeDictionaryProvider` unset and recoverable; Phase 06 owns its first persisted value and provider-selection UI.
 - [ ] Persist highlight enabled state.
 - [ ] Integrate existing theme-mode behavior without redesigning the theme system in this phase.
 - [ ] Keep fixed vocabulary fields read-only; do not add hide, source, or edit controls.
+- [ ] Do not add mutable saved-vocabulary settings; any schema view is read-only and optional for acceptance.
 - [ ] Do not expose raw API-key values after save; display only configured/not-configured state and an explicit replace action.
 
 ## Runtime Integration Tasks
@@ -51,7 +52,7 @@ This phase does not turn the options page into a general product dashboard. Requ
 
 ## Validation And Persistence Tasks
 
-- [ ] Validate names, field counts, order, source, type, and instructions at the background write boundary.
+- [ ] Validate names, field counts, order, and the frozen LLM/dictionary field union at the background write boundary.
 - [ ] Keep options components free of direct Dexie table access.
 - [ ] Store template and extension-setting timestamps for migration and troubleshooting.
 - [ ] Add an idempotent migration path from seeded or earlier setting shapes.

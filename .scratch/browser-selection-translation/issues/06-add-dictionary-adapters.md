@@ -10,7 +10,7 @@ One production dictionary adapter reaches stable acceptance before a second adap
 
 ## Rollout Strategy
 
-1. Select the first adapter using current access reliability and required field coverage.
+1. Select the first adapter using current access reliability and the PRD's fixed vocabulary-field coverage.
 2. Complete its fixtures, parser, query execution, enrichment mapping, permission flow, and browser smoke test.
 3. Observe and document its failure modes.
 4. Implement the second adapter against the same contract only after the first meets exit criteria.
@@ -20,7 +20,7 @@ There is no multi-provider aggregation or automatic fallback in MVP. The active 
 ## Adapter Boundary Tasks
 
 - [ ] Keep provider URL, HTML, cookies, headers, anti-abuse behavior, and parsing outside core contracts.
-- [ ] Define a normalized lookup result that can represent phonetic, part of speech, meaning, synonyms, and word forms.
+- [ ] Define a normalized lookup result whose text/list shapes match the frozen fixed vocabulary schema for phonetic, part of speech, meaning, synonyms, and word forms.
 - [ ] Keep unsupported or missing normalized fields distinct from parser failure.
 - [ ] Bind each adapter to an explicit provider ID and supported-language capability.
 - [ ] Reject unsupported languages before sending a remote request.
@@ -39,7 +39,7 @@ There is no multi-provider aggregation or automatic fallback in MVP. The active 
 
 - [ ] Group enabled query fields by active dictionary provider.
 - [ ] Perform at most one lookup per selection/provider/run.
-- [ ] Map normalized values to field IDs in original template order.
+- [ ] Map each frozen `dictionaryField` to its normalized value and return field IDs in original template order.
 - [ ] Convert missing values into field-level unavailable results.
 - [ ] Do not let one dictionary field failure hide successful LLM fields.
 - [ ] Cancel or ignore stale dictionary results during regenerate and panel close.
@@ -54,6 +54,7 @@ There is no multi-provider aggregation or automatic fallback in MVP. The active 
 
 ## Permission And Operational Tasks
 
+- [ ] Persist the selected candidate as `activeDictionaryProvider` through the Phase 05 settings boundary and expose explicit provider selection; production release requires that candidate to pass this issue's acceptance.
 - [ ] Request only the provider origins required for the active adapter.
 - [ ] Show a clear options error when permission is denied.
 - [ ] Avoid generic background proxy messages that can fetch arbitrary URLs.

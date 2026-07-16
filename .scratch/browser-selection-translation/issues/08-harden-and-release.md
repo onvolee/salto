@@ -49,8 +49,9 @@ Produce a reproducible Chrome/Chromium MVP build whose complete PRD flow passes 
 - [ ] Remove permissions not exercised by the production build.
 - [ ] Verify content scripts cannot access API keys or generic background fetch capability.
 - [ ] Verify logs and errors contain no secrets, authorization headers, full page content, or persisted vocabulary values unless explicitly needed and protected.
-- [ ] Document when selected text, sentence, nearby paragraphs, title, URL, and page content are sent remotely.
+- [ ] Verify the PRD disclosure for when selected text, sentence, nearby paragraphs, title, URL, and bounded page content are sent remotely.
 - [ ] Verify provider requests occur only after explicit user intent or a previously authorized saved-word enrichment job.
+- [ ] Verify user-entered LLM hosts remain optional and that only the configured origin is granted and reachable through the typed background request path.
 - [ ] Review packaged output for source maps, fixtures, environment files, and development-only adapters.
 
 ## Automated Test Layers
