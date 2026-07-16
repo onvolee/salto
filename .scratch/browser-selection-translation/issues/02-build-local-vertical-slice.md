@@ -1,6 +1,6 @@
 # Phase 02: Build The Local Vertical Slice
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Depends on: Phase 01
 
@@ -22,50 +22,50 @@ This is the first architecture proof. It must use the real message, service, rep
 
 ## Core Contract Tasks
 
-- [ ] Align query-template and vocabulary types exactly with the frozen contracts in the PRD: `text | list`, provider-neutral query sources, ID-based `Vocabulary*` relationships, and schema-governed vocabulary values.
-- [ ] Add typed selection-translation request and `QueryFieldResult` contracts using the frozen required-string `PromptContext` mapping.
-- [ ] Represent success and failure per query field.
-- [ ] Seed the PRD's exact `DEFAULT_EXTENSION_SETTINGS` and `DEFAULT_QUERY_TEMPLATE` values idempotently.
-- [ ] Add injectable clock and ID-generation boundaries where deterministic tests need them.
-- [ ] Keep all contracts storage- and browser-adapter neutral.
+- [x] Align query-template and vocabulary types exactly with the frozen contracts in the PRD: `text | list`, provider-neutral query sources, ID-based `Vocabulary*` relationships, and schema-governed vocabulary values.
+- [x] Add typed selection-translation request and `QueryFieldResult` contracts using the frozen required-string `PromptContext` mapping.
+- [x] Represent success and failure per query field.
+- [x] Seed the PRD's exact `DEFAULT_EXTENSION_SETTINGS` and `DEFAULT_QUERY_TEMPLATE` values idempotently.
+- [x] Add injectable clock and ID-generation boundaries where deterministic tests need them.
+- [x] Keep all contracts storage- and browser-adapter neutral.
 
 ## Storage Tasks
 
-- [ ] Add only the tables required by this slice: vocabulary items, fields, contexts, templates, and minimal settings.
-- [ ] Implement the minimum repository operations used by translate, save, and highlight-term reads.
-- [ ] Enforce the frozen `en:` canonicalization behavior and canonical-key uniqueness at the repository transaction boundary.
-- [ ] Store the system `term` field as ready during save.
-- [ ] Seed defaults idempotently on extension installation and on missing-data recovery.
-- [ ] Test a database reopen to prove data survives a new service instance.
+- [x] Add only the tables required by this slice: vocabulary items, fields, contexts, templates, and minimal settings.
+- [x] Implement the minimum repository operations used by translate, save, and highlight-term reads.
+- [x] Enforce the frozen `en:` canonicalization behavior and canonical-key uniqueness at the repository transaction boundary.
+- [x] Store the system `term` field as ready during save.
+- [x] Seed defaults idempotently on extension installation and on missing-data recovery.
+- [x] Test a database reopen to prove data survives a new service instance.
 
 ## Messaging And Service Tasks
 
-- [ ] Define one discriminated request/response protocol for the slice.
-- [ ] Validate message payloads at the background boundary.
-- [ ] Implement `translateSelection`, `saveVocabulary`, and `listHighlightTerms` handlers.
-- [ ] Register service-worker listeners synchronously at module startup.
-- [ ] Ensure asynchronous handlers keep the response channel alive using one consistent WXT-compatible pattern.
-- [ ] Reject unknown message types and invalid payloads with stable, non-secret error responses.
+- [x] Define one discriminated request/response protocol for the slice.
+- [x] Validate message payloads at the background boundary.
+- [x] Implement `translateSelection`, `saveVocabulary`, and `listHighlightTerms` handlers.
+- [x] Register service-worker listeners synchronously at module startup.
+- [x] Ensure asynchronous handlers keep the response channel alive using one consistent WXT-compatible pattern.
+- [x] Reject unknown message types and invalid payloads with stable, non-secret error responses.
 
 ## Content And UI Tasks
 
-- [ ] Reuse the existing selection trigger and panel positioning behavior.
-- [ ] Extract every frozen `PromptContext` value, using empty strings for unavailable context and bounding `webContent` to 2000 UTF-16 code units.
-- [ ] Render template name and fields in schema order.
-- [ ] Render loading, complete, partial-error, and request-error states without resizing the panel unpredictably.
-- [ ] Enable the existing save action and make repeated clicks idempotent.
-- [ ] Preserve selection until deliberate close and preserve current `Esc` and outside-click behavior.
-- [ ] Add a minimal single-pass highlighter used only to prove persisted readback.
+- [x] Reuse the existing selection trigger and panel positioning behavior.
+- [x] Extract every frozen `PromptContext` value, using empty strings for unavailable context and bounding `webContent` to 2000 UTF-16 code units.
+- [x] Render template name and fields in schema order.
+- [x] Render loading, complete, partial-error, and request-error states without resizing the panel unpredictably.
+- [x] Enable the existing save action and make repeated clicks idempotent.
+- [x] Preserve selection until deliberate close and preserve current `Esc` and outside-click behavior.
+- [x] Add a minimal single-pass highlighter used only to prove persisted readback.
 
 ## Automated Verification
 
-- [ ] Core contract tests cover list, text, unavailable, and failed field results.
-- [ ] Repository tests cover first save, repeated save, and database reopen.
-- [ ] Message tests cover valid, malformed, and unknown requests.
-- [ ] UI tests cover no automatic query, explicit trigger query, ordered rendering, field failure, and saved state.
-- [ ] Content extraction tests cover missing sentence, long page content, and selections near DOM boundaries.
-- [ ] A fixture-page integration test covers the complete seven-step scenario.
-- [ ] Default tests make no remote network requests.
+- [x] Core contract tests cover list, text, unavailable, and failed field results.
+- [x] Repository tests cover first save, repeated save, and database reopen.
+- [x] Message tests cover valid, malformed, and unknown requests.
+- [x] UI tests cover no automatic query, explicit trigger query, ordered rendering, field failure, and saved state.
+- [x] Content extraction tests cover missing sentence, long page content, and selections near DOM boundaries.
+- [x] A fixture-page integration test covers the complete seven-step scenario.
+- [x] Default tests make no remote network requests.
 
 ## Manual Browser Acceptance
 
@@ -79,11 +79,11 @@ This is the first architecture proof. It must use the real message, service, rep
 
 ## Exit Criteria
 
-- [ ] The complete local scenario passes without a live provider.
-- [ ] Content and UI code do not import Dexie or read API-key storage.
-- [ ] A service-worker restart does not lose persisted behavior.
-- [ ] Fake providers cannot be selected accidentally in a production build.
-- [ ] Full test, typecheck, and build commands pass.
+- [x] The complete local scenario passes without a live provider.
+- [x] Content and UI code do not import Dexie or read API-key storage.
+- [x] A service-worker restart does not lose persisted behavior.
+- [x] Fake providers cannot be selected accidentally in a production build.
+- [x] Full test, typecheck, and build commands pass.
 
 ## Non-Goals
 
@@ -100,3 +100,4 @@ The slice should be revertible as one coherent stack: contracts and storage firs
 ## Comments
 
 - 2026-07-16: Created from the ordered MVP development plan.
+- 2026-07-16: Implemented the local vertical slice. `pnpm test`, `pnpm typecheck`, and `pnpm build` pass; the extension suite contains 58 passing tests. A Chrome for Testing run loaded `.output/chrome-mv3-dev`, selected `unfamiliar` on `fixtures/local-vertical-slice.html`, confirmed no panel before the explicit trigger, rendered the ordered deterministic fields, saved the term, reloaded the page, and observed one persisted `wavy` highlight. The production bundle contains no fake executor strings. Prompt-context extraction details were frozen in ADR 0031; iframe, Shadow DOM, SPA, and dynamic-page hardening remain deferred.

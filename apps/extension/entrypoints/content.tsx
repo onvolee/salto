@@ -2,6 +2,8 @@ import "salto-src/selection/selection-popup.css";
 
 import { createRoot, type Root } from "react-dom/client";
 
+import { highlightSavedTerms } from "salto-src/highlighting/single-pass-highlighter";
+import { browserMessageClient } from "salto-src/selection/message-client";
 import { SelectionPopupApp } from "salto-src/selection/SelectionPopupApp";
 
 export default defineContentScript({
@@ -29,6 +31,13 @@ export default defineContentScript({
     });
 
     ui.mount();
+    void browserMessageClient.send({ type: "list-highlight-terms" }).then((highlightResponse) => {
+      if (highlightResponse.ok && highlightResponse.type === "list-highlight-terms") {
+        highlightSavedTerms(document, highlightResponse.data.terms);
+      }
+    }).catch(() => {
+      // The selection UI remains available if persisted highlights cannot be read.
+    });
     ctx.onInvalidated(() => ui.remove());
   },
 });

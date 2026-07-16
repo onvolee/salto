@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SelectionPopupApp } from "./SelectionPopupApp";
+import type { ExtensionMessageClient } from "./message-client";
 
 const anchorRect = {
   x: 180,
@@ -80,6 +81,190 @@ describe("SelectionPopupApp", () => {
     expect(trigger).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Selection panel for unfamiliar" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close panel" })).toHaveFocus();
+  });
+
+  it("does not query on selection and renders ordered fields after explicit open", async () => {
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockResolvedValue({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: "system-default",
+        templateName: "Default",
+        schema: [{ id: "translation", label: "Translation" }, { id: "points", label: "Key points" }],
+        fields: [
+          { fieldId: "translation", status: "ready", type: "text", value: "陌生的" },
+          { fieldId: "points", status: "ready", type: "list", value: ["adjective", "not known"] }
+        ]
+      }
+    });
+    render(<SelectionPopupApp messageClient={{ send }} />);
+    selectText(0, 10);
+
+    expect(send).not.toHaveBeenCalled();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open selection panel" }));
+
+    expect(await screen.findByText("Default")).toBeInTheDocument();
+    expect(screen.getAllByRole("term").map((node) => node.textContent)).toEqual(["Translation", "Key points"]);
+    expect(screen.getByText("陌生的")).toBeInTheDocument();
+    expect(screen.getByText("adjective")).toBeInTheDocument();
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("renders partial field failures and saves idempotently", async () => {
+    const send = vi.fn<ExtensionMessageClient["send"]>()
+      .mockResolvedValueOnce({
+        ok: true,
+        type: "translate-selection",
+        data: {
+          templateId: "system-default",
+          templateName: "Default",
+          schema: [{ id: "translation", label: "Translation" }, { id: "points", label: "Key points" }],
+          fields: [
+            { fieldId: "translation", status: "ready", type: "text", value: "陌生的" },
+            { fieldId: "points", status: "failed", error: { code: "fake-failure", message: "Field unavailable" } }
+          ]
+        }
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        type: "save-vocabulary",
+        data: { status: "saved", vocabularyItemId: "item-1" }
+      });
+    render(<SelectionPopupApp messageClient={{ send }} />);
+    await openPanel();
+
+    expect(await screen.findByText("Field unavailable")).toBeInTheDocument();
+    const save = screen.getByRole("button", { name: "Save selection" });
+    await userEvent.setup().click(save);
+    await userEvent.setup().click(save);
+
+    expect(await screen.findByRole("button", { name: "Selection saved" })).toBeDisabled();
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders a request-level error without changing panel geometry", async () => {
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockResolvedValue({
+      ok: false,
+      error: { code: "request-failed", message: "The extension request could not be completed" }
+    });
+    render(<SelectionPopupApp messageClient={{ send }} />);
+    const panel = await openPanel();
+
+    expect(await screen.findByText("The extension request could not be completed")).toBeInTheDocument();
+    expect(panel).toHaveStyle({ left: "268px", top: "220px" });
+  });
+
+  it("allows retrying a failed save", async () => {
+    const send = vi.fn<ExtensionMessageClient["send"]>()
+      .mockResolvedValueOnce({
+        ok: true,
+        type: "translate-selection",
+        data: { templateId: "system-default", templateName: "Default", schema: [], fields: [] }
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { code: "request-failed", message: "Could not save" }
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        type: "save-vocabulary",
+        data: { status: "saved", vocabularyItemId: "item-1" }
+      });
+    render(<SelectionPopupApp messageClient={{ send }} />);
+    await openPanel();
+    const save = screen.getByRole("button", { name: "Save selection" });
+
+    await userEvent.setup().click(save);
+    expect(await screen.findByText("Could not save selection")).toBeInTheDocument();
+    await userEvent.setup().click(save);
+
+    expect(await screen.findByRole("button", { name: "Selection saved" })).toBeDisabled();
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
+  it("announces a save while the request is pending", async () => {
+    let resolveSave!: (response: Awaited<ReturnType<ExtensionMessageClient["send"]>>) => void;
+    const send = vi.fn<ExtensionMessageClient["send"]>()
+      .mockResolvedValueOnce({
+        ok: true,
+        type: "translate-selection",
+        data: { templateId: "system-default", templateName: "Default", schema: [], fields: [] }
+      })
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveSave = resolve;
+      }));
+    render(<SelectionPopupApp messageClient={{ send }} />);
+    await openPanel();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save selection" }));
+
+    expect(screen.getByRole("button", { name: "Saving selection" })).toBeDisabled();
+    expect(screen.getByText("Saving selection...")).toBeInTheDocument();
+
+    await act(async () => resolveSave({
+      ok: true,
+      type: "save-vocabulary",
+      data: { status: "saved", vocabularyItemId: "item-1" }
+    }));
+  });
+
+  it("ignores a translation response after deliberate close", async () => {
+    let resolveRequest!: (response: Awaited<ReturnType<ExtensionMessageClient["send"]>>) => void;
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockReturnValue(new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+    render(<SelectionPopupApp messageClient={{ send }} />);
+    await openPanel();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));
+
+    await act(async () => resolveRequest({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: "system-default",
+        templateName: "Stale",
+        schema: [],
+        fields: []
+      }
+    }));
+
+    expect(screen.queryByText("Stale")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("ignores a save response after close and a new selection", async () => {
+    let resolveSave!: (response: Awaited<ReturnType<ExtensionMessageClient["send"]>>) => void;
+    const send = vi.fn<ExtensionMessageClient["send"]>()
+      .mockResolvedValueOnce({
+        ok: true,
+        type: "translate-selection",
+        data: { templateId: "system-default", templateName: "Default", schema: [], fields: [] }
+      })
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveSave = resolve;
+      }))
+      .mockResolvedValueOnce({
+        ok: true,
+        type: "translate-selection",
+        data: { templateId: "system-default", templateName: "Default", schema: [], fields: [] }
+      });
+    render(<SelectionPopupApp messageClient={{ send }} />);
+    await openPanel();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save selection" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));
+
+    selectText(11, 27);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open selection panel" }));
+    await screen.findByRole("heading", { name: "Default" });
+
+    await act(async () => resolveSave({
+      ok: true,
+      type: "save-vocabulary",
+      data: { status: "saved", vocabularyItemId: "item-a" }
+    }));
+
+    expect(screen.getByRole("button", { name: "Save selection" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Selection saved" })).not.toBeInTheDocument();
   });
 
   it.each([

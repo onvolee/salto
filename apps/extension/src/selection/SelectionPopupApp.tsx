@@ -6,11 +6,13 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import type { PromptContext } from "@salto/core";
 
 import type { ThemeMode } from "salto-src/theme/theme-settings";
 import { useThemeMode } from "salto-src/theme/use-theme-mode";
 
 import { FloatingTrigger } from "./FloatingTrigger";
+import { browserMessageClient, type ExtensionMessageClient } from "./message-client";
 import {
   clampToViewport,
   getInitialPanelPosition,
@@ -19,7 +21,12 @@ import {
   type Point,
   type Size,
 } from "./positioning";
-import { SelectionPanel } from "./SelectionPanel";
+import {
+  SelectionPanel,
+  type SelectionPanelProps,
+  type TranslationState
+} from "./SelectionPanel";
+import { extractPromptContext } from "./prompt-context";
 import {
   getRangeAnchorRect,
   readSelectionSnapshot,
@@ -29,6 +36,7 @@ import {
 const TRIGGER_SIZE: Size = { width: 32, height: 32 };
 
 type SurfaceMode = "hidden" | "trigger-visible" | "panel-open";
+type SaveState = SelectionPanelProps["saveState"];
 
 function getViewportSize(): Size {
   return { width: window.innerWidth, height: window.innerHeight };
@@ -42,13 +50,20 @@ function eventIncludesElement(event: Event, element: Element | null): boolean {
   return event.composedPath().includes(element) || element.contains(event.target as Node | null);
 }
 
-export function SelectionPopupApp() {
+export function SelectionPopupApp({
+  messageClient = browserMessageClient
+}: { readonly messageClient?: ExtensionMessageClient }) {
   const [mode, setMode] = useState<SurfaceMode>("hidden");
   const themeMode = useThemeMode();
   const [session, setSession] = useState<SelectionSnapshot | null>(null);
   const [triggerPosition, setTriggerPosition] = useState<Point>({ x: 0, y: 0 });
   const [panelPosition, setPanelPosition] = useState<Point>({ x: 0, y: 0 });
   const panelRef = useRef<HTMLElement>(null);
+  const translationRequestRef = useRef(0);
+  const saveRequestRef = useRef(0);
+  const [promptContext, setPromptContext] = useState<PromptContext | null>(null);
+  const [translation, setTranslation] = useState<TranslationState>({ status: "loading" });
+  const [saveState, setSaveState] = useState<SaveState>("idle");
 
   const refreshTrigger = useCallback(() => {
     const snapshot = readSelectionSnapshot(window.getSelection());
@@ -64,6 +79,8 @@ export function SelectionPopupApp() {
   }, []);
 
   const closePanel = useCallback(() => {
+    translationRequestRef.current += 1;
+    saveRequestRef.current += 1;
     window.getSelection()?.removeAllRanges();
     setSession(null);
     setMode("hidden");
@@ -78,8 +95,60 @@ export function SelectionPopupApp() {
     setPanelPosition(
       getInitialPanelPosition(triggerPosition, TRIGGER_SIZE, getPanelSize(viewport), viewport),
     );
+    const context = extractPromptContext(session.range, "");
+    const requestId = ++translationRequestRef.current;
+    saveRequestRef.current += 1;
+    setPromptContext(context);
+    setTranslation({ status: "loading" });
+    setSaveState("idle");
     setMode("panel-open");
-  }, [session, triggerPosition]);
+    void messageClient.send({ type: "translate-selection", payload: { context } }).then((response) => {
+      if (translationRequestRef.current !== requestId) {
+        return;
+      }
+      if (response.ok && response.type === "translate-selection") {
+        setTranslation({ status: "complete", data: response.data });
+      } else {
+        setTranslation({
+          status: "request-error",
+          message: response.ok ? "Unexpected response" : response.error.message
+        });
+      }
+    }).catch(() => {
+      if (translationRequestRef.current === requestId) {
+        setTranslation({ status: "request-error", message: "Translation request failed" });
+      }
+    });
+  }, [messageClient, session, triggerPosition]);
+
+  const saveSelection = useCallback(() => {
+    if (!session || !promptContext || saveState === "saving" || saveState === "saved") {
+      return;
+    }
+    setSaveState("saving");
+    const requestId = ++saveRequestRef.current;
+    void messageClient.send({
+      type: "save-vocabulary",
+      payload: {
+        term: session.text,
+        language: "en",
+        context: {
+          sentence: promptContext.sentence,
+          paragraphs: promptContext.paragraphs,
+          pageTitle: promptContext.webTitle,
+          pageUrl: promptContext.webUrl
+        }
+      }
+    }).then((response) => {
+      if (saveRequestRef.current === requestId) {
+        setSaveState(response.ok && response.type === "save-vocabulary" ? "saved" : "error");
+      }
+    }).catch(() => {
+      if (saveRequestRef.current === requestId) {
+        setSaveState("error");
+      }
+    });
+  }, [messageClient, promptContext, saveState, session]);
 
   useEffect(() => {
     refreshTrigger();
@@ -232,9 +301,12 @@ export function SelectionPopupApp() {
       <SelectionPanel
         onClose={closePanel}
         onPositionChange={setPanelPosition}
+        onSave={saveSelection}
         panelRef={panelRef}
         position={panelPosition}
         selectionText={session.text}
+        saveState={saveState}
+        translation={translation}
       />,
       themeMode,
     );
