@@ -1,33 +1,24 @@
-import Dexie, { type Table } from "dexie";
+import Dexie, { type EntityTable } from "dexie";
 
 import type {
-  LearningCard,
-  LearningState,
-  ReviewLog,
+  ExtensionSettings,
+  QueryTemplate,
   VocabularyContext,
   VocabularyField,
   VocabularyItem
 } from "@salto/core";
 
-export interface SaltoDatabaseTables {
-  readonly vocabularyItems: Table<VocabularyItem, string>;
-  readonly vocabularyFields: Table<VocabularyField, string>;
-  readonly vocabularyContexts: Table<VocabularyContext, string>;
-  readonly learningCards: Table<LearningCard, string>;
-  readonly learningStates: Table<LearningState, string>;
-  readonly reviewLogs: Table<ReviewLog, string>;
-}
+export type StoredExtensionSettings = ExtensionSettings & { readonly id: "extension" };
 
-export class SaltoDatabase extends Dexie implements SaltoDatabaseTables {
-  vocabularyItems!: Table<VocabularyItem, string>;
-  vocabularyFields!: Table<VocabularyField, string>;
-  vocabularyContexts!: Table<VocabularyContext, string>;
-  learningCards!: Table<LearningCard, string>;
-  learningStates!: Table<LearningState, string>;
-  reviewLogs!: Table<ReviewLog, string>;
+export class SaltoDatabase extends Dexie {
+  vocabularyItems!: EntityTable<VocabularyItem, "id">;
+  vocabularyFields!: EntityTable<VocabularyField, "id">;
+  vocabularyContexts!: EntityTable<VocabularyContext, "id">;
+  queryTemplates!: EntityTable<QueryTemplate, "id">;
+  settings!: EntityTable<StoredExtensionSettings, "id">;
 
-  constructor() {
-    super("salto");
+  constructor(name = "salto") {
+    super(name);
 
     this.version(1).stores({
       vocabularyItems: "&id, canonicalKey, language, sync.updatedAt",
@@ -36,6 +27,14 @@ export class SaltoDatabase extends Dexie implements SaltoDatabaseTables {
       learningCards: "&id, vocabularyItemId, cardType, sync.updatedAt",
       learningStates: "&id, learningCardId, dueAt, state, sync.updatedAt",
       reviewLogs: "&id, learningCardId, reviewedAt, sync.updatedAt"
+    });
+
+    this.version(2).stores({
+      vocabularyItems: "&id, &canonicalKey, language, sync.updatedAt",
+      vocabularyFields: "&id, &[vocabularyItemId+key], vocabularyItemId, key, status, sync.updatedAt",
+      vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt",
+      queryTemplates: "&id, updatedAt",
+      settings: "&id, activeQueryTemplateId"
     });
   }
 }

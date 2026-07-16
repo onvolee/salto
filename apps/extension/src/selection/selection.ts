@@ -23,7 +23,9 @@ type SelectionCandidate = {
 export function isValidSelection(candidate: SelectionCandidate): boolean {
   const text = candidate.text.trim();
 
-  return !candidate.isCollapsed && text.length > 0 && text.length <= MAX_SELECTION_LENGTH;
+  return !candidate.isCollapsed
+    && candidate.text.length <= MAX_SELECTION_LENGTH
+    && text.length > 0;
 }
 
 export function getLastVisibleRect(rects: readonly SelectionRect[]): SelectionRect | null {
@@ -50,10 +52,11 @@ export function readSelectionSnapshot(selection: Selection | null): SelectionSna
     return null;
   }
 
-  const text = selection.toString().trim();
-  if (!isValidSelection({ isCollapsed: selection.isCollapsed, text })) {
+  const rawText = selection.toString();
+  if (!isValidSelection({ isCollapsed: selection.isCollapsed, text: rawText })) {
     return null;
   }
+  const text = rawText.trim();
 
   try {
     const range = selection.getRangeAt(0).cloneRange();

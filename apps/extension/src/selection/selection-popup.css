@@ -121,7 +121,65 @@
 .salto-selection-panel__content {
   min-height: 0;
   flex: 1;
+  overflow: auto;
+  padding: 12px;
   background: var(--salto-surface);
+}
+
+.salto-selection-panel__status {
+  margin: 0;
+  color: var(--salto-muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.salto-selection-panel__unavailable {
+  color: var(--salto-muted-foreground);
+}
+
+.salto-selection-panel__status--error,
+.salto-selection-panel__error,
+.salto-selection-panel__save-error {
+  color: var(--salto-destructive);
+}
+
+.salto-selection-panel__results h2 {
+  margin: 0 0 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.salto-selection-panel__results dl {
+  margin: 0;
+}
+
+.salto-selection-panel__field + .salto-selection-panel__field {
+  margin-top: 10px;
+}
+
+.salto-selection-panel__field dt {
+  color: var(--salto-muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.625;
+}
+
+.salto-selection-panel__field dd,
+.salto-selection-panel__field ul,
+.salto-selection-panel__save-error {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.salto-selection-panel__field ul {
+  padding-left: 18px;
+}
+
+.salto-selection-panel__save-error {
+  margin-top: 8px;
 }
 
 @media (prefers-reduced-motion: reduce) {

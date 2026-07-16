@@ -12,6 +12,7 @@ describe("selection", () => {
     expect(isValidSelection({ isCollapsed: true, text: "unfamiliar" })).toBe(false);
     expect(isValidSelection({ isCollapsed: false, text: "  \n\t" })).toBe(false);
     expect(isValidSelection({ isCollapsed: false, text: "a".repeat(501) })).toBe(false);
+    expect(isValidSelection({ isCollapsed: false, text: ` ${"a".repeat(500)} ` })).toBe(false);
   });
 
   it("uses the last visible rectangle for a multi-line selection", () => {

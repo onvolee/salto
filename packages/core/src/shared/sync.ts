@@ -4,6 +4,6 @@ export type IsoDateTimeString = string;
 export interface SyncMetadata {
   readonly createdAt: IsoDateTimeString;
   readonly updatedAt: IsoDateTimeString;
-  readonly version: number;
+  readonly recordVersion: number;
   readonly deletedAt?: IsoDateTimeString;
 }
