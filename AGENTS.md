@@ -17,4 +17,4 @@ This repo uses a single-context domain layout with `CONTEXT.md` at the root and 
 ### Short cut keys
 Execute the command after triggering the key shortcut key.
 
-- `cmt`: commit all the existing uncommitted code. use `but` and `gitbutler` tools
+- `gflow`: .salto/workflow/salto-github-workflow.md use this file content and exec it
