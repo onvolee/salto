@@ -6,5 +6,10 @@ coverage/
 .DS_Store
 
 
+# ai
 .od-skills/*
 critique.json
+.impeccable/*
+.agents/*
+.codex/*
+.claude/*
