@@ -96,6 +96,9 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(() => {
     void repositories.settings.ensureDefaults();
   });
+  browser.runtime.onStartup.addListener(() => {
+    void enrichmentQueue.recover().then(() => enrichmentQueue.wake());
+  });
   browser.alarms?.onAlarm?.addListener((alarm) => {
     if (alarm.name === "salto-enrichment-queue") {
       void enrichmentQueue.recover().then(() => enrichmentQueue.wake());
