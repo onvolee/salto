@@ -41,6 +41,10 @@ export interface ReviewLog {
 
 export interface LearningRepository {
   getCard(id: ClientGeneratedId): Promise<LearningCard | undefined>;
+  findCardByItemAndType(
+    vocabularyItemId: ClientGeneratedId,
+    cardType: LearningCardType
+  ): Promise<LearningCard | undefined>;
   getState(learningCardId: ClientGeneratedId): Promise<LearningState | undefined>;
   saveCard(card: LearningCard): Promise<void>;
   saveState(state: LearningState): Promise<void>;

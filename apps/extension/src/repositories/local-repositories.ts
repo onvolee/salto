@@ -3,17 +3,25 @@ import {
   canonicalizeEnglishTerm,
   createDefaultQueryTemplate,
   normalizeVocabularyText,
+  type EnrichmentJob,
+  type EnrichmentJobFor,
+  type EnrichmentJobRepository,
+  type EnrichmentJobStatus,
   type ExtensionSettings,
+  type LearningCard,
+  type LearningCardType,
+  type LearningRepository,
   type LlmConfigState,
   type LlmPublicConfig,
   type LlmSecret,
   type QueryTemplate,
+  type RemoteVocabularyFieldKey,
   type SaveVocabularyInput,
   type SaveVocabularyResult,
+  type SaveVocabularyService,
   type SyncMetadata,
   type VocabularyContext,
   type VocabularyFieldFor,
-  type VocabularyFieldKey,
   type VocabularyItem,
   type VocabularyRepository
 } from "@salto/core";
@@ -49,6 +57,9 @@ export type LocalRepositories = {
   readonly settings: SettingsRepository;
   readonly highlightTerms: HighlightTermRepository;
   readonly llmSettings: LlmSettingsRepository;
+  readonly enrichmentJobs: EnrichmentJobRepository;
+  readonly learning: LearningRepository;
+  readonly saveVocabulary: SaveVocabularyService;
 };
 
 function createSyncMetadata(timestamp: string): SyncMetadata {
@@ -95,81 +106,10 @@ const REMOTE_FIELD_SOURCES = {
   examples: "llm",
   synonyms: "dictionary",
   wordForms: "dictionary"
-} as const satisfies Record<Exclude<VocabularyFieldKey, "term">, "dictionary" | "llm">;
+} as const satisfies Record<RemoteVocabularyFieldKey, "dictionary" | "llm">;
 
 class DexieVocabularyRepository implements VocabularyRepository {
-  constructor(
-    private readonly database: SaltoDatabase,
-    private readonly dependencies: RepositoryDependencies
-  ) {}
-
-  async save(input: SaveVocabularyInput): Promise<SaveVocabularyResult> {
-    const normalized = canonicalizeEnglishTerm(input.term);
-
-    return this.database.transaction(
-      "rw",
-      [this.database.vocabularyItems, this.database.vocabularyFields, this.database.vocabularyContexts],
-      async () => {
-        const timestamp = this.dependencies.clock();
-        const existing = await this.findItemByCanonicalKey(normalized.canonicalKey);
-        const item: VocabularyItem = existing ?? {
-          id: this.dependencies.createId(),
-          canonicalKey: normalized.canonicalKey,
-          term: normalized.term,
-          language: input.language,
-          sync: createSyncMetadata(timestamp)
-        };
-
-        if (!existing) {
-          await this.database.vocabularyItems.add(item);
-        }
-
-        const termField: VocabularyFieldFor<"term"> = {
-          id: `${item.id}:term`,
-          vocabularyItemId: item.id,
-          key: "term",
-          source: "system",
-          status: "ready",
-          value: item.term,
-          sync: createSyncMetadata(timestamp)
-        };
-        await addIfAbsent(() => this.database.vocabularyFields.add(termField));
-
-        for (const [key, source] of Object.entries(REMOTE_FIELD_SOURCES) as Array<
-          [Exclude<VocabularyFieldKey, "term">, "dictionary" | "llm"]
-        >) {
-          const field = {
-            id: `${item.id}:${key}`,
-            vocabularyItemId: item.id,
-            key,
-            source,
-            status: "pending" as const,
-            sync: createSyncMetadata(timestamp)
-          };
-          await addIfAbsent(() => this.database.vocabularyFields.add(field));
-        }
-
-        const sentence = normalizeVocabularyText(input.context.sentence);
-        const pageUrl = normalizePageUrl(input.context.pageUrl);
-        const context: VocabularyContext = {
-          id: contextId(item.id, pageUrl, sentence),
-          vocabularyItemId: item.id,
-          sentence,
-          paragraphs: normalizeVocabularyText(input.context.paragraphs),
-          pageTitle: normalizeVocabularyText(input.context.pageTitle),
-          pageUrl,
-          savedAt: timestamp,
-          sync: createSyncMetadata(timestamp)
-        };
-        await addIfAbsent(() => this.database.vocabularyContexts.add(context));
-
-        return {
-          status: existing ? "already-saved" : "saved",
-          vocabularyItemId: item.id
-        };
-      }
-    );
-  }
+  constructor(private readonly database: SaltoDatabase) {}
 
   findItemByCanonicalKey(canonicalKey: string): Promise<VocabularyItem | undefined> {
     return this.database.vocabularyItems.where("canonicalKey").equals(canonicalKey).first();
@@ -182,7 +122,208 @@ class DexieVocabularyRepository implements VocabularyRepository {
   listFields(vocabularyItemId: string) {
     return this.database.vocabularyFields.where("vocabularyItemId").equals(vocabularyItemId).toArray();
   }
+}
 
+class DexieEnrichmentJobRepository implements EnrichmentJobRepository {
+  constructor(private readonly database: SaltoDatabase) {}
+
+  get(id: string): Promise<EnrichmentJob | undefined> {
+    return this.database.enrichmentJobs.get(id);
+  }
+
+  async listRunnable(limit = 50): Promise<readonly EnrichmentJob[]> {
+    const now = new Date().toISOString();
+    return this.database.enrichmentJobs
+      .where("[status+nextRunAt]")
+      .between(["queued", Dexie.minKey], ["queued", now])
+      .limit(limit)
+      .toArray();
+  }
+
+  listQueued(limit = 1000): Promise<readonly EnrichmentJob[]> {
+    return this.database.enrichmentJobs.where("status").equals("queued").limit(limit).toArray();
+  }
+
+  listRunning(): Promise<readonly EnrichmentJob[]> {
+    return this.database.enrichmentJobs.where("status").equals("running").toArray();
+  }
+
+  listFailed(limit = 1000): Promise<readonly EnrichmentJob[]> {
+    return this.database.enrichmentJobs.where("status").equals("failed").limit(limit).toArray();
+  }
+
+  listByVocabularyItem(vocabularyItemId: string): Promise<readonly EnrichmentJob[]> {
+    return this.database.enrichmentJobs.where("vocabularyItemId").equals(vocabularyItemId).toArray();
+  }
+
+  async save(job: EnrichmentJob): Promise<void> {
+    await this.database.enrichmentJobs.put(job);
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.database.enrichmentJobs.delete(id);
+  }
+
+  async updateStatus(
+    id: string,
+    from: EnrichmentJobStatus,
+    to: EnrichmentJobStatus,
+    updates?: Partial<Pick<EnrichmentJob, "attempts" | "nextRunAt" | "lastError">>
+  ): Promise<EnrichmentJob | undefined> {
+    return this.database.transaction("rw", [this.database.enrichmentJobs], async () => {
+      const existing = await this.database.enrichmentJobs.get(id);
+      if (!existing || existing.status !== from) {
+        return undefined;
+      }
+      const updated = { ...existing, status: to, ...(updates ?? {}) } as EnrichmentJob;
+      await this.database.enrichmentJobs.put(updated);
+      return updated;
+    });
+  }
+}
+
+class DexieLearningRepository implements LearningRepository {
+  constructor(private readonly database: SaltoDatabase) {}
+
+  getCard(id: string): Promise<LearningCard | undefined> {
+    return this.database.learningCards.get(id);
+  }
+
+  async findCardByItemAndType(
+    vocabularyItemId: string,
+    cardType: LearningCardType
+  ): Promise<LearningCard | undefined> {
+    const cards = await this.database.learningCards
+      .where("vocabularyItemId")
+      .equals(vocabularyItemId)
+      .toArray();
+    return cards.find((card) => card.cardType === cardType);
+  }
+
+  async saveCard(card: LearningCard): Promise<void> {
+    await this.database.learningCards.put(card);
+  }
+
+  async getState(): Promise<undefined> {
+    return undefined;
+  }
+
+  async saveState(): Promise<void> {}
+
+  async appendReviewLog(): Promise<void> {}
+}
+
+class DexieSaveVocabularyService implements SaveVocabularyService {
+  constructor(
+    private readonly database: SaltoDatabase,
+    private readonly dependencies: RepositoryDependencies
+  ) {}
+
+  async save(input: SaveVocabularyInput): Promise<SaveVocabularyResult> {
+    const normalized = canonicalizeEnglishTerm(input.term);
+
+    return this.database.transaction(
+      "rw",
+      [
+        this.database.vocabularyItems,
+        this.database.vocabularyFields,
+        this.database.vocabularyContexts,
+        this.database.enrichmentJobs
+      ],
+      async () => {
+        const timestamp = this.dependencies.clock();
+        const existing = await this.database.vocabularyItems
+          .where("canonicalKey")
+          .equals(normalized.canonicalKey)
+          .first();
+        const item: VocabularyItem = existing ?? {
+          id: this.dependencies.createId(),
+          canonicalKey: normalized.canonicalKey,
+          term: normalized.term,
+          language: input.language,
+          sync: createSyncMetadata(timestamp)
+        };
+
+        if (!existing) {
+          await this.database.vocabularyItems.add(item);
+        }
+
+        const termFieldId = `${item.id}:term`;
+        const existingTermField = await this.database.vocabularyFields.get(termFieldId);
+        if (!existingTermField) {
+          const termField: VocabularyFieldFor<"term"> = {
+            id: termFieldId,
+            vocabularyItemId: item.id,
+            key: "term",
+            source: "system",
+            status: "ready",
+            value: item.term,
+            sync: createSyncMetadata(timestamp)
+          };
+          await addIfAbsent(() => this.database.vocabularyFields.add(termField));
+        }
+
+        for (const [key, source] of Object.entries(REMOTE_FIELD_SOURCES) as Array<
+          [RemoteVocabularyFieldKey, "dictionary" | "llm"]
+        >) {
+          const fieldId = `${item.id}:${key}`;
+          const existingField = await this.database.vocabularyFields.get(fieldId);
+          if (!existingField) {
+            const field = {
+              id: fieldId,
+              vocabularyItemId: item.id,
+              key,
+              source,
+              status: "pending" as const,
+              sync: createSyncMetadata(timestamp)
+            } as VocabularyFieldFor<typeof key>;
+            await addIfAbsent(() => this.database.vocabularyFields.add(field));
+          }
+
+          const currentField = await this.database.vocabularyFields.get(fieldId);
+          if (currentField && currentField.status === "pending") {
+            const jobId = `${item.id}:${key}:job`;
+            const existingJob = await this.database.enrichmentJobs.get(jobId);
+            if (!existingJob) {
+              const job = {
+                id: jobId,
+                vocabularyItemId: item.id,
+                fieldKey: key,
+                source,
+                status: "queued" as const,
+                attempts: 0,
+                nextRunAt: timestamp
+              } as EnrichmentJobFor<typeof key>;
+              await addIfAbsent(() => this.database.enrichmentJobs.add(job));
+            }
+          }
+        }
+
+        const sentence = normalizeVocabularyText(input.context.sentence);
+        const pageUrl = normalizePageUrl(input.context.pageUrl);
+        const contextRecordId = contextId(item.id, pageUrl, sentence);
+        const existingContext = await this.database.vocabularyContexts.get(contextRecordId);
+        if (!existingContext) {
+          const context: VocabularyContext = {
+            id: contextRecordId,
+            vocabularyItemId: item.id,
+            sentence,
+            paragraphs: normalizeVocabularyText(input.context.paragraphs),
+            pageTitle: normalizeVocabularyText(input.context.pageTitle),
+            pageUrl,
+            savedAt: timestamp,
+            sync: createSyncMetadata(timestamp)
+          };
+          await addIfAbsent(() => this.database.vocabularyContexts.add(context));
+        }
+
+        return {
+          status: existing ? "already-saved" : "saved",
+          vocabularyItemId: item.id
+        };
+      }
+    );
+  }
 }
 
 class DexieSettingsRepository implements SettingsRepository {
@@ -228,7 +369,7 @@ class DexieLlmSettingsRepository implements LlmSettingsRepository {
   async getPublicState(): Promise<LlmConfigState> {
     const [storedConfig, storedSecret] = await Promise.all([
       this.database.llmConfigs.get("active"),
-      this.database.llmSecrets.get("active"),
+      this.database.llmSecrets.get("active")
     ]);
     if (!storedConfig) {
       return { hasApiKey: false };
@@ -240,7 +381,7 @@ class DexieLlmSettingsRepository implements LlmSettingsRepository {
   async getCredentials() {
     const [storedConfig, storedSecret] = await Promise.all([
       this.database.llmConfigs.get("active"),
-      this.database.llmSecrets.get("active"),
+      this.database.llmSecrets.get("active")
     ]);
     if (!storedConfig || !storedSecret?.apiKey) {
       return null;
@@ -263,7 +404,7 @@ class DexieLlmSettingsRepository implements LlmSettingsRepository {
         if (secret?.apiKey) {
           await this.database.llmSecrets.put({ id: "active", apiKey: secret.apiKey });
         }
-      },
+      }
     );
   }
 }
@@ -277,12 +418,17 @@ export function createLocalRepositories(
   dependencies: RepositoryDependencies
 ): LocalRepositories {
   return {
-    vocabulary: new DexieVocabularyRepository(database, dependencies),
+    vocabulary: new DexieVocabularyRepository(database),
     settings: new DexieSettingsRepository(database, dependencies),
     llmSettings: new DexieLlmSettingsRepository(database),
+    enrichmentJobs: new DexieEnrichmentJobRepository(database),
+    learning: new DexieLearningRepository(database),
+    saveVocabulary: new DexieSaveVocabularyService(database, dependencies),
     highlightTerms: {
       async list() {
-        return (await database.vocabularyItems.orderBy("sync.updatedAt").toArray()).map(({ term }) => term);
+        return (await database.vocabularyItems.orderBy("sync.updatedAt").toArray()).map(
+          ({ term }) => term
+        );
       }
     }
   };

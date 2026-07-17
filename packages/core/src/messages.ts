@@ -24,6 +24,17 @@ export type SaveVocabularyRequest = {
   readonly payload: SaveVocabularyInput;
 };
 
+export type RetryEnrichmentRequest = {
+  readonly type: "retry-enrichment";
+  readonly payload?: {
+    readonly vocabularyItemId?: string;
+  };
+};
+
+export type ListFailedEnrichmentRequest = {
+  readonly type: "list-failed-enrichment";
+};
+
 export type ListHighlightTermsRequest = {
   readonly type: "list-highlight-terms";
 };
@@ -48,6 +59,8 @@ export type ExtensionRequest =
   | TranslateSelectionRequest
   | CancelTranslationRequest
   | SaveVocabularyRequest
+  | RetryEnrichmentRequest
+  | ListFailedEnrichmentRequest
   | ListHighlightTermsRequest
   | GetLlmConfigRequest
   | SaveLlmConfigRequest
@@ -65,6 +78,18 @@ export type ExtensionSuccessResponse =
       };
     }
   | { readonly ok: true; readonly type: "save-vocabulary"; readonly data: SaveVocabularyResult }
+  | { readonly ok: true; readonly type: "retry-enrichment"; readonly data: { readonly reset: number } }
+  | {
+      readonly ok: true;
+      readonly type: "list-failed-enrichment";
+      readonly data: {
+        readonly items: readonly {
+          readonly vocabularyItemId: string;
+          readonly term: string;
+          readonly fields: readonly string[];
+        }[];
+      };
+    }
   | {
       readonly ok: true;
       readonly type: "list-highlight-terms";

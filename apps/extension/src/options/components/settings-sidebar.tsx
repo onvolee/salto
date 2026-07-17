@@ -1,5 +1,6 @@
 import {
   AiBrain01Icon,
+  Book01Icon,
   Configuration01Icon,
   CursorMagicSelection02Icon,
   TranslateIcon,
@@ -29,6 +30,7 @@ const SECTION_ICONS = {
   general: Configuration01Icon,
   selection: CursorMagicSelection02Icon,
   sources: TranslateIcon,
+  vocabulary: Book01Icon,
   "ai-provider": AiBrain01Icon,
 };
 

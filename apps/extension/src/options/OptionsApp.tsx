@@ -26,6 +26,7 @@ import { AiProviderSection } from "./sections/ai-provider-section";
 import { GeneralSection } from "./sections/general-section";
 import { SelectionSection } from "./sections/selection-section";
 import { SourcesSection } from "./sections/sources-section";
+import { VocabularySection } from "./sections/vocabulary-section";
 import { SETTINGS_SECTIONS, type SettingsSectionId } from "./types";
 
 export function OptionsApp() {
@@ -144,6 +145,7 @@ export function OptionsApp() {
               {activeSection === "sources" ? (
                 <SourcesSection aiConfigured={llm.hasApiKey} />
               ) : null}
+              {activeSection === "vocabulary" ? <VocabularySection /> : null}
               {activeSection === "ai-provider" ? (
                 <AiProviderSection
                   connectionStatus={connectionStatus}

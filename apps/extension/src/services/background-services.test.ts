@@ -33,9 +33,10 @@ const translateRequest = {
 };
 
 function createServices() {
-  const vocabulary = {
+  const saveVocabulary = {
     save: vi.fn().mockResolvedValue({ status: "saved", vocabularyItemId: "item-1" })
   };
+  const enrichmentQueue = { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() };
   const highlightTerms = { list: vi.fn().mockResolvedValue(["unfamiliar"]) };
   const settings = {
     ensureDefaults: vi.fn(),
@@ -46,10 +47,13 @@ function createServices() {
   };
   return {
     services: createBackgroundServices({
-      repositories: { vocabulary, settings, highlightTerms } as never,
+      repositories: { settings, highlightTerms } as never,
+      saveVocabulary: saveVocabulary as never,
+      enrichmentQueue: enrichmentQueue as never,
       queryExecutor: createFakeQueryExecutor()
     }),
-    vocabulary,
+    saveVocabulary,
+    enrichmentQueue,
     settings
   };
 }
@@ -77,11 +81,12 @@ describe("background message boundary", () => {
     const { settings } = createServices();
     const services = createBackgroundServices({
       repositories: {
-        vocabulary: { save: vi.fn() },
         settings,
         highlightTerms: { list: vi.fn() }
       } as never,
-        queryExecutor: {
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: {
         execute: vi.fn().mockResolvedValue([
           { fieldId: "first", status: "ready", type: "text", value: ["wrong runtime value"] },
         ])
@@ -108,10 +113,12 @@ describe("background message boundary", () => {
     const { settings } = createServices();
     const services = createBackgroundServices({
       repositories: {
-        vocabulary: { save: vi.fn() },
+        saveVocabulary: { save: vi.fn() } as never,
         settings,
         highlightTerms: { list: vi.fn() }
       } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
       queryExecutor: {
         execute: vi.fn().mockResolvedValue([
           { fieldId: "first", status: "ready", type: "text", value: "valid" },
@@ -148,10 +155,12 @@ describe("background message boundary", () => {
     const { settings } = createServices();
     const services = createBackgroundServices({
       repositories: {
-        vocabulary: { save: vi.fn() },
+        saveVocabulary: { save: vi.fn() } as never,
         settings,
         highlightTerms: { list: vi.fn() }
       } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
       queryExecutor: {
         execute: vi.fn().mockResolvedValue([
           { fieldId: "first", status: "ready", type: "text", value: "first value" },
@@ -182,10 +191,12 @@ describe("background message boundary", () => {
     const { settings } = createServices();
     const services = createBackgroundServices({
       repositories: {
-        vocabulary: { save: vi.fn() },
+        saveVocabulary: { save: vi.fn() } as never,
         settings,
         highlightTerms: { list: vi.fn() }
       } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
       queryExecutor: { execute: vi.fn().mockResolvedValue([malformed]) }
     });
 
@@ -203,7 +214,7 @@ describe("background message boundary", () => {
   });
 
   it("saves and lists terms through repositories", async () => {
-    const { services, vocabulary } = createServices();
+    const { services, saveVocabulary } = createServices();
     const savePayload = {
       term: "unfamiliar",
       language: "en" as const,
@@ -220,7 +231,7 @@ describe("background message boundary", () => {
       type: "list-highlight-terms",
       data: { terms: ["unfamiliar"] }
     });
-    expect(vocabulary.save).toHaveBeenCalledWith(savePayload);
+    expect(saveVocabulary.save).toHaveBeenCalledWith(savePayload);
   });
 
   it("returns no highlight terms when highlighting is disabled", async () => {
@@ -295,6 +306,8 @@ describe("background message boundary", () => {
         llmSettings,
         settings,
       } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
       queryExecutor: createFakeQueryExecutor(),
     });
 
@@ -335,6 +348,8 @@ describe("background message boundary", () => {
     });
     const services = createBackgroundServices({
       repositories: { llmSettings: { save, getPublicState } } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
       queryExecutor: createFakeQueryExecutor(),
       hasOriginPermission: vi.fn().mockResolvedValue(true),
     });
@@ -380,10 +395,12 @@ describe("background message boundary", () => {
     });
     const services = createBackgroundServices({
       repositories: {
-        vocabulary: { save: vi.fn() },
+        saveVocabulary: { save: vi.fn() } as never,
         settings,
         highlightTerms: { list: vi.fn() },
       } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
       queryExecutor: { execute },
     });
 

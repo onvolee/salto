@@ -8,4 +8,5 @@ export * from "./query-template/types";
 export * from "./shared/sync";
 export * from "./vocabulary/ports";
 export * from "./vocabulary/canonicalization";
+export * from "./vocabulary/save-service";
 export * from "./vocabulary/types";
