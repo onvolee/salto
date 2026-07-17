@@ -73,3 +73,21 @@ export interface VocabularyContext {
   readonly savedAt: IsoDateTimeString;
   readonly sync: SyncMetadata;
 }
+
+export type RemoteVocabularyFieldKey = Exclude<VocabularyFieldKey, "term">;
+export type EnrichmentJobStatus = "queued" | "running" | "succeeded" | "failed";
+
+export type EnrichmentJobFor<K extends RemoteVocabularyFieldKey> = {
+  readonly id: ClientGeneratedId;
+  readonly vocabularyItemId: ClientGeneratedId;
+  readonly fieldKey: K;
+  readonly source: VocabularyFieldSpec[K]["source"];
+  readonly status: EnrichmentJobStatus;
+  readonly attempts: number;
+  readonly nextRunAt: IsoDateTimeString;
+  readonly lastError?: string;
+};
+
+export type EnrichmentJob = {
+  [K in RemoteVocabularyFieldKey]: EnrichmentJobFor<K>;
+}[RemoteVocabularyFieldKey];

@@ -12,7 +12,9 @@ import {
   type QueryTemplate,
 } from "@salto/core";
 
+import type { SaveVocabularyService } from "@salto/core";
 import type { LocalRepositories } from "../repositories";
+import type { EnrichmentQueue } from "../enrichment/enrichment-queue";
 
 export interface QueryExecutor {
   execute(
@@ -28,6 +30,8 @@ export type BackgroundMessageContext = {
 
 export type BackgroundServiceDependencies = {
   readonly repositories: LocalRepositories;
+  readonly saveVocabulary: SaveVocabularyService;
+  readonly enrichmentQueue: EnrichmentQueue;
   readonly queryExecutor: QueryExecutor;
   readonly hasOriginPermission?: (permissionOrigin: string) => Promise<boolean>;
   readonly testLlmConnection?: () => Promise<void>;
@@ -128,6 +132,17 @@ export function parseExtensionRequest(
   }
   if (value.type === "save-vocabulary") {
     return isSavePayload(value.payload) ? { type: value.type, payload: value.payload } : null;
+  }
+  if (value.type === "retry-enrichment") {
+    return {
+      type: value.type,
+      payload: isRecord(value.payload) && typeof value.payload.vocabularyItemId === "string"
+        ? { vocabularyItemId: value.payload.vocabularyItemId }
+        : {}
+    };
+  }
+  if (value.type === "list-failed-enrichment") {
+    return { type: value.type };
   }
   if (
     value.type === "list-highlight-terms"
@@ -326,10 +341,44 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
         }
 
         if (request.type === "save-vocabulary") {
+          const result = await dependencies.saveVocabulary.save(request.payload);
+          void dependencies.enrichmentQueue.wake();
           return {
             ok: true,
             type: request.type,
-            data: await dependencies.repositories.vocabulary.save(request.payload),
+            data: result,
+          };
+        }
+
+        if (request.type === "retry-enrichment") {
+          await dependencies.enrichmentQueue.retryFailed(request.payload?.vocabularyItemId);
+          void dependencies.enrichmentQueue.wake();
+          return {
+            ok: true,
+            type: request.type,
+            data: { reset: 0 },
+          };
+        }
+
+        if (request.type === "list-failed-enrichment") {
+          const failedJobs = await dependencies.repositories.enrichmentJobs.listFailed();
+          const byItem = new Map<string, string[]>();
+          for (const job of failedJobs) {
+            const fields = byItem.get(job.vocabularyItemId) ?? [];
+            fields.push(job.fieldKey);
+            byItem.set(job.vocabularyItemId, fields);
+          }
+          const items: { readonly vocabularyItemId: string; readonly term: string; readonly fields: readonly string[] }[] = [];
+          for (const [vocabularyItemId, fields] of byItem.entries()) {
+            const item = await dependencies.repositories.vocabulary.getItem(vocabularyItemId);
+            if (item) {
+              items.push({ vocabularyItemId, term: item.term, fields });
+            }
+          }
+          return {
+            ok: true,
+            type: request.type,
+            data: { items },
           };
         }
 

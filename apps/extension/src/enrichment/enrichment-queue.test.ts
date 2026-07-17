@@ -1,0 +1,322 @@
+import "fake-indexeddb/auto";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { VocabularyField } from "@salto/core";
+
+import { SaltoDatabase } from "../db/database";
+import { createLocalRepositories } from "../repositories";
+
+import { createDeterministicDictionaryFake } from "./deterministic-dictionary-fake";
+import { createEnrichmentQueue } from "./enrichment-queue";
+
+const databases: SaltoDatabase[] = [];
+const clock = () => "2026-07-16T00:00:00.000Z";
+let nextId = 0;
+const createId = () => `test-id-${++nextId}`;
+
+function createTestDatabase(name: string) {
+  const database = new SaltoDatabase(name);
+  databases.push(database);
+  return database;
+}
+
+function createRepositories(database: SaltoDatabase) {
+  return createLocalRepositories(database, { clock, createId });
+}
+
+function createFakeLlmSource(): import("./types").EnrichmentSource {
+  return {
+    async executeBatch(request) {
+      return request.jobs
+        .filter((job) => job.source === "llm")
+        .map((job) => ({
+          jobId: job.id,
+          fieldKey: job.fieldKey,
+          status: "ready" as const,
+          value: ["Example sentence one.", "Example sentence two."]
+        }));
+    }
+  };
+}
+
+function createQueue(
+  database: SaltoDatabase,
+  repositories: ReturnType<typeof createRepositories>,
+  options: { failFields?: readonly ("phonetic" | "partOfSpeech" | "meaning" | "synonyms" | "wordForms")[] } = {}
+) {
+  return createEnrichmentQueue({
+    database,
+    repositories: {
+      enrichmentJobs: repositories.enrichmentJobs,
+      learning: repositories.learning,
+      vocabulary: repositories.vocabulary
+    },
+    sources: [createDeterministicDictionaryFake({ failFields: options.failFields }), createFakeLlmSource()],
+    clock,
+    createId,
+    maxAttempts: 3,
+    initialBackoffMs: 0,
+    maxBackoffMs: 0,
+    claimTimeoutMs: 60_000
+  });
+}
+
+async function saveFixture(
+  repositories: ReturnType<typeof createRepositories>,
+  term = "unfamiliar"
+) {
+  return repositories.saveVocabulary.save({
+    term,
+    language: "en",
+    context: {
+      sentence: `An ${term} term appears here.`,
+      paragraphs: "A nearby paragraph.",
+      pageTitle: "Fixture",
+      pageUrl: "https://example.com/read"
+    }
+  });
+}
+
+afterEach(async () => {
+  await Promise.all(databases.splice(0).map(async (database) => {
+    database.close();
+    await database.delete();
+  }));
+  nextId = 0;
+});
+
+describe("enrichment queue", () => {
+  it("processes queued dictionary jobs and creates a meaning-recall card", async () => {
+    const database = createTestDatabase("enrich-success");
+    const repositories = createRepositories(database);
+    const queue = createQueue(database, repositories);
+    const saved = await saveFixture(repositories);
+
+    await queue.wake();
+
+    const jobs = await database.enrichmentJobs.toArray();
+    expect(jobs).toHaveLength(0);
+
+    const fields = await database.vocabularyFields
+      .where("vocabularyItemId")
+      .equals(saved.vocabularyItemId)
+      .toArray();
+    const byKey = new Map(fields.map((field) => [field.key, field]));
+    expect(byKey.get("term")).toEqual(expect.objectContaining({ status: "ready", value: "unfamiliar" }));
+    expect(byKey.get("meaning")).toEqual(expect.objectContaining({ status: "ready", value: "(dictionary) unfamiliar" }));
+    expect(byKey.get("phonetic")).toEqual(expect.objectContaining({ status: "ready", value: "/unfamiliar/" }));
+    expect(byKey.get("partOfSpeech")).toEqual(expect.objectContaining({ status: "ready", value: "noun" }));
+    expect(byKey.get("synonyms")).toEqual(expect.objectContaining({ status: "ready", value: ["unfamiliar-synonym-1", "unfamiliar-synonym-2"] }));
+    expect(byKey.get("wordForms")).toEqual(expect.objectContaining({ status: "ready", value: ["unfamiliars", "unfamiliaring"] }));
+
+    const cards = await database.learningCards.toArray();
+    expect(cards).toEqual([
+      expect.objectContaining({
+        id: `${saved.vocabularyItemId}:meaning-recall`,
+        vocabularyItemId: saved.vocabularyItemId,
+        cardType: "meaning-recall",
+        frontFieldKeys: ["term"],
+        backFieldKeys: ["meaning"]
+      })
+    ]);
+  });
+
+  it("keeps dictionary fields pending when no provider is configured", async () => {
+    const database = createTestDatabase("no-provider");
+    const repositories = createRepositories(database);
+    const queue = createEnrichmentQueue({
+      database,
+      repositories: {
+        enrichmentJobs: repositories.enrichmentJobs,
+        learning: repositories.learning,
+        vocabulary: repositories.vocabulary
+      },
+      sources: [{
+        async executeBatch(request) {
+          return [];
+        }
+      }, createFakeLlmSource()],
+      clock,
+      createId,
+      maxAttempts: 3,
+      initialBackoffMs: 0,
+      maxBackoffMs: 0,
+      claimTimeoutMs: 60_000
+    });
+    const saved = await saveFixture(repositories);
+
+    await queue.wake();
+
+    const jobs = await database.enrichmentJobs.toArray();
+    expect(jobs).toHaveLength(5);
+    expect(jobs.every((job) => job.status === "queued" && job.attempts === 0)).toBe(true);
+
+    const fields = await database.vocabularyFields
+      .where("vocabularyItemId")
+      .equals(saved.vocabularyItemId)
+      .toArray();
+    expect(fields.filter((field) => field.status === "pending")).toHaveLength(5);
+  });
+
+  it("does not duplicate work across concurrent wake calls", async () => {
+    const database = createTestDatabase("concurrency");
+    const repositories = createRepositories(database);
+    const queue = createQueue(database, repositories);
+    const saved = await saveFixture(repositories);
+
+    const [first, second] = await Promise.all([queue.wake(), queue.wake()]);
+    await Promise.all([first, second]);
+
+    const jobs = await database.enrichmentJobs.toArray();
+    expect(jobs).toHaveLength(0);
+
+    const fields = await database.vocabularyFields
+      .where("vocabularyItemId")
+      .equals(saved.vocabularyItemId)
+      .toArray();
+    expect(fields.filter((field) => field.status === "ready")).toHaveLength(7);
+    const cards = await database.learningCards.toArray();
+    expect(cards).toHaveLength(1);
+  });
+
+  it("preserves ready fields when one field fails and retries the failed field", async () => {
+    const database = createTestDatabase("partial-failure");
+    const repositories = createRepositories(database);
+    const queue = createQueue(database, repositories, { failFields: ["meaning"] });
+    const saved = await saveFixture(repositories);
+
+    await queue.wake();
+
+    const fieldsAfterFirst = await database.vocabularyFields
+      .where("vocabularyItemId")
+      .equals(saved.vocabularyItemId)
+      .toArray();
+    const byKeyAfterFirst = new Map(fieldsAfterFirst.map((field) => [field.key, field]));
+    expect(byKeyAfterFirst.get("phonetic")).toEqual(expect.objectContaining({ status: "ready" }));
+    expect(byKeyAfterFirst.get("meaning")).toEqual(expect.objectContaining({ status: "failed" }));
+    expect(await database.learningCards.count()).toBe(0);
+
+    const failedJobs = await database.enrichmentJobs.toArray();
+    expect(failedJobs).toHaveLength(1);
+    expect(failedJobs[0].fieldKey).toBe("meaning");
+
+    const retryQueue = createQueue(database, repositories);
+    await retryQueue.retryFailed(saved.vocabularyItemId);
+    await retryQueue.wake();
+
+    const fieldsAfterRetry = await database.vocabularyFields
+      .where("vocabularyItemId")
+      .equals(saved.vocabularyItemId)
+      .toArray();
+    const byKeyAfterRetry = new Map(fieldsAfterRetry.map((field) => [field.key, field]));
+    expect(byKeyAfterRetry.get("meaning")).toEqual(expect.objectContaining({ status: "ready" }));
+    expect(await database.learningCards.count()).toBe(1);
+  });
+
+  it("applies max attempts and stops retrying automatically", async () => {
+    const database = createTestDatabase("max-attempts");
+    const repositories = createRepositories(database);
+    const queue = createQueue(database, repositories, { failFields: ["meaning"] });
+    const saved = await saveFixture(repositories);
+
+    await queue.wake();
+    await queue.wake();
+    await queue.wake();
+
+    const job = await database.enrichmentJobs.get(`${saved.vocabularyItemId}:meaning:job`);
+    expect(job).toEqual(expect.objectContaining({ status: "failed", attempts: 3 }));
+  });
+
+  it("recovers stale running jobs and completes them", async () => {
+    const database = createTestDatabase("stale-recovery");
+    const repositories = createRepositories(database);
+    const saved = await saveFixture(repositories);
+
+    await database.enrichmentJobs.update(`${saved.vocabularyItemId}:meaning:job`, {
+      status: "running",
+      nextRunAt: "2020-01-01T00:00:00.000Z",
+      attempts: 1
+    });
+
+    const queue = createQueue(database, repositories);
+    await queue.recover();
+    await queue.wake();
+
+    const job = await database.enrichmentJobs.get(`${saved.vocabularyItemId}:meaning:job`);
+    expect(job).toBeUndefined();
+    const meaningField = await database.vocabularyFields.get(`${saved.vocabularyItemId}:meaning`);
+    expect(meaningField).toEqual(expect.objectContaining({ status: "ready" }));
+  });
+
+  it("completes queued work after a new worker instance opens the same database", async () => {
+    const databaseName = "restart-resume";
+    const firstDatabase = createTestDatabase(databaseName);
+    const firstRepositories = createRepositories(firstDatabase);
+    const saved = await saveFixture(firstRepositories);
+    firstDatabase.close();
+
+    const secondDatabase = createTestDatabase(databaseName);
+    const secondRepositories = createRepositories(secondDatabase);
+    const queue = createQueue(secondDatabase, secondRepositories);
+    await queue.recover();
+    await queue.wake();
+
+    const jobs = await secondDatabase.enrichmentJobs.toArray();
+    expect(jobs).toHaveLength(0);
+    const cards = await secondDatabase.learningCards.toArray();
+    expect(cards).toHaveLength(1);
+  });
+
+  it("creates only one meaning-recall card per item", async () => {
+    const database = createTestDatabase("idempotent-card");
+    const repositories = createRepositories(database);
+    const queue = createQueue(database, repositories);
+    const saved = await saveFixture(repositories);
+
+    await queue.wake();
+    await queue.wake();
+    await queue.wake();
+
+    const cards = await database.learningCards.toArray();
+    expect(cards).toHaveLength(1);
+    expect(cards[0].id).toBe(`${saved.vocabularyItemId}:meaning-recall`);
+  });
+
+  it("does not create a card when meaning is not ready", async () => {
+    const database = createTestDatabase("no-card-without-meaning");
+    const repositories = createRepositories(database);
+    const queue = createQueue(database, repositories, { failFields: ["meaning"] });
+    await saveFixture(repositories);
+
+    await queue.wake();
+    await queue.wake();
+    await queue.wake();
+
+    const cards = await database.learningCards.toArray();
+    expect(cards).toHaveLength(0);
+  });
+});
+
+describe("save vocabulary transaction", () => {
+  it("rolls back item, fields, context, and jobs when the transaction fails", async () => {
+    const database = createTestDatabase("rollback");
+    const repositories = createRepositories(database);
+
+    const originalAdd = database.vocabularyFields.add.bind(database.vocabularyFields);
+    vi.spyOn(database.vocabularyFields, "add").mockImplementation((async (field: unknown) => {
+      const vocabularyField = field as VocabularyField;
+      if (vocabularyField.key === "meaning") {
+        throw new Error("simulated write failure");
+      }
+      return originalAdd(field as never) as never;
+    }) as never);
+
+    await expect(saveFixture(repositories)).rejects.toThrow("simulated write failure");
+
+    expect(await database.vocabularyItems.count()).toBe(0);
+    expect(await database.vocabularyFields.count()).toBe(0);
+    expect(await database.vocabularyContexts.count()).toBe(0);
+    expect(await database.enrichmentJobs.count()).toBe(0);
+  });
+});

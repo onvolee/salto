@@ -27,7 +27,17 @@ function createInstance() {
     clock: () => "2026-07-16T00:00:00.000Z",
     createId: () => `item-${++nextId}`
   });
-  const services = createBackgroundServices({ repositories, queryExecutor: createFakeQueryExecutor() });
+  const enrichmentQueue = {
+    wake: vi.fn().mockResolvedValue(undefined),
+    recover: vi.fn().mockResolvedValue(undefined),
+    retryFailed: vi.fn().mockResolvedValue(undefined)
+  };
+  const services = createBackgroundServices({
+    repositories,
+    saveVocabulary: repositories.saveVocabulary,
+    enrichmentQueue: enrichmentQueue as never,
+    queryExecutor: createFakeQueryExecutor()
+  });
   return { database, repositories, services };
 }
 

@@ -17,6 +17,11 @@ export const SETTINGS_SECTIONS = [
     description: "管理词典和翻译服务的启用状态。",
   },
   {
+    id: "vocabulary",
+    label: "词汇",
+    description: "查看失败的富集字段并重试。",
+  },
+  {
     id: "ai-provider",
     label: "AI 服务",
     description: "配置兼容服务地址、密钥和模型。",

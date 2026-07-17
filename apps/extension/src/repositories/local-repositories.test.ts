@@ -55,8 +55,8 @@ describe("local repositories", () => {
       }
     };
 
-    const first = await repositories.vocabulary.save(input);
-    const second = await repositories.vocabulary.save(input);
+    const first = await repositories.saveVocabulary.save(input);
+    const second = await repositories.saveVocabulary.save(input);
 
     expect(first.status).toBe("saved");
     expect(second).toEqual({ status: "already-saved", vocabularyItemId: first.vocabularyItemId });
@@ -90,12 +90,59 @@ describe("local repositories", () => {
         sentence: "I bought Running shoes."
       })
     ]);
+    const jobs = await database.enrichmentJobs.toArray();
+    expect(jobs).toHaveLength(6);
+    expect(jobs.map((job) => job.fieldKey).sort()).toEqual([
+      "examples",
+      "meaning",
+      "partOfSpeech",
+      "phonetic",
+      "synonyms",
+      "wordForms"
+    ]);
+    expect(jobs.every((job) => job.status === "queued" && job.attempts === 0)).toBe(true);
+  });
+
+  it("adds a second context for a different sentence and reuses the item", async () => {
+    const { database, repositories } = createTestRepositories("new-context-test");
+    const first = await repositories.saveVocabulary.save({
+      term: "Running",
+      language: "en" as const,
+      context: {
+        sentence: "I am running.",
+        paragraphs: "",
+        pageTitle: "",
+        pageUrl: "https://example.com/a"
+      }
+    });
+    const second = await repositories.saveVocabulary.save({
+      term: "running",
+      language: "en" as const,
+      context: {
+        sentence: "Running is fun.",
+        paragraphs: "",
+        pageTitle: "",
+        pageUrl: "https://example.com/a"
+      }
+    });
+
+    expect(second.status).toBe("already-saved");
+    expect(second.vocabularyItemId).toBe(first.vocabularyItemId);
+    const contexts = await database.vocabularyContexts
+      .where("vocabularyItemId")
+      .equals(first.vocabularyItemId)
+      .toArray();
+    expect(contexts).toHaveLength(2);
+    expect(contexts.map((context) => context.sentence).sort()).toEqual([
+      "I am running.",
+      "Running is fun."
+    ]);
   });
 
   it("survives closing and reopening a new service instance", async () => {
     const databaseName = "reopen-test";
     const first = createTestRepositories(databaseName);
-    await first.repositories.vocabulary.save({
+    await first.repositories.saveVocabulary.save({
       term: "Unfamiliar",
       language: "en",
       context: { sentence: "An unfamiliar term.", paragraphs: "", pageTitle: "", pageUrl: "" }
