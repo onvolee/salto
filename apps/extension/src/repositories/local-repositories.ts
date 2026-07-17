@@ -79,6 +79,14 @@ function normalizePageUrl(value: string): string {
     url.username = "";
     url.password = "";
     url.hash = "";
+    url.protocol = url.protocol.toLowerCase();
+    url.hostname = url.hostname.toLowerCase();
+    if (
+      (url.protocol === "http:" && url.port === "80")
+      || (url.protocol === "https:" && url.port === "443")
+    ) {
+      url.port = "";
+    }
     return url.toString();
   } catch {
     return "";
