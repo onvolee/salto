@@ -98,7 +98,7 @@ describe("local vertical slice", () => {
     const response = await reopened.services.handleMessage({ type: "list-highlight-terms" });
     expect(response.ok && response.type === "list-highlight-terms" ? response.data.terms : []).toEqual(["unfamiliar"]);
     if (response.ok && response.type === "list-highlight-terms") {
-      highlightSavedTerms(document, response.data.terms);
+      highlightSavedTerms(document, response.data.paths);
     }
     expect(document.querySelector("[data-salto-highlight]")?.textContent).toBe("unfamiliar");
   });

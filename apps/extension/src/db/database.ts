@@ -4,11 +4,9 @@ import type {
   EnrichmentJob,
   ExtensionSettings,
   LearningCard,
-  LearningState,
   LlmPublicConfig,
   LlmSecret,
   QueryTemplate,
-  ReviewLog,
   VocabularyContext,
   VocabularyField,
   VocabularyItem
@@ -24,8 +22,6 @@ export class SaltoDatabase extends Dexie {
   vocabularyContexts!: EntityTable<VocabularyContext, "id">;
   enrichmentJobs!: EntityTable<EnrichmentJob, "id">;
   learningCards!: EntityTable<LearningCard, "id">;
-  learningStates!: EntityTable<LearningState, "id">;
-  reviewLogs!: EntityTable<ReviewLog, "id">;
   queryTemplates!: EntityTable<QueryTemplate, "id">;
   settings!: EntityTable<StoredExtensionSettings, "id">;
   llmConfigs!: EntityTable<StoredLlmConfig, "id">;
@@ -62,6 +58,10 @@ export class SaltoDatabase extends Dexie {
 
     this.version(5).stores({
       learningCards: "&id, &[vocabularyItemId+cardType], vocabularyItemId, cardType, sync.updatedAt"
+    });
+
+    this.version(6).stores({
+      vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt, selectionPath"
     });
   }
 }

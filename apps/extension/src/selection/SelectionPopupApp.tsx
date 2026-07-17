@@ -32,6 +32,7 @@ import {
   readSelectionSnapshot,
   type SelectionSnapshot,
 } from "./selection";
+import { extractSelectionPath } from "./selection-path";
 
 const TRIGGER_SIZE: Size = { width: 32, height: 32 };
 
@@ -153,6 +154,7 @@ export function SelectionPopupApp({
     }
     setSaveState("saving");
     const requestId = ++saveRequestRef.current;
+    const selectionPath = extractSelectionPath(session.range);
     void messageClient.send({
       type: "save-vocabulary",
       payload: {
@@ -162,7 +164,8 @@ export function SelectionPopupApp({
           sentence: promptContext.sentence,
           paragraphs: promptContext.paragraphs,
           pageTitle: promptContext.webTitle,
-          pageUrl: promptContext.webUrl
+          pageUrl: promptContext.webUrl,
+          selectionPath: selectionPath ?? undefined
         }
       }
     }).then((response) => {

@@ -384,14 +384,13 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
 
         if (request.type === "list-highlight-terms") {
           const { settings } = await dependencies.repositories.settings.getActive();
+          const result = settings.highlightEnabled
+            ? await dependencies.repositories.highlightTerms.list()
+            : { terms: [], paths: [] };
           return {
             ok: true,
             type: request.type,
-            data: {
-              terms: settings.highlightEnabled
-                ? await dependencies.repositories.highlightTerms.list()
-                : [],
-            },
+            data: result,
           };
         }
 
