@@ -28,3 +28,5 @@ minimumReleaseAgeExclude:
   - '@typescript/typescript-win32-arm64@7.0.2'
   - '@typescript/typescript-win32-x64@7.0.2'
   - typescript@7.0.2
+  - '@ai-sdk/gateway@4.0.22'
+  - ai@7.0.30

@@ -232,6 +232,82 @@ describe("SelectionPopupApp", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("cancels the previous request and ignores stale output when regenerating", async () => {
+    const resolvers: Array<(
+      response: Awaited<ReturnType<ExtensionMessageClient["send"]>>,
+    ) => void> = [];
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockImplementation(() => (
+      new Promise((resolve) => resolvers.push(resolve))
+    ));
+    const cancelTranslation = vi.fn().mockResolvedValue(undefined);
+    const requestIds = ["request-a", "request-b"];
+    render(
+      <SelectionPopupApp
+        createRequestId={() => requestIds.shift() ?? "unexpected"}
+        messageClient={{ send, cancelTranslation }}
+      />,
+    );
+    await openPanel();
+
+    await userEvent.setup().click(screen.getByRole("button", {
+      name: "Regenerate translation",
+    }));
+
+    expect(cancelTranslation).toHaveBeenCalledWith("request-a");
+    expect(send).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      type: "translate-selection",
+      payload: expect.objectContaining({ requestId: "request-b" }),
+    }));
+    await act(async () => resolvers[1]?.({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: "system-default",
+        templateName: "Latest",
+        schema: [],
+        fields: [],
+      },
+    }));
+    expect(await screen.findByText("Latest")).toBeInTheDocument();
+
+    await act(async () => resolvers[0]?.({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: "system-default",
+        templateName: "Stale",
+        schema: [],
+        fields: [],
+      },
+    }));
+    expect(screen.queryByText("Stale")).not.toBeInTheDocument();
+  });
+
+  it("cancels the active provider request when the panel closes", async () => {
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockResolvedValue({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: "system-default",
+        templateName: "Default",
+        schema: [],
+        fields: [],
+      },
+    });
+    const cancelTranslation = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SelectionPopupApp
+        createRequestId={() => "request-close"}
+        messageClient={{ send, cancelTranslation }}
+      />,
+    );
+    await openPanel();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));
+
+    expect(cancelTranslation).toHaveBeenCalledWith("request-close");
+  });
+
   it("ignores a save response after close and a new selection", async () => {
     let resolveSave!: (response: Awaited<ReturnType<ExtensionMessageClient["send"]>>) => void;
     const send = vi.fn<ExtensionMessageClient["send"]>()

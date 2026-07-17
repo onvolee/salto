@@ -10,12 +10,12 @@ import type { SaveStatus } from "../types";
 
 const STATUS_CONTENT: Record<
   SaveStatus,
-  { label: string; variant: "destructive" | "outline" | "secondary" }
+  { label: string; variant: "destructive" | "outline" | "secondary" | "success" }
 > = {
-  synced: { label: "已同步", variant: "outline" },
+  synced: { label: "已同步", variant: "success" },
   dirty: { label: "有未保存更改", variant: "secondary" },
   saving: { label: "保存中", variant: "secondary" },
-  saved: { label: "已保存", variant: "outline" },
+  saved: { label: "已保存", variant: "success" },
   error: { label: "保存失败", variant: "destructive" },
 };
 

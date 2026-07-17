@@ -30,6 +30,7 @@
   --color-border: var(--salto-border);
   --color-input: var(--salto-border);
   --color-ring: var(--salto-ring);
+  --color-success: var(--salto-success);
   --color-sidebar: var(--salto-surface-subtle);
   --color-sidebar-foreground: var(--salto-foreground);
   --color-sidebar-primary: var(--salto-primary);

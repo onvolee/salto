@@ -4,10 +4,6 @@ export type SaltoSettings = {
   themeMode: ThemeMode;
   language: "zh-CN" | "en-US";
   translationTemplate: "compact" | "context";
-  provider: "openai-compatible" | "browser-ai";
-  apiBaseUrl: string;
-  apiKey: string;
-  modelName: string;
   anonymousDiagnostics: boolean;
 };
 
@@ -17,10 +13,6 @@ export const DEFAULT_SETTINGS: SaltoSettings = {
   themeMode: "system",
   language: "zh-CN",
   translationTemplate: "compact",
-  provider: "openai-compatible",
-  apiBaseUrl: "https://api.openai.com/v1",
-  apiKey: "",
-  modelName: "gpt-4o-mini",
   anonymousDiagnostics: false,
 };
 
@@ -48,23 +40,50 @@ function normalizeSettings(value: unknown): SaltoSettings {
 
   const candidate = value as Partial<SaltoSettings>;
   return {
-    ...DEFAULT_SETTINGS,
-    ...candidate,
     themeMode: candidate.themeMode && ["dark", "system", "light"].includes(candidate.themeMode)
       ? candidate.themeMode
       : DEFAULT_SETTINGS.themeMode,
+    language: candidate.language && ["zh-CN", "en-US"].includes(candidate.language)
+      ? candidate.language
+      : DEFAULT_SETTINGS.language,
+    translationTemplate: candidate.translationTemplate
+      && ["compact", "context"].includes(candidate.translationTemplate)
+      ? candidate.translationTemplate
+      : DEFAULT_SETTINGS.translationTemplate,
+    anonymousDiagnostics: typeof candidate.anonymousDiagnostics === "boolean"
+      ? candidate.anonymousDiagnostics
+      : DEFAULT_SETTINGS.anonymousDiagnostics,
   };
+}
+
+function containsLegacyLlmSettings(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && [
+    "apiBaseUrl",
+    "apiKey",
+    "modelName",
+    "provider",
+  ].some((key) => key in value));
 }
 
 export async function loadSettings(): Promise<SaltoSettings> {
   const storage = getExtensionStorage();
   if (storage) {
     const result = await storage.get(SETTINGS_STORAGE_KEY);
-    return normalizeSettings(result[SETTINGS_STORAGE_KEY]);
+    const stored = result[SETTINGS_STORAGE_KEY];
+    const settings = normalizeSettings(stored);
+    if (containsLegacyLlmSettings(stored)) {
+      await storage.set({ [SETTINGS_STORAGE_KEY]: settings });
+    }
+    return settings;
   }
 
   try {
-    return normalizeSettings(JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) ?? "null"));
+    const stored = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) ?? "null") as unknown;
+    const settings = normalizeSettings(stored);
+    if (containsLegacyLlmSettings(stored)) {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    }
+    return settings;
   } catch {
     return DEFAULT_SETTINGS;
   }

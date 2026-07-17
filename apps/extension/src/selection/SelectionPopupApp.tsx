@@ -51,15 +51,19 @@ function eventIncludesElement(event: Event, element: Element | null): boolean {
 }
 
 export function SelectionPopupApp({
-  messageClient = browserMessageClient
-}: { readonly messageClient?: ExtensionMessageClient }) {
+  createRequestId = () => crypto.randomUUID(),
+  messageClient = browserMessageClient,
+}: {
+  readonly createRequestId?: () => string;
+  readonly messageClient?: ExtensionMessageClient;
+}) {
   const [mode, setMode] = useState<SurfaceMode>("hidden");
   const themeMode = useThemeMode();
   const [session, setSession] = useState<SelectionSnapshot | null>(null);
   const [triggerPosition, setTriggerPosition] = useState<Point>({ x: 0, y: 0 });
   const [panelPosition, setPanelPosition] = useState<Point>({ x: 0, y: 0 });
   const panelRef = useRef<HTMLElement>(null);
-  const translationRequestRef = useRef(0);
+  const translationRequestRef = useRef<string | null>(null);
   const saveRequestRef = useRef(0);
   const [promptContext, setPromptContext] = useState<PromptContext | null>(null);
   const [translation, setTranslation] = useState<TranslationState>({ status: "loading" });
@@ -79,12 +83,46 @@ export function SelectionPopupApp({
   }, []);
 
   const closePanel = useCallback(() => {
-    translationRequestRef.current += 1;
+    const requestId = translationRequestRef.current;
+    translationRequestRef.current = null;
+    if (requestId) {
+      void messageClient.cancelTranslation?.(requestId).catch(() => undefined);
+    }
     saveRequestRef.current += 1;
     window.getSelection()?.removeAllRanges();
     setSession(null);
     setMode("hidden");
-  }, []);
+  }, [messageClient]);
+
+  const requestTranslation = useCallback((context: PromptContext) => {
+    const previousRequestId = translationRequestRef.current;
+    if (previousRequestId) {
+      void messageClient.cancelTranslation?.(previousRequestId).catch(() => undefined);
+    }
+    const requestId = createRequestId();
+    translationRequestRef.current = requestId;
+    setTranslation({ status: "loading" });
+    void messageClient.send({
+      type: "translate-selection",
+      payload: { requestId, context },
+    }).then((response) => {
+      if (translationRequestRef.current !== requestId) {
+        return;
+      }
+      if (response.ok && response.type === "translate-selection") {
+        setTranslation({ status: "complete", data: response.data });
+      } else {
+        setTranslation({
+          status: "request-error",
+          message: response.ok ? "Unexpected response" : response.error.message,
+        });
+      }
+    }).catch(() => {
+      if (translationRequestRef.current === requestId) {
+        setTranslation({ status: "request-error", message: "Translation request failed" });
+      }
+    });
+  }, [createRequestId, messageClient]);
 
   const openPanel = useCallback(() => {
     if (!session) {
@@ -96,30 +134,18 @@ export function SelectionPopupApp({
       getInitialPanelPosition(triggerPosition, TRIGGER_SIZE, getPanelSize(viewport), viewport),
     );
     const context = extractPromptContext(session.range, "");
-    const requestId = ++translationRequestRef.current;
     saveRequestRef.current += 1;
     setPromptContext(context);
-    setTranslation({ status: "loading" });
     setSaveState("idle");
     setMode("panel-open");
-    void messageClient.send({ type: "translate-selection", payload: { context } }).then((response) => {
-      if (translationRequestRef.current !== requestId) {
-        return;
-      }
-      if (response.ok && response.type === "translate-selection") {
-        setTranslation({ status: "complete", data: response.data });
-      } else {
-        setTranslation({
-          status: "request-error",
-          message: response.ok ? "Unexpected response" : response.error.message
-        });
-      }
-    }).catch(() => {
-      if (translationRequestRef.current === requestId) {
-        setTranslation({ status: "request-error", message: "Translation request failed" });
-      }
-    });
-  }, [messageClient, session, triggerPosition]);
+    requestTranslation(context);
+  }, [requestTranslation, session, triggerPosition]);
+
+  const regenerateTranslation = useCallback(() => {
+    if (promptContext) {
+      requestTranslation(promptContext);
+    }
+  }, [promptContext, requestTranslation]);
 
   const saveSelection = useCallback(() => {
     if (!session || !promptContext || saveState === "saving" || saveState === "saved") {
@@ -301,6 +327,7 @@ export function SelectionPopupApp({
       <SelectionPanel
         onClose={closePanel}
         onPositionChange={setPanelPosition}
+        onRegenerate={regenerateTranslation}
         onSave={saveSelection}
         panelRef={panelRef}
         position={panelPosition}

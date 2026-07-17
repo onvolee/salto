@@ -15,7 +15,10 @@ export default defineConfig({
     name: "Salto",
     description: "Reading-time translation and vocabulary learning.",
     permissions: ["storage"],
-    host_permissions: ["<all_urls>"],
+    optional_host_permissions: [
+      "https://*/*",
+      "http://*/*",
+    ],
   },
   hooks: {
     "vite:devServer:extendConfig": (viteConfig) => {

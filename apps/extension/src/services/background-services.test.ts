@@ -21,10 +21,15 @@ const template: QueryTemplate = {
   createdAt: "2026-07-16T00:00:00.000Z",
   updatedAt: "2026-07-16T00:00:00.000Z",
   fields: [
-    { id: "second", label: "Second", source: "llm", type: "list", instruction: "", order: 1, enabled: true },
-    { id: "first", label: "First", source: "llm", type: "text", instruction: "", order: 0, enabled: true },
+    { id: "second", label: "Second", source: "llm", type: "list", instruction: "Use {{selection}} with {{pageText}}.", order: 1, enabled: true },
+    { id: "first", label: "First", source: "llm", type: "text", instruction: "Use {{targetLanguage}}.", order: 0, enabled: true },
     { id: "disabled", label: "Disabled", source: "llm", type: "text", instruction: "", order: 2, enabled: false }
   ]
+};
+
+const translateRequest = {
+  type: "translate-selection" as const,
+  payload: { requestId: "request-1", context },
 };
 
 function createServices() {
@@ -53,7 +58,7 @@ describe("background message boundary", () => {
   it("translates valid input and preserves enabled template order", async () => {
     const { services } = createServices();
 
-    await expect(services.handleMessage({ type: "translate-selection", payload: { context } })).resolves.toEqual({
+    await expect(services.handleMessage(translateRequest)).resolves.toEqual({
       ok: true,
       type: "translate-selection",
       data: {
@@ -83,7 +88,7 @@ describe("background message boundary", () => {
       }
     });
 
-    const response = await services.handleMessage({ type: "translate-selection", payload: { context } });
+    const response = await services.handleMessage(translateRequest);
 
     expect(response.ok && response.type === "translate-selection" ? response.data.fields : []).toEqual([
       {
@@ -116,7 +121,7 @@ describe("background message boundary", () => {
       }
     });
 
-    const response = await services.handleMessage({ type: "translate-selection", payload: { context } });
+    const response = await services.handleMessage(translateRequest);
 
     expect(response.ok && response.type === "translate-selection" ? response.data.fields : []).toEqual([
       {
@@ -156,7 +161,7 @@ describe("background message boundary", () => {
       }
     });
 
-    const response = await services.handleMessage({ type: "translate-selection", payload: { context } });
+    const response = await services.handleMessage(translateRequest);
 
     expect(response.ok && response.type === "translate-selection" ? response.data.fields : []).toEqual([
       {
@@ -184,7 +189,7 @@ describe("background message boundary", () => {
       queryExecutor: { execute: vi.fn().mockResolvedValue([malformed]) }
     });
 
-    const response = await services.handleMessage({ type: "translate-selection", payload: { context } });
+    const response = await services.handleMessage(translateRequest);
 
     expect(response.ok && response.type === "translate-selection" ? response.data.fields[0] : null)
       .toEqual({
@@ -249,7 +254,7 @@ describe("background message boundary", () => {
       template
     });
 
-    const response = await services.handleMessage({ type: "translate-selection", payload: { context } });
+    const response = await services.handleMessage(translateRequest);
 
     expect(response.ok && response.type === "translate-selection" ? response.data.fields[0] : null)
       .toEqual({
@@ -262,7 +267,7 @@ describe("background message boundary", () => {
 
   it.each([
     ["unknown request", { type: "read-api-key", payload: { secret: "do-not-echo" } }, "unknown-message"],
-    ["malformed context", { type: "translate-selection", payload: { context: { selection: "x" } } }, "invalid-payload"],
+    ["malformed context", { type: "translate-selection", payload: { requestId: "bad", context: { selection: "x" } } }, "invalid-payload"],
     ["overlong term", { type: "save-vocabulary", payload: { term: "x".repeat(501), language: "en", context: {} } }, "invalid-payload"],
     ["blank term", { type: "save-vocabulary", payload: { term: "   ", language: "en", context: { sentence: "", paragraphs: "", pageTitle: "", pageUrl: "" } } }, "invalid-payload"]
   ])("rejects %s with a stable non-secret error", async (_name, message, code) => {
@@ -271,5 +276,129 @@ describe("background message boundary", () => {
 
     expect(response).toEqual({ ok: false, error: { code, message: expect.any(String) } });
     expect(JSON.stringify(response)).not.toContain("do-not-echo");
+  });
+
+  it("exposes public LLM state without serializing the API key", async () => {
+    const { settings } = createServices();
+    const llmSettings = {
+      getPublicState: vi.fn().mockResolvedValue({
+        config: {
+          provider: "openai-compatible",
+          baseUrl: "https://api.example.com/v1",
+          model: "model-a",
+        },
+        hasApiKey: true,
+      }),
+    };
+    const configured = createBackgroundServices({
+      repositories: {
+        llmSettings,
+        settings,
+      } as never,
+      queryExecutor: createFakeQueryExecutor(),
+    });
+
+    const response = await configured.handleMessage({ type: "get-llm-config" });
+
+    expect(response).toEqual({
+      ok: true,
+      type: "get-llm-config",
+      data: {
+        config: {
+          provider: "openai-compatible",
+          baseUrl: "https://api.example.com/v1",
+          model: "model-a",
+        },
+        hasApiKey: true,
+        promptAnalysis: {
+          referencedVariables: ["selection", "targetLanguage"],
+          warnings: [{
+            fieldId: "second",
+            fieldLabel: "Second",
+            unknownVariables: ["pageText"],
+          }],
+        },
+      },
+    });
+    expect(JSON.stringify(response)).not.toContain("apiKey");
+  });
+
+  it("persists normalized LLM settings only for an authorized extension page", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const getPublicState = vi.fn().mockResolvedValue({
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://api.example.com/v1",
+        model: "model-a",
+      },
+      hasApiKey: true,
+    });
+    const services = createBackgroundServices({
+      repositories: { llmSettings: { save, getPublicState } } as never,
+      queryExecutor: createFakeQueryExecutor(),
+      hasOriginPermission: vi.fn().mockResolvedValue(true),
+    });
+    const request = {
+      type: "save-llm-config",
+      payload: {
+        config: {
+          provider: "openai-compatible",
+          baseUrl: "https://api.example.com/v1/",
+          model: " model-a ",
+        },
+        apiKey: " secret-a ",
+      },
+    };
+
+    await expect(services.handleMessage(request, { source: "content-script" })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "forbidden",
+        message: "This request is available only from extension settings",
+      },
+    });
+    await expect(services.handleMessage(request, { source: "extension-page" })).resolves.toEqual({
+      ok: true,
+      type: "save-llm-config",
+      data: await getPublicState(),
+    });
+    expect(save).toHaveBeenCalledWith({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "model-a",
+    }, { apiKey: "secret-a" });
+  });
+
+  it("cancels the matching in-flight translation", async () => {
+    const { settings } = createServices();
+    let observedSignal: AbortSignal | undefined;
+    const execute = vi.fn((_template, _context, signal?: AbortSignal) => {
+      observedSignal = signal;
+      return new Promise((resolve) => {
+        signal?.addEventListener("abort", () => resolve([]), { once: true });
+      });
+    });
+    const services = createBackgroundServices({
+      repositories: {
+        vocabulary: { save: vi.fn() },
+        settings,
+        highlightTerms: { list: vi.fn() },
+      } as never,
+      queryExecutor: { execute },
+    });
+
+    const translation = services.handleMessage(translateRequest);
+    await vi.waitFor(() => expect(observedSignal).toBeDefined());
+
+    await expect(services.handleMessage({
+      type: "cancel-translation",
+      payload: { requestId: "request-1" },
+    })).resolves.toEqual({
+      ok: true,
+      type: "cancel-translation",
+      data: { cancelled: true },
+    });
+    expect(observedSignal?.aborted).toBe(true);
+    await translation;
   });
 });
