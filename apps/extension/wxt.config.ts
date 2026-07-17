@@ -1,6 +1,7 @@
 import { defineConfig } from "wxt";
 import { resolve } from "path";
 import tailwindcss from "@tailwindcss/vite";
+import { codeInspectorPlugin } from 'code-inspector-plugin';
 
 export default defineConfig({
   alias: {
@@ -17,6 +18,18 @@ export default defineConfig({
     host_permissions: ["<all_urls>"],
   },
   hooks: {
+    "vite:devServer:extendConfig": (viteConfig) => {
+      viteConfig.plugins = [
+        codeInspectorPlugin({
+          bundler: "vite",
+          injectTo: [
+            resolve("entrypoints/popup/main.tsx"),
+            resolve("entrypoints/setting.options/main.tsx"),
+          ],
+        }),
+        ...(viteConfig.plugins ?? []),
+      ];
+    },
     "build:manifestGenerated": (_wxt, manifest) => {
       manifest.options_ui = {
         page: "setting.html",

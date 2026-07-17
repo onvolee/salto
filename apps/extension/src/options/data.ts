@@ -2,19 +2,19 @@ import type { TranslationField } from "./types";
 
 export const INITIAL_TRANSLATION_FIELDS: TranslationField[] = [
   {
-    id: "meaning",
-    label: "释义",
-    type: "文本",
-    source: "AI 服务",
-    description: "结合上下文返回简洁、明确的中文含义。",
-    enabled: true,
-  },
-  {
     id: "example",
     label: "例句",
     type: "例句",
     source: "AI 服务",
     description: "保留原文例句，并提供简体中文翻译。",
+    enabled: true,
+  },
+  {
+    id: "meaning",
+    label: "释义",
+    type: "文本",
+    source: "AI 服务",
+    description: "结合上下文返回简洁、明确的中文含义。",
     enabled: true,
   },
   {

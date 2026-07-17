@@ -1,9 +1,7 @@
 import {
   AiBrain01Icon,
-  CheckmarkCircle02Icon,
   Configuration01Icon,
   CursorMagicSelection02Icon,
-  Settings01Icon,
   TranslateIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -62,13 +60,11 @@ export function SettingsSidebar({
               render={<div data-od-id="salto-brand" />}
               size="lg"
             >
-              <span className="grid size-8 shrink-0 place-items-center rounded-md border bg-background">
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={Settings01Icon}
-                  strokeWidth={1.8}
-                />
-              </span>
+              <Avatar className="size-8 rounded-md">
+                <AvatarFallback className="rounded-md bg-background text-sidebar-foreground">
+                  S
+                </AvatarFallback>
+              </Avatar>
               <span className="grid min-w-0 flex-1 text-left leading-tight">
                 <strong className="truncate text-sm font-semibold">Salto</strong>
                 <span className="truncate text-xs text-sidebar-foreground/70">
@@ -118,18 +114,11 @@ export function SettingsSidebar({
         <SidebarSeparator />
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton render={<div />}>
-              <Avatar className="size-4">
-                <AvatarFallback className="bg-transparent">
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    icon={CheckmarkCircle02Icon}
-                    strokeWidth={2}
-                  />
-                </AvatarFallback>
-              </Avatar>
-              <span>本地配置</span>
-            </SidebarMenuButton>
+            <Avatar className="size-8">
+              <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">
+                U
+              </AvatarFallback>
+            </Avatar>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
