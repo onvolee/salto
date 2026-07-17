@@ -33,6 +33,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "salto-src/components/ui/tooltip";
+import { cn } from "salto-src/lib/utils";
 
 import { SettingsField } from "../components/settings-field";
 import type {
@@ -74,6 +75,14 @@ export function AiProviderSection({
 }: AiProviderSectionProps) {
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const isTesting = connectionStatus.status === "testing";
+  const connectionStatusClassName = cn(
+    "flex items-center gap-1.5 text-xs",
+    connectionStatus.status === "error" && "text-destructive",
+    connectionStatus.status === "success" && "text-success",
+    connectionStatus.status !== "error"
+      && connectionStatus.status !== "success"
+      && "text-muted-foreground",
+  );
 
   return (
     <section
@@ -214,9 +223,7 @@ export function AiProviderSection({
         {connectionStatus.message ? (
           <p
             aria-live="polite"
-            className={connectionStatus.status === "error"
-              ? "flex items-center gap-1.5 text-xs text-destructive"
-              : "flex items-center gap-1.5 text-xs text-muted-foreground"}
+            className={connectionStatusClassName}
             role={connectionStatus.status === "error" ? "alert" : "status"}
           >
             {connectionStatus.status === "success" || connectionStatus.status === "error" ? (

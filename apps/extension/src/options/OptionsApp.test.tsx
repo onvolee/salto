@@ -86,9 +86,11 @@ describe("OptionsApp", () => {
     expect(screen.getByRole("status")).toHaveTextContent("有未保存更改");
 
     await user.click(screen.getByRole("button", { name: "保存设置" }));
-    await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent("已保存"),
-    );
+    await waitFor(() => {
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("已保存");
+      expect(status).toHaveClass("text-success");
+    });
 
     const savedSettings = JSON.parse(
       localStorage.getItem(SETTINGS_STORAGE_KEY) ?? "null",
@@ -123,6 +125,30 @@ describe("OptionsApp", () => {
     expect(screen.getAllByText("后续阶段")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: /测试/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("renders connection success with the success theme color", async () => {
+    vi.mocked(browserOptionsLlmClient.getConfig).mockResolvedValueOnce({
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://api.example.com/v1",
+        model: "model-a",
+      },
+      hasApiKey: true,
+      promptAnalysis: { referencedVariables: [], warnings: [] },
+    });
+    vi.mocked(browserOptionsLlmClient.testConnection).mockResolvedValueOnce(
+      undefined,
+    );
+    render(<OptionsApp />);
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { name: "通用" });
+
+    await user.click(screen.getByRole("button", { name: "AI 服务" }));
+    await user.click(screen.getByRole("button", { name: "保存并测试连接" }));
+
+    const status = await screen.findByText("连接成功");
+    expect(status.closest("p")).toHaveClass("text-success");
   });
 
   it("renders connection failures as destructive alerts", async () => {

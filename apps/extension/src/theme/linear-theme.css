@@ -32,6 +32,7 @@
   --salto-primary-foreground: white;
   --salto-ring: var(--linear-focus-ring-color);
   --salto-selection: var(--linear-selection-bg);
+  --salto-success: #15803d;
   --salto-destructive: #dc2626;
   --salto-focus-halo: color-mix(in oklab, var(--salto-ring), transparent 68%);
   --salto-panel-shadow: 0 4px 8px lch(9.894% 0 282 / 0.2);
@@ -57,6 +58,7 @@
   --linear-focus-color: lch(47.918% 59.303 288.421);
   --linear-focus-ring-color: #5e69d1;
   --linear-selection-bg: lch(61.399% 1.15 272 / 0.2);
+  --salto-success: #22c55e;
 
   color-scheme: dark;
 }
@@ -77,6 +79,7 @@
     --linear-focus-color: lch(47.918% 59.303 288.421);
     --linear-focus-ring-color: #5e69d1;
     --linear-selection-bg: lch(61.399% 1.15 272 / 0.2);
+    --salto-success: #22c55e;
 
     color-scheme: dark;
   }
