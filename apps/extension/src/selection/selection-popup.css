@@ -25,7 +25,6 @@
 .salto-selection-trigger {
   position: fixed;
   border: 0;
-  border-radius: 999px;
   background: var(--salto-primary);
   color: var(--salto-primary-foreground);
   box-shadow: var(--salto-trigger-shadow);
@@ -60,7 +59,6 @@
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--salto-border);
-  border-radius: 8px;
   background: var(--salto-surface);
   color: var(--salto-foreground);
   box-shadow: var(--salto-panel-shadow);
@@ -92,7 +90,6 @@
   left: 50%;
   width: 34px;
   height: 4px;
-  border-radius: 2px;
   background: var(--salto-border);
   transform: translate(-50%, -50%);
 }

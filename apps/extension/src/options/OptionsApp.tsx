@@ -145,7 +145,6 @@ export function OptionsApp() {
 
               <Separator />
               <SettingsActions
-                onReset={resetSettings}
                 onSave={save}
                 saveStatus={saveStatus}
               />

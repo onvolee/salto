@@ -6,6 +6,10 @@ import { HugeiconsIcon } from "@hugeicons/react";
 
 import { useThemeMode } from "salto-src/theme/use-theme-mode";
 
+if (import.meta.env.DEV) {
+  import("react-grab");
+}
+
 import "./style.css";
 
 function PopupApp() {
