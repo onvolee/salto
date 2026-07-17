@@ -5,6 +5,7 @@ import type {
 } from "./llm/types";
 import type { PromptContext, QueryFieldResult } from "./query-template/types";
 import type { SaveVocabularyInput, SaveVocabularyResult } from "./vocabulary/ports";
+import type { SelectionPath } from "./vocabulary/types";
 
 export type TranslateSelectionRequest = {
   readonly type: "translate-selection";
@@ -93,7 +94,13 @@ export type ExtensionSuccessResponse =
   | {
       readonly ok: true;
       readonly type: "list-highlight-terms";
-      readonly data: { readonly terms: readonly string[] };
+      readonly data: {
+        readonly terms: readonly string[];
+        readonly paths: readonly {
+          readonly term: string;
+          readonly path: SelectionPath;
+        }[];
+      };
     }
   | {
       readonly ok: true;

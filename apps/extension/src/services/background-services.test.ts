@@ -37,7 +37,7 @@ function createServices() {
     save: vi.fn().mockResolvedValue({ status: "saved", vocabularyItemId: "item-1" })
   };
   const enrichmentQueue = { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() };
-  const highlightTerms = { list: vi.fn().mockResolvedValue(["unfamiliar"]) };
+  const highlightTerms = { list: vi.fn().mockResolvedValue({ terms: ["unfamiliar"], paths: [] }) };
   const settings = {
     ensureDefaults: vi.fn(),
     getActive: vi.fn().mockResolvedValue({
@@ -229,7 +229,7 @@ describe("background message boundary", () => {
     await expect(services.handleMessage({ type: "list-highlight-terms" })).resolves.toEqual({
       ok: true,
       type: "list-highlight-terms",
-      data: { terms: ["unfamiliar"] }
+      data: { terms: ["unfamiliar"], paths: [] }
     });
     expect(saveVocabulary.save).toHaveBeenCalledWith(savePayload);
   });
@@ -249,7 +249,7 @@ describe("background message boundary", () => {
     await expect(services.handleMessage({ type: "list-highlight-terms" })).resolves.toEqual({
       ok: true,
       type: "list-highlight-terms",
-      data: { terms: [] }
+      data: { terms: [], paths: [] }
     });
   });
 

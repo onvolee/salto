@@ -152,7 +152,10 @@ describe("local repositories", () => {
     const reopened = createTestRepositories(databaseName);
     await reopened.repositories.settings.ensureDefaults();
 
-    expect(await reopened.repositories.highlightTerms.list()).toEqual(["Unfamiliar"]);
+    expect(await reopened.repositories.highlightTerms.list()).toEqual({
+      terms: ["Unfamiliar"],
+      paths: []
+    });
     expect((await reopened.repositories.settings.getActive()).template.name).toBe("Default");
   });
 
@@ -187,7 +190,10 @@ describe("local repositories", () => {
     const upgraded = createTestRepositories(databaseName);
     await upgraded.repositories.settings.ensureDefaults();
 
-    expect(await upgraded.repositories.highlightTerms.list()).toEqual(["Legacy"]);
+    expect(await upgraded.repositories.highlightTerms.list()).toEqual({
+      terms: ["Legacy"],
+      paths: []
+    });
     expect(await upgraded.database.queryTemplates.count()).toBe(1);
     expect(await upgraded.database.settings.count()).toBe(1);
     expect(await upgraded.database.table("learningCards").get("legacy-card")).toEqual(

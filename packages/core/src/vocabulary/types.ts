@@ -63,6 +63,12 @@ export type VocabularyField = {
   [K in VocabularyFieldKey]: VocabularyFieldFor<K>;
 }[VocabularyFieldKey];
 
+export type SelectionPath = {
+  readonly xpath: string;
+  readonly startOffset: number;
+  readonly endOffset: number;
+};
+
 export interface VocabularyContext {
   readonly id: ClientGeneratedId;
   readonly vocabularyItemId: ClientGeneratedId;
@@ -70,6 +76,7 @@ export interface VocabularyContext {
   readonly paragraphs: string;
   readonly pageTitle: string;
   readonly pageUrl: string;
+  readonly selectionPath?: SelectionPath;
   readonly savedAt: IsoDateTimeString;
   readonly sync: SyncMetadata;
 }

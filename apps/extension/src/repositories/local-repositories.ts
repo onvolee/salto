@@ -40,7 +40,17 @@ export interface SettingsRepository {
 }
 
 export interface HighlightTermRepository {
-  list(): Promise<readonly string[]>;
+  list(): Promise<{
+    readonly terms: readonly string[];
+    readonly paths: readonly {
+      readonly term: string;
+      readonly path: {
+        readonly xpath: string;
+        readonly startOffset: number;
+        readonly endOffset: number;
+      };
+    }[];
+  }>;
 }
 
 export interface LlmSettingsRepository {
@@ -319,6 +329,7 @@ class DexieSaveVocabularyService implements SaveVocabularyService {
             paragraphs: normalizeVocabularyText(input.context.paragraphs),
             pageTitle: normalizeVocabularyText(input.context.pageTitle),
             pageUrl,
+            selectionPath: input.context.selectionPath,
             savedAt: timestamp,
             sync: createSyncMetadata(timestamp)
           };
@@ -434,9 +445,31 @@ export function createLocalRepositories(
     saveVocabulary: new DexieSaveVocabularyService(database, dependencies),
     highlightTerms: {
       async list() {
-        return (await database.vocabularyItems.orderBy("sync.updatedAt").toArray()).map(
-          ({ term }) => term
-        );
+        const items = await database.vocabularyItems.orderBy("sync.updatedAt").toArray();
+        const terms = items.map(({ term }) => term);
+        const paths: { term: string; path: { xpath: string; startOffset: number; endOffset: number } }[] = [];
+
+        for (const item of items) {
+          const contexts = await database.vocabularyContexts
+            .where("vocabularyItemId")
+            .equals(item.id)
+            .toArray();
+
+          for (const context of contexts) {
+            if (context.selectionPath) {
+              paths.push({
+                term: item.term,
+                path: {
+                  xpath: context.selectionPath.xpath,
+                  startOffset: context.selectionPath.startOffset,
+                  endOffset: context.selectionPath.endOffset
+                }
+              });
+            }
+          }
+        }
+
+        return { terms, paths };
       }
     }
   };

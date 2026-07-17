@@ -33,7 +33,7 @@ export default defineContentScript({
     ui.mount();
     void browserMessageClient.send({ type: "list-highlight-terms" }).then((highlightResponse) => {
       if (highlightResponse.ok && highlightResponse.type === "list-highlight-terms") {
-        highlightSavedTerms(document, highlightResponse.data.terms);
+        highlightSavedTerms(document, highlightResponse.data.paths);
       }
     }).catch(() => {
       // The selection UI remains available if persisted highlights cannot be read.

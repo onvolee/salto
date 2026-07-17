@@ -7,7 +7,7 @@ export interface SaveVocabularyInput {
   readonly language: "en";
   readonly context: Pick<
     VocabularyContext,
-    "sentence" | "paragraphs" | "pageTitle" | "pageUrl"
+    "sentence" | "paragraphs" | "pageTitle" | "pageUrl" | "selectionPath"
   >;
 }
 
