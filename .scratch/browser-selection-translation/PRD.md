@@ -245,11 +245,10 @@ Public configuration and the API-key secret are stored and read separately. The
 options UI can replace a saved key but cannot read it back. Content scripts never
 receive, cache, display, or log the key.
 
-The manifest declares `https://*/*` and the loopback HTTP patterns needed for
+The manifest declares `https://*/*` and `http://*/*` as optional capabilities for
 dynamically discovered API hosts under `optional_host_permissions` rather than
-required `host_permissions`. HTTPS origins are allowed. Plain HTTP is accepted only for loopback development origins
-(`localhost`, `127.0.0.1`, and `[::1]`). URLs containing credentials or a scheme
-other than HTTP(S) are rejected.
+required `host_permissions`. HTTPS and HTTP origins are allowed. URLs containing
+credentials or a scheme other than HTTP(S) are rejected.
 
 When the user clicks Save configuration or Test connection, the options page:
 

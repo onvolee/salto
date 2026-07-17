@@ -4,6 +4,9 @@ import {
   createDefaultQueryTemplate,
   normalizeVocabularyText,
   type ExtensionSettings,
+  type LlmConfigState,
+  type LlmPublicConfig,
+  type LlmSecret,
   type QueryTemplate,
   type SaveVocabularyInput,
   type SaveVocabularyResult,
@@ -32,10 +35,20 @@ export interface HighlightTermRepository {
   list(): Promise<readonly string[]>;
 }
 
+export interface LlmSettingsRepository {
+  getPublicState(): Promise<LlmConfigState>;
+  getCredentials(): Promise<{
+    readonly config: LlmPublicConfig;
+    readonly secret: LlmSecret;
+  } | null>;
+  save(config: LlmPublicConfig, secret?: LlmSecret): Promise<void>;
+}
+
 export type LocalRepositories = {
   readonly vocabulary: VocabularyRepository;
   readonly settings: SettingsRepository;
   readonly highlightTerms: HighlightTermRepository;
+  readonly llmSettings: LlmSettingsRepository;
 };
 
 function createSyncMetadata(timestamp: string): SyncMetadata {
@@ -209,6 +222,52 @@ class DexieSettingsRepository implements SettingsRepository {
   }
 }
 
+class DexieLlmSettingsRepository implements LlmSettingsRepository {
+  constructor(private readonly database: SaltoDatabase) {}
+
+  async getPublicState(): Promise<LlmConfigState> {
+    const [storedConfig, storedSecret] = await Promise.all([
+      this.database.llmConfigs.get("active"),
+      this.database.llmSecrets.get("active"),
+    ]);
+    if (!storedConfig) {
+      return { hasApiKey: false };
+    }
+    const { id: _id, ...config } = storedConfig;
+    return { config, hasApiKey: Boolean(storedSecret?.apiKey) };
+  }
+
+  async getCredentials() {
+    const [storedConfig, storedSecret] = await Promise.all([
+      this.database.llmConfigs.get("active"),
+      this.database.llmSecrets.get("active"),
+    ]);
+    if (!storedConfig || !storedSecret?.apiKey) {
+      return null;
+    }
+    const { id: _configId, ...config } = storedConfig;
+    const { id: _secretId, ...secret } = storedSecret;
+    return { config, secret };
+  }
+
+  async save(config: LlmPublicConfig, secret?: LlmSecret): Promise<void> {
+    await this.database.transaction(
+      "rw",
+      [this.database.llmConfigs, this.database.llmSecrets],
+      async () => {
+        const existingSecret = await this.database.llmSecrets.get("active");
+        if (!secret?.apiKey && !existingSecret?.apiKey) {
+          throw new Error("An API key is required for the first LLM configuration");
+        }
+        await this.database.llmConfigs.put({ id: "active", ...config });
+        if (secret?.apiKey) {
+          await this.database.llmSecrets.put({ id: "active", apiKey: secret.apiKey });
+        }
+      },
+    );
+  }
+}
+
 function stripSettingsId({ id: _id, ...settings }: StoredExtensionSettings): ExtensionSettings {
   return settings;
 }
@@ -220,6 +279,7 @@ export function createLocalRepositories(
   return {
     vocabulary: new DexieVocabularyRepository(database, dependencies),
     settings: new DexieSettingsRepository(database, dependencies),
+    llmSettings: new DexieLlmSettingsRepository(database),
     highlightTerms: {
       async list() {
         return (await database.vocabularyItems.orderBy("sync.updatedAt").toArray()).map(({ term }) => term);

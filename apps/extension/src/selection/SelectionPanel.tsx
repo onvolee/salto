@@ -1,4 +1,8 @@
-import { Bookmark01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
+import {
+  Bookmark01Icon,
+  Cancel01Icon,
+  RefreshIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, type PointerEvent, type RefObject } from "react";
 
@@ -21,6 +25,7 @@ export type SelectionPanelProps = {
   translation: TranslationState;
   onClose: () => void;
   onPositionChange: (position: Point) => void;
+  onRegenerate: () => void;
   onSave: () => void;
 };
 
@@ -42,6 +47,7 @@ export function SelectionPanel({
   translation,
   onClose,
   onPositionChange,
+  onRegenerate,
   onSave,
 }: SelectionPanelProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -117,6 +123,17 @@ export function SelectionPanel({
       >
         <span aria-hidden="true" className="salto-selection-panel__grip" />
         <div className="salto-selection-panel__actions">
+          <Button
+            aria-label="Regenerate translation"
+            onClick={onRegenerate}
+            onPointerDown={preserveSelection}
+            size="icon"
+            title="Regenerate translation"
+            type="button"
+            variant="ghost"
+          >
+            <HugeiconsIcon icon={RefreshIcon} size={16} strokeWidth={1.8} />
+          </Button>
           <Button
             aria-label={saveLabel}
             disabled={saveState === "saving" || saveState === "saved"}

@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { CheckmarkCircle02Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import {
@@ -7,7 +6,7 @@ import {
   AlertDescription,
   AlertTitle,
 } from "salto-src/components/ui/alert";
-import { Button } from "salto-src/components/ui/button";
+import { Badge } from "salto-src/components/ui/badge";
 import {
   Field,
   FieldContent,
@@ -16,53 +15,35 @@ import {
   FieldTitle,
 } from "salto-src/components/ui/field";
 import { Separator } from "salto-src/components/ui/separator";
-import { Switch } from "salto-src/components/ui/switch";
-
 import { TRANSLATION_PROVIDERS } from "../data";
 
 type Provider = (typeof TRANSLATION_PROVIDERS)[number];
 
-function ProviderField({ provider }: { provider: Provider }) {
-  const [enabled, setEnabled] = useState(provider.enabled);
-  const [tested, setTested] = useState(false);
-  const labelId = `${provider.id}-label`;
-
+function ProviderField({
+  configured,
+  provider,
+}: {
+  configured: boolean;
+  provider: Provider;
+}) {
+  const isAiProvider = provider.id === "ai-translation";
   return (
     <Field
       className="min-h-16 items-start justify-between gap-4 py-4 first:pt-0 last:pb-0"
       orientation="responsive"
     >
       <FieldContent className="min-w-0">
-        <FieldTitle id={labelId}>{provider.name}</FieldTitle>
+        <FieldTitle>{provider.name}</FieldTitle>
         <FieldDescription>{provider.detail}</FieldDescription>
       </FieldContent>
-      <div className="flex w-full items-center justify-end gap-2 sm:max-w-72">
-        <Button
-          onClick={() => setTested(true)}
-          type="button"
-          variant="ghost"
-        >
-          {tested ? (
-            <HugeiconsIcon
-              aria-hidden="true"
-              data-icon="inline-start"
-              icon={CheckmarkCircle02Icon}
-              strokeWidth={2}
-            />
-          ) : null}
-          {tested ? "连接正常" : provider.testLabel}
-        </Button>
-        <Switch
-          aria-labelledby={labelId}
-          checked={enabled}
-          onCheckedChange={setEnabled}
-        />
-      </div>
+      <Badge className="shrink-0" variant={isAiProvider && configured ? "default" : "secondary"}>
+        {isAiProvider ? (configured ? "已配置" : "未配置") : "后续阶段"}
+      </Badge>
     </Field>
   );
 }
 
-export function SourcesSection() {
+export function SourcesSection({ aiConfigured }: { aiConfigured: boolean }) {
   return (
     <section
       aria-label="翻译源设置"
@@ -73,7 +54,7 @@ export function SourcesSection() {
         {TRANSLATION_PROVIDERS.map((provider, index) => (
           <div className="contents" key={provider.id}>
             {index > 0 ? <Separator /> : null}
-            <ProviderField provider={provider} />
+            <ProviderField configured={aiConfigured} provider={provider} />
           </div>
         ))}
       </FieldGroup>

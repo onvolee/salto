@@ -1,5 +1,7 @@
 export * from "./dictionary/types";
 export * from "./learning/types";
+export * from "./llm/config";
+export * from "./llm/prompt";
 export * from "./llm/types";
 export * from "./messages";
 export * from "./query-template/types";

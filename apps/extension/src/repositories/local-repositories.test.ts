@@ -147,4 +147,53 @@ describe("local repositories", () => {
       expect.objectContaining({ vocabularyItemId: "legacy-item" })
     );
   });
+
+  it("stores public LLM configuration separately from its write-only secret", async () => {
+    const { database, repositories } = createTestRepositories("llm-settings-test");
+    const config = {
+      provider: "openai-compatible" as const,
+      baseUrl: "https://api.example.com/v1",
+      model: "model-a",
+      temperature: 0.3,
+    };
+
+    await repositories.llmSettings.save(config, { apiKey: "secret-a" });
+
+    expect(await repositories.llmSettings.getPublicState()).toEqual({
+      config,
+      hasApiKey: true,
+    });
+    expect(await database.llmConfigs.toArray()).toEqual([
+      { id: "active", ...config },
+    ]);
+    expect(await database.llmSecrets.toArray()).toEqual([
+      { id: "active", apiKey: "secret-a" },
+    ]);
+  });
+
+  it("keeps the existing LLM secret when public configuration changes", async () => {
+    const databaseName = "llm-settings-reopen-test";
+    const first = createTestRepositories(databaseName);
+    await first.repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "model-a",
+    }, { apiKey: "secret-a" });
+    await first.repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "model-b",
+    });
+    first.database.close();
+
+    const reopened = createTestRepositories(databaseName);
+    expect(await reopened.repositories.llmSettings.getCredentials()).toEqual({
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://api.example.com/v1",
+        model: "model-b",
+      },
+      secret: { apiKey: "secret-a" },
+    });
+  });
 });

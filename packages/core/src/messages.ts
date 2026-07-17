@@ -1,9 +1,22 @@
+import type {
+  LlmConfigState,
+  LlmOptionsState,
+  LlmPublicConfig,
+} from "./llm/types";
 import type { PromptContext, QueryFieldResult } from "./query-template/types";
 import type { SaveVocabularyInput, SaveVocabularyResult } from "./vocabulary/ports";
 
 export type TranslateSelectionRequest = {
   readonly type: "translate-selection";
-  readonly payload: { readonly context: PromptContext };
+  readonly payload: {
+    readonly requestId: string;
+    readonly context: PromptContext;
+  };
+};
+
+export type CancelTranslationRequest = {
+  readonly type: "cancel-translation";
+  readonly payload: { readonly requestId: string };
 };
 
 export type SaveVocabularyRequest = {
@@ -15,10 +28,30 @@ export type ListHighlightTermsRequest = {
   readonly type: "list-highlight-terms";
 };
 
+export type GetLlmConfigRequest = {
+  readonly type: "get-llm-config";
+};
+
+export type SaveLlmConfigRequest = {
+  readonly type: "save-llm-config";
+  readonly payload: {
+    readonly config: LlmPublicConfig;
+    readonly apiKey?: string;
+  };
+};
+
+export type TestLlmConnectionRequest = {
+  readonly type: "test-llm-connection";
+};
+
 export type ExtensionRequest =
   | TranslateSelectionRequest
+  | CancelTranslationRequest
   | SaveVocabularyRequest
-  | ListHighlightTermsRequest;
+  | ListHighlightTermsRequest
+  | GetLlmConfigRequest
+  | SaveLlmConfigRequest
+  | TestLlmConnectionRequest;
 
 export type ExtensionSuccessResponse =
   | {
@@ -36,12 +69,48 @@ export type ExtensionSuccessResponse =
       readonly ok: true;
       readonly type: "list-highlight-terms";
       readonly data: { readonly terms: readonly string[] };
+    }
+  | {
+      readonly ok: true;
+      readonly type: "cancel-translation";
+      readonly data: { readonly cancelled: boolean };
+    }
+  | {
+      readonly ok: true;
+      readonly type: "get-llm-config";
+      readonly data: LlmOptionsState;
+    }
+  | {
+      readonly ok: true;
+      readonly type: "save-llm-config";
+      readonly data: LlmConfigState;
+    }
+  | {
+      readonly ok: true;
+      readonly type: "test-llm-connection";
+      readonly data: { readonly connected: true };
     };
+
+export type ExtensionErrorCode =
+  | "authentication"
+  | "configuration-invalid"
+  | "forbidden"
+  | "invalid-payload"
+  | "invalid-response"
+  | "model-not-found"
+  | "network"
+  | "not-configured"
+  | "permission-denied"
+  | "provider"
+  | "rate-limit"
+  | "request-failed"
+  | "timeout"
+  | "unknown-message";
 
 export type ExtensionErrorResponse = {
   readonly ok: false;
   readonly error: {
-    readonly code: "unknown-message" | "invalid-payload" | "request-failed";
+    readonly code: ExtensionErrorCode;
     readonly message: string;
   };
 };

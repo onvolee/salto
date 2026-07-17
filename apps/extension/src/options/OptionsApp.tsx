@@ -32,11 +32,17 @@ export function OptionsApp() {
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("general");
   const {
+    connectionStatus,
+    llm,
+    llmError,
     loadState,
+    promptAnalysis,
     resetSettings,
     save,
     saveStatus,
     settings,
+    testConnection,
+    updateLlm,
     updateSetting,
   } = useOptionsSettings();
   const translationFields = useTranslationFields();
@@ -135,11 +141,17 @@ export function OptionsApp() {
                   {...translationFields}
                 />
               ) : null}
-              {activeSection === "sources" ? <SourcesSection /> : null}
+              {activeSection === "sources" ? (
+                <SourcesSection aiConfigured={llm.hasApiKey} />
+              ) : null}
               {activeSection === "ai-provider" ? (
                 <AiProviderSection
-                  settings={settings}
-                  updateSetting={updateSetting}
+                  connectionStatus={connectionStatus}
+                  llm={llm}
+                  llmError={llmError}
+                  promptAnalysis={promptAnalysis}
+                  testConnection={testConnection}
+                  updateLlm={updateLlm}
                 />
               ) : null}
 
