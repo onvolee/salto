@@ -16,4 +16,12 @@ export default defineConfig({
     permissions: ["storage"],
     host_permissions: ["<all_urls>"],
   },
+  hooks: {
+    "build:manifestGenerated": (_wxt, manifest) => {
+      manifest.options_ui = {
+        page: "setting.html",
+        open_in_tab: true,
+      };
+    },
+  },
 });

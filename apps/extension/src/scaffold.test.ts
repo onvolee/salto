@@ -6,11 +6,11 @@ import type { BackgroundServiceDependencies, QueryExecutor } from "./services/ba
 
 describe("@salto/extension scaffold", () => {
   it("declares the WXT entrypoints required by the MVP docs", () => {
-    expect(EXTENSION_ENTRYPOINTS).toEqual(["background", "content", "options"]);
+    expect(EXTENSION_ENTRYPOINTS).toEqual(["background", "content", "setting"]);
   });
 
   it("keeps background service dependencies behind repositories and query execution", () => {
-    expectTypeOf<ExtensionEntrypoint>().toEqualTypeOf<"background" | "content" | "options">();
+    expectTypeOf<ExtensionEntrypoint>().toEqualTypeOf<"background" | "content" | "setting">();
     expectTypeOf<BackgroundServiceDependencies>().toHaveProperty("repositories").toEqualTypeOf<LocalRepositories>();
     expectTypeOf<BackgroundServiceDependencies>().toHaveProperty("queryExecutor").toEqualTypeOf<QueryExecutor>();
   });

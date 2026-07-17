@@ -1,0 +1,139 @@
+import {
+  AiBrain01Icon,
+  CheckmarkCircle02Icon,
+  Configuration01Icon,
+  CursorMagicSelection02Icon,
+  Settings01Icon,
+  TranslateIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  SidebarSeparator,
+  useSidebar,
+} from "salto-src/components/ui/sidebar";
+import { Avatar, AvatarFallback } from "salto-src/components/ui/avatar";
+
+import { SETTINGS_SECTIONS, type SettingsSectionId } from "../types";
+
+const SECTION_ICONS = {
+  general: Configuration01Icon,
+  selection: CursorMagicSelection02Icon,
+  sources: TranslateIcon,
+  "ai-provider": AiBrain01Icon,
+};
+
+type SettingsSidebarProps = {
+  activeSection: SettingsSectionId;
+  onSectionChange: (section: SettingsSectionId) => void;
+};
+
+export function SettingsSidebar({
+  activeSection,
+  onSectionChange,
+}: SettingsSidebarProps) {
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  const selectSection = (section: SettingsSectionId) => {
+    onSectionChange(section);
+    if (isMobile) setOpenMobile(false);
+  };
+
+  return (
+    <Sidebar
+      collapsible="icon"
+      data-od-id="settings-sidebar"
+    >
+      <SidebarHeader className="p-3">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              render={<div data-od-id="salto-brand" />}
+              size="lg"
+            >
+              <span className="grid size-8 shrink-0 place-items-center rounded-md border bg-background">
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={Settings01Icon}
+                  strokeWidth={1.8}
+                />
+              </span>
+              <span className="grid min-w-0 flex-1 text-left leading-tight">
+                <strong className="truncate text-sm font-semibold">Salto</strong>
+                <span className="truncate text-xs text-sidebar-foreground/70">
+                  阅读辅助
+                </span>
+              </span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>设置</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu aria-label="设置分组">
+              {SETTINGS_SECTIONS.map((section) => {
+                const icon = SECTION_ICONS[section.id];
+
+                return (
+                  <SidebarMenuItem key={section.id}>
+                    <SidebarMenuButton
+                      aria-current={
+                        activeSection === section.id ? "page" : undefined
+                      }
+                      isActive={activeSection === section.id}
+                      onClick={() => selectSection(section.id)}
+                      tooltip={section.label}
+                      type="button"
+                    >
+                      <HugeiconsIcon
+                        aria-hidden="true"
+                        icon={icon}
+                        strokeWidth={2}
+                      />
+                      <span>{section.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarSeparator />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton render={<div />}>
+              <Avatar className="size-4">
+                <AvatarFallback className="bg-transparent">
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={CheckmarkCircle02Icon}
+                    strokeWidth={2}
+                  />
+                </AvatarFallback>
+              </Avatar>
+              <span>本地配置</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}

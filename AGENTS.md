@@ -14,6 +14,10 @@ The tracker uses the default five-label vocabulary: `needs-triage`, `needs-info`
 
 This repo uses a single-context domain layout with `CONTEXT.md` at the root and ADRs under `docs/adr/`. See `docs/agents/domain.md`.
 
+### OpenDesign prototype implementation
+
+Before coding, read and execute `.salto/workflow/opendesign-html-implementation.md` when a task asks you to implement, restore, migrate, reproduce, or integrate an OpenDesign-generated HTML prototype or artifact in the production repository. This applies to popup, options/settings, and page-mounted extension UI. Do not load the workflow when only generating/editing the standalone prototype, reviewing a design without implementation, or changing unrelated frontend code.
+
 ### Short cut keys
 Execute the command after triggering the key shortcut key.
 

@@ -1,0 +1,71 @@
+@import "@fontsource-variable/inter";
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "../../src/theme/linear-theme.css";
+
+@source "./main.tsx";
+@source "../../src/options/**/*.tsx";
+@source "../../src/components/ui/**/*.tsx";
+
+@theme inline {
+  --font-sans:
+    "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --color-background: var(--salto-background);
+  --color-foreground: var(--salto-foreground);
+  --color-card: var(--salto-surface);
+  --color-card-foreground: var(--salto-foreground);
+  --color-popover: var(--salto-surface);
+  --color-popover-foreground: var(--salto-foreground);
+  --color-primary: var(--salto-primary);
+  --color-primary-foreground: var(--salto-primary-foreground);
+  --color-secondary: var(--salto-surface-subtle);
+  --color-secondary-foreground: var(--salto-foreground);
+  --color-muted: var(--salto-muted);
+  --color-muted-foreground: var(--salto-muted-foreground);
+  --color-accent: var(--salto-muted);
+  --color-accent-foreground: var(--salto-foreground);
+  --color-destructive: var(--salto-destructive);
+  --color-border: var(--salto-border);
+  --color-input: var(--salto-border);
+  --color-ring: var(--salto-ring);
+  --color-sidebar: var(--salto-surface-subtle);
+  --color-sidebar-foreground: var(--salto-foreground);
+  --color-sidebar-primary: var(--salto-primary);
+  --color-sidebar-primary-foreground: var(--salto-primary-foreground);
+  --color-sidebar-accent: var(--salto-muted);
+  --color-sidebar-accent-foreground: var(--salto-foreground);
+  --color-sidebar-border: var(--salto-border);
+  --color-sidebar-ring: var(--salto-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+:root {
+  --radius: 0.5rem;
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    min-width: 100%;
+    min-height: 100%;
+  }
+
+  body {
+    @apply min-h-screen bg-background font-sans text-foreground antialiased;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+}
