@@ -7,6 +7,7 @@ export type SaltoSettings = {
   provider: "openai-compatible" | "browser-ai";
   apiBaseUrl: string;
   apiKey: string;
+  modelName: string;
   anonymousDiagnostics: boolean;
 };
 
@@ -19,6 +20,7 @@ export const DEFAULT_SETTINGS: SaltoSettings = {
   provider: "openai-compatible",
   apiBaseUrl: "https://api.openai.com/v1",
   apiKey: "",
+  modelName: "gpt-4o-mini",
   anonymousDiagnostics: false,
 };
 

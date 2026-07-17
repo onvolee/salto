@@ -26,7 +26,7 @@ function PopupApp() {
   }, [themeMode]);
 
   const openSettings = async () => {
-    await browser.runtime.openOptionsPage();
+    await browser.tabs.create({ url: browser.runtime.getURL("/setting.html") });
   };
 
   return (
