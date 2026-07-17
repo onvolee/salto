@@ -121,12 +121,13 @@ export function createEnrichmentQueue(dependencies: EnrichmentQueueDependencies)
     result: EnrichmentFieldResult,
     timestamp: IsoDateTimeString
   ): VocabularyField {
+    const changed = result.status !== field.status;
     const base = {
       id: field.id,
       vocabularyItemId: field.vocabularyItemId,
       key: field.key,
       source: field.source,
-      sync: bumpSyncMetadata(field.sync, timestamp)
+      sync: changed ? bumpSyncMetadata(field.sync, timestamp) : field.sync
     };
 
     if (result.status === "ready") {
