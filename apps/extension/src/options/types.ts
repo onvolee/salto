@@ -37,15 +37,6 @@ export type SaveStatus =
   | "saved"
   | "error";
 
-export type TranslationField = {
-  id: string;
-  label: string;
-  type: string;
-  source: string;
-  description: string;
-  enabled: boolean;
-};
-
 export type UpdateSetting = <K extends keyof SaltoSettings>(
   key: K,
   value: SaltoSettings[K],

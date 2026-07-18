@@ -4,6 +4,7 @@ import {
   DEFAULT_EXTENSION_SETTINGS,
   createDefaultQueryTemplate,
   canonicalizeEnglishTerm,
+  isValidQueryTemplate,
   MEANING_RECALL_CARD_TYPE,
   VOCABULARY_FIELD_KEYS,
   type DictionaryAdapter,
@@ -106,6 +107,27 @@ describe("@salto/core public contract", () => {
         }
       ]
     });
+  });
+
+  it("rejects incomplete query template fields and broken order sequences", () => {
+    const template = createDefaultQueryTemplate("2026-07-16T00:00:00.000Z");
+
+    expect(isValidQueryTemplate({
+      ...template,
+      fields: template.fields.map((field) => ({ ...field, order: field.order + 1 }))
+    })).toBe(false);
+    expect(isValidQueryTemplate({
+      ...template,
+      fields: [{ ...template.fields[0], label: "   " }, template.fields[1]]
+    })).toBe(false);
+    expect(isValidQueryTemplate({
+      ...template,
+      fields: [{ ...template.fields[0], instruction: "  " }, template.fields[1]]
+    })).toBe(false);
+    expect(isValidQueryTemplate({
+      ...template,
+      fields: template.fields.map((field) => ({ ...field, enabled: false }))
+    })).toBe(false);
   });
 
   it("canonicalizes English terms without rewriting punctuation", () => {

@@ -132,7 +132,9 @@ export function isValidQueryTemplate(value: unknown): value is QueryTemplate {
     }
   }
 
-  return value.fields.length > 0 && enabledFieldCount > 0;
+  return value.fields.length > 0
+    && enabledFieldCount > 0
+    && [...orders].every((order, index) => orders.has(index));
 }
 
 export function isValidQueryTemplateInput(value: unknown): value is QueryTemplateInput {
@@ -174,6 +176,7 @@ function isValidQuerySchemaField(value: unknown): value is QuerySchemaField {
   if (value.source === "llm") {
     return (value.type === "text" || value.type === "list")
       && typeof value.instruction === "string"
+      && value.instruction.trim().length > 0
       && !("dictionaryField" in value);
   }
 

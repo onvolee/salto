@@ -46,7 +46,7 @@ describe("OptionsApp", () => {
     localStorage.clear();
   });
 
-  it("switches sections and keeps locally edited translation fields", async () => {
+  it("switches sections and protects the system template from field edits", async () => {
     localStorage.setItem(
       SETTINGS_STORAGE_KEY,
       JSON.stringify(DEFAULT_SETTINGS),
@@ -68,12 +68,12 @@ describe("OptionsApp", () => {
     const selectionMenu = screen.getByRole("button", { name: "划词翻译" });
     await user.click(selectionMenu);
     expect(selectionMenu).toHaveAttribute("aria-current", "page");
-    await user.click(screen.getByRole("button", { name: "添加字段" }));
-    expect(screen.getByText("新字段")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加字段" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "复制" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "通用" }));
     await user.click(screen.getByRole("button", { name: "划词翻译" }));
-    expect(screen.getByText("新字段")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加字段" })).toBeDisabled();
   });
 
   it("previews and persists a changed theme", async () => {
