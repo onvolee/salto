@@ -36,6 +36,23 @@ function createClient(template: QueryTemplate): ExtensionMessageClient & {
     if (request.type === "update-query-template") {
       return { ok: true, type: request.type, data: request.payload.template };
     }
+    if (request.type === "copy-query-template") {
+      return {
+        ok: true,
+        type: request.type,
+        data: { ...template, id: "copied-template", name: "Reading copy" },
+      };
+    }
+    if (request.type === "delete-query-template") {
+      return {
+        ok: true,
+        type: request.type,
+        data: {
+          deletedTemplateId: request.payload.templateId,
+          activeQueryTemplateId: "system-default",
+        },
+      };
+    }
     return { ok: false, error: { code: "unknown-message", message: "unsupported" } };
   });
   return { send };
@@ -116,5 +133,28 @@ describe("useQueryTemplates", () => {
         }),
       }),
     }));
+  });
+
+  it("keeps the settings draft aligned when copy or delete changes the selected template", async () => {
+    const template = createTemplate();
+    const client = createClient(template);
+    const onActiveTemplateChange = vi.fn();
+    const onTemplateDeleted = vi.fn();
+    const { result } = renderHook(() => useQueryTemplates({
+      client,
+      confirm: () => true,
+      onActiveTemplateChange,
+      onTemplateDeleted,
+    }));
+    await waitFor(() => expect(result.current.selectedTemplateId).toBe(template.id));
+
+    await act(() => result.current.copyTemplate(template.id));
+    expect(onActiveTemplateChange).toHaveBeenCalledWith("copied-template");
+
+    await act(() => result.current.deleteTemplate("copied-template"));
+    expect(onTemplateDeleted).toHaveBeenCalledWith(
+      "copied-template",
+      "system-default",
+    );
   });
 });

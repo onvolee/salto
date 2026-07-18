@@ -158,7 +158,8 @@ describe("local repositories", () => {
       activeQueryTemplateId: "missing",
       targetLanguage: "zh-CN",
       highlightEnabled: true,
-      themeMode: "system"
+      themeMode: "system",
+      activeDictionaryProvider: "youdao-web"
     })).rejects.toMatchObject({ code: "template-not-found" });
   });
 
@@ -191,20 +192,52 @@ describe("local repositories", () => {
       targetLanguage: "ja-JP",
       highlightEnabled: false,
       themeMode: "dark",
-      activeDictionaryProvider: "youdao-web",
-      extraSetting: "preserve"
+      activeDictionaryProvider: "youdao-web"
+    });
+    await first.database.settings.update("extension", {
+      extraSetting: "internal-only"
     } as never);
     first.database.close();
 
     const reopened = createTestRepositories(databaseName);
     expect(await reopened.repositories.templates.get(template.id)).toEqual(template);
-    expect(await reopened.repositories.settings.get()).toEqual(expect.objectContaining({
+    expect(await reopened.repositories.settings.get()).toEqual({
       activeQueryTemplateId: template.id,
       targetLanguage: "ja-JP",
       highlightEnabled: false,
       themeMode: "dark",
       activeDictionaryProvider: "youdao-web",
-      extraSetting: "preserve"
+    });
+  });
+
+  it("repairs malformed settings field by field without leaking stored shapes or touching vocabulary", async () => {
+    const { database, repositories } = createTestRepositories("settings-recovery-test");
+    await database.vocabularyItems.add({
+      id: "kept-item",
+      canonicalKey: "en:kept",
+      term: "Kept",
+      language: "en",
+      sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
+    });
+    await database.settings.put({
+      id: "extension",
+      activeQueryTemplateId: 42,
+      targetLanguage: null,
+      highlightEnabled: "yes",
+      themeMode: "sepia",
+      activeDictionaryProvider: "missing-adapter",
+      internalTimestamp: clock()
+    } as never);
+
+    await expect(repositories.settings.get()).resolves.toEqual({
+      activeQueryTemplateId: "system-default",
+      targetLanguage: "zh-CN",
+      highlightEnabled: true,
+      themeMode: "system",
+      activeDictionaryProvider: "youdao-web"
+    });
+    expect(await database.vocabularyItems.get("kept-item")).toEqual(expect.objectContaining({
+      term: "Kept"
     }));
   });
 
@@ -539,4 +572,72 @@ describe("local repositories", () => {
       secret: { apiKey: "secret-a" },
     });
   });
+
+  it("quarantines a malformed public LLM config without deleting the write-only secret", async () => {
+    const { database, repositories } = createTestRepositories("llm-settings-recovery-test");
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "model-a",
+    }, { apiKey: "secret-a" });
+    await database.llmConfigs.put({
+      id: "active",
+      provider: "unknown-provider",
+      baseUrl: "not a URL",
+      model: "",
+      temperature: 99,
+    } as never);
+
+    await expect(repositories.llmSettings.getPublicState()).resolves.toEqual({
+      hasApiKey: true,
+    });
+    await expect(repositories.llmSettings.getCredentials()).resolves.toBeNull();
+    expect(await database.llmSecrets.get("active")).toEqual({
+      id: "active",
+      apiKey: "secret-a",
+    });
+
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://replacement.example/v1",
+      model: "model-b",
+    });
+    await expect(repositories.llmSettings.getCredentials()).resolves.toEqual({
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://replacement.example/v1",
+        model: "model-b",
+      },
+      secret: { apiKey: "secret-a" },
+    });
+  });
+
+  it.each(["   ", 42])(
+    "treats malformed LLM secret %j as not configured without deleting it",
+    async (apiKey) => {
+      const { database, repositories } = createTestRepositories(`llm-secret-recovery-${String(apiKey)}`);
+      await repositories.llmSettings.save({
+        provider: "openai-compatible",
+        baseUrl: "https://api.example.com/v1",
+        model: "model-a",
+      }, { apiKey: "secret-a" });
+      await database.llmSecrets.put({ id: "active", apiKey } as never);
+
+      await expect(repositories.llmSettings.getPublicState()).resolves.toEqual({
+        config: {
+          provider: "openai-compatible",
+          baseUrl: "https://api.example.com/v1",
+          model: "model-a",
+        },
+        hasApiKey: false,
+      });
+      await expect(repositories.llmSettings.getCredentials()).resolves.toBeNull();
+      expect(await database.llmSecrets.get("active")).toEqual({ id: "active", apiKey });
+      await expect(repositories.llmSettings.save({
+        provider: "openai-compatible",
+        baseUrl: "https://replacement.example/v1",
+        model: "model-b",
+      })).rejects.toThrow("API key is required");
+    },
+  );
 });

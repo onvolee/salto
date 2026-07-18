@@ -12,7 +12,10 @@ import type {
   VocabularyItem
 } from "@salto/core";
 
-export type StoredExtensionSettings = ExtensionSettings & { readonly id: "extension" };
+export type StoredExtensionSettings = ExtensionSettings & {
+  readonly id: "extension";
+  readonly legacySettingsMigrationCompleted?: true;
+};
 export type StoredLlmConfig = LlmPublicConfig & { readonly id: "active" };
 export type StoredLlmSecret = LlmSecret & { readonly id: "active" };
 

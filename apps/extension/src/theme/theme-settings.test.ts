@@ -1,45 +1,79 @@
-// @vitest-environment happy-dom
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_SETTINGS,
   loadSettings,
-  SETTINGS_STORAGE_KEY,
+  saveSettings,
+  subscribeToSettings,
 } from "./theme-settings";
 
-describe("theme settings", () => {
+type RuntimeListener = (message: unknown) => void;
+
+function stubRuntime() {
+  const listeners = new Set<RuntimeListener>();
+  const sendMessage = vi.fn(async (request: { readonly type: string; readonly payload?: unknown }) => {
+    if (request.type === "get-extension-settings") {
+      return {
+        ok: true,
+        type: request.type,
+        data: { ...DEFAULT_SETTINGS, themeMode: "dark" },
+      };
+    }
+    if (request.type === "save-extension-settings") {
+      return { ok: true, type: request.type, data: request.payload };
+    }
+    return { ok: false, error: { code: "unknown-message", message: "Unknown" } };
+  });
+  const addListener = vi.fn((listener: RuntimeListener) => listeners.add(listener));
+  const removeListener = vi.fn((listener: RuntimeListener) => listeners.delete(listener));
+  vi.stubGlobal("browser", {
+    runtime: {
+      sendMessage,
+      onMessage: { addListener, removeListener },
+    },
+  });
+  return { addListener, listeners, removeListener, sendMessage };
+}
+
+describe("extension settings client", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("follows the system theme when no preference has been saved", () => {
-    expect(DEFAULT_SETTINGS.themeMode).toBe("system");
+  it("loads and saves only through typed background messages", async () => {
+    const runtime = stubRuntime();
+    const saved = { ...DEFAULT_SETTINGS, targetLanguage: "en-US", themeMode: "light" as const };
+
+    await expect(loadSettings()).resolves.toEqual({ ...DEFAULT_SETTINGS, themeMode: "dark" });
+    await expect(saveSettings(saved)).resolves.toEqual(saved);
+
+    expect(runtime.sendMessage).toHaveBeenNthCalledWith(1, { type: "get-extension-settings" });
+    expect(runtime.sendMessage).toHaveBeenNthCalledWith(2, {
+      type: "save-extension-settings",
+      payload: saved,
+    });
   });
 
-  it("scrubs legacy API credentials from UI preference storage", async () => {
-    const set = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("chrome", {
-      storage: {
-        local: {
-          get: vi.fn().mockResolvedValue({
-            [SETTINGS_STORAGE_KEY]: {
-              ...DEFAULT_SETTINGS,
-              apiBaseUrl: "https://legacy.example/v1",
-              apiKey: "legacy-secret",
-              modelName: "legacy-model",
-              provider: "openai-compatible",
-            },
-          }),
-          set,
-        },
-      },
-    });
+  it("subscribes to valid public change notifications and removes the same listener", () => {
+    const runtime = stubRuntime();
+    const onChange = vi.fn();
+    const unsubscribe = subscribeToSettings(onChange);
+    const next = { ...DEFAULT_SETTINGS, highlightEnabled: false };
 
-    const settings = await loadSettings();
+    for (const listener of runtime.listeners) {
+      listener({ type: "extension-settings-changed", payload: next });
+      listener({ type: "extension-settings-changed", payload: { ...next, apiKey: "secret" } });
+      listener({
+        type: "extension-settings-changed",
+        payload: { ...next, legacySettingsMigrationCompleted: true },
+      });
+      listener({ type: "other-event", payload: next });
+    }
 
-    expect(settings).toEqual(DEFAULT_SETTINGS);
-    expect(JSON.stringify(settings)).not.toContain("legacy-secret");
-    expect(set).toHaveBeenCalledWith({ [SETTINGS_STORAGE_KEY]: DEFAULT_SETTINGS });
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(next);
+    unsubscribe();
+    expect(runtime.removeListener).toHaveBeenCalledWith(runtime.addListener.mock.calls[0][0]);
+    expect(runtime.listeners.size).toBe(0);
   });
 });

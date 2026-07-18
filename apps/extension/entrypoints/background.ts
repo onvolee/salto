@@ -7,6 +7,10 @@ import { createOpenAiCompatibleQueryExecutor } from "salto-src/llm/openai-compat
 import { createLocalRepositories } from "salto-src/repositories";
 import { createBackgroundServices } from "salto-src/services/background-services";
 import { createRuntimeMessageListener } from "salto-src/services/runtime-listener";
+import {
+  migrateLegacySettings,
+} from "salto-src/settings/legacy-settings-migration";
+import { createSettingsNotificationPublisher } from "salto-src/settings/settings-notifications";
 import { normalizeLlmPublicConfig } from "@salto/core";
 
 function createId(): string {
@@ -28,6 +32,26 @@ export default defineBackground(() => {
   const repositories = createLocalRepositories(database, {
     clock: () => new Date().toISOString(),
     createId
+  });
+  let settingsReady: Promise<void> | undefined;
+  const prepareSettings = () => {
+    settingsReady ??= migrateLegacySettings(repositories.settings, {
+      async get(key) {
+        return browser.storage.local.get(key) as Promise<Record<string, unknown>>;
+      },
+      async remove(key) {
+        await browser.storage.local.remove(key);
+      },
+    }).then(() => undefined).catch((error: unknown) => {
+      settingsReady = undefined;
+      throw error;
+    });
+    return settingsReady;
+  };
+  const notifySettingsChanged = createSettingsNotificationPublisher({
+    queryTabs: () => browser.tabs.query({}),
+    sendRuntime: (notification) => browser.runtime.sendMessage(notification),
+    sendTab: (tabId, notification) => browser.tabs.sendMessage(tabId, notification),
   });
   const hasOriginPermission = (permissionOrigin: string) => {
     return browser.permissions.contains({ origins: [permissionOrigin] });
@@ -70,6 +94,8 @@ export default defineBackground(() => {
     enrichmentQueue,
     queryExecutor,
     hasOriginPermission,
+    prepareSettings,
+    notifySettingsChanged,
     async testLlmConnection() {
       const credentials = await repositories.llmSettings.getCredentials();
       if (!credentials) {
@@ -94,7 +120,7 @@ export default defineBackground(() => {
     browser.runtime.getURL(""),
   ));
   browser.runtime.onInstalled.addListener(() => {
-    void repositories.settings.ensureDefaults();
+    void prepareSettings().catch(() => {});
   });
   browser.runtime.onStartup.addListener(() => {
     void enrichmentQueue.recover().then(() => enrichmentQueue.wake());
@@ -105,5 +131,6 @@ export default defineBackground(() => {
     }
   });
 
+  void prepareSettings().catch(() => {});
   void enrichmentQueue.recover().then(() => enrichmentQueue.wake());
 });

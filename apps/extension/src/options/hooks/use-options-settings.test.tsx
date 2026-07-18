@@ -60,16 +60,18 @@ describe("useOptionsSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     loadSettingsMock.mockResolvedValue({ ...DEFAULT_SETTINGS, themeMode: "dark" });
-    saveSettingsMock.mockResolvedValue();
+    saveSettingsMock.mockImplementation(async (settings) => settings);
   });
 
   it("loads public LLM state without exposing the saved API key", async () => {
     const clients = createClients();
     const { result } = renderHook(() => useOptionsSettings(clients));
 
-    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    await waitFor(() => {
+      expect(result.current.loadState).toBe("ready");
+      expect(result.current.settings.themeMode).toBe("dark");
+    });
 
-    expect(result.current.settings.themeMode).toBe("dark");
     expect(result.current.llm).toEqual({
       baseUrl: "https://old.example/v1",
       model: "model-a",
@@ -77,6 +79,26 @@ describe("useOptionsSettings", () => {
       apiKey: "",
       hasApiKey: true,
     });
+    expect(clients.permissionClient.request).not.toHaveBeenCalled();
+  });
+
+  it("keeps the active template in the page draft until the global save", async () => {
+    const clients = createClients();
+    const { result } = renderHook(() => useOptionsSettings(clients));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    act(() => result.current.updateSetting("activeQueryTemplateId", "reading-template"));
+
+    expect(result.current.saveStatus).toBe("dirty");
+    expect(saveSettingsMock).not.toHaveBeenCalled();
+
+    await act(() => result.current.save());
+
+    expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({
+      activeQueryTemplateId: "reading-template",
+      activeDictionaryProvider: "youdao-web",
+    }));
+    expect(result.current.saveStatus).toBe("saved");
   });
 
   it("requests the exact origin before saving normalized configuration", async () => {
@@ -121,6 +143,47 @@ describe("useOptionsSettings", () => {
       status: "error",
       message: "未授予服务地址访问权限",
     });
+
+    vi.mocked(clients.permissionClient.request).mockResolvedValue(true);
+    await act(() => result.current.testConnection());
+
+    expect(clients.llmClient.saveConfig).toHaveBeenCalledOnce();
+    expect(clients.llmClient.testConnection).toHaveBeenCalledOnce();
+    expect(result.current.connectionStatus).toEqual({
+      status: "success",
+      message: "连接成功",
+    });
+  });
+
+  it("keeps a failed settings save retryable", async () => {
+    const clients = createClients();
+    saveSettingsMock.mockRejectedValueOnce(new Error("IndexedDB unavailable"));
+    const { result } = renderHook(() => useOptionsSettings(clients));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    act(() => result.current.updateSetting("highlightEnabled", false));
+    await act(() => result.current.save());
+
+    expect(result.current.settings.highlightEnabled).toBe(false);
+    expect(result.current.saveStatus).toBe("error");
+
+    await act(() => result.current.save());
+    expect(result.current.saveStatus).toBe("saved");
+  });
+
+  it("validates the extension settings form before persistence", async () => {
+    const clients = createClients();
+    const { result } = renderHook(() => useOptionsSettings(clients));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    act(() => result.current.updateSetting("targetLanguage", ""));
+    act(() => result.current.updateLlm("model", "replacement-model"));
+    await act(() => result.current.save());
+
+    expect(saveSettingsMock).not.toHaveBeenCalled();
+    expect(clients.permissionClient.request).not.toHaveBeenCalled();
+    expect(clients.llmClient.saveConfig).not.toHaveBeenCalled();
+    expect(result.current.saveStatus).toBe("error");
   });
 
   it("re-requests a revoked origin permission before testing saved configuration", async () => {

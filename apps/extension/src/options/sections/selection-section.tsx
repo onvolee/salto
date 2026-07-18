@@ -9,7 +9,6 @@ import {
   InformationCircleIcon,
   PencilEdit02Icon,
   Refresh01Icon,
-  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -565,7 +564,17 @@ function SortableFieldRow({
   );
 }
 
-export function SelectionSection(editor: TemplateEditor) {
+type SelectionSectionProps = {
+  readonly activeTemplateId: string;
+  readonly editor: TemplateEditor;
+  readonly onActiveTemplateChange: (templateId: string) => void;
+};
+
+export function SelectionSection({
+  activeTemplateId,
+  editor,
+  onActiveTemplateChange,
+}: SelectionSectionProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -585,7 +594,11 @@ export function SelectionSection(editor: TemplateEditor) {
       <div className="flex flex-wrap items-end gap-2">
         <Field className="min-w-56 flex-1">
           <FieldLabel htmlFor="query-template">当前模板</FieldLabel>
-          <Select items={editor.templates.map((template) => ({ label: template.name, value: template.id }))} onValueChange={(value) => { if (value) editor.selectTemplate(value); }} value={editor.selectedTemplateId ?? ""}>
+          <Select items={editor.templates.map((template) => ({ label: template.name, value: template.id }))} onValueChange={(value) => {
+            if (!value) return;
+            editor.selectTemplate(value);
+            onActiveTemplateChange(value);
+          }} value={editor.selectedTemplateId ?? ""}>
             <SelectTrigger aria-label="当前翻译模板" id="query-template">
               <SelectValue placeholder="选择模板" />
             </SelectTrigger>
@@ -594,7 +607,7 @@ export function SelectionSection(editor: TemplateEditor) {
                 {editor.templates.map((template) => (
                   <SelectItem key={template.id} value={template.id}>
                     <span>{template.name}</span>
-                    {editor.activeTemplateId === template.id ? <Badge variant="success">当前</Badge> : null}
+                    {activeTemplateId === template.id ? <Badge variant="success">当前</Badge> : null}
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -665,15 +678,6 @@ export function SelectionSection(editor: TemplateEditor) {
               <Button disabled={isSaving || editor.isSystemTemplate} onClick={() => void editor.saveDraft()} type="button">
                 <HugeiconsIcon aria-hidden="true" data-icon="inline-start" icon={FloppyDiskIcon} strokeWidth={2} />
                 {isSaving ? "保存中" : "保存模板"}
-              </Button>
-              <Button
-                disabled={isSaving || editor.activeTemplateId === editor.selectedTemplateId}
-                onClick={() => { if (editor.selectedTemplateId) void editor.setDefaultTemplate(editor.selectedTemplateId); }}
-                type="button"
-                variant="outline"
-              >
-                <HugeiconsIcon aria-hidden="true" data-icon="inline-start" icon={Tick02Icon} strokeWidth={2} />
-                设为当前
               </Button>
               <Button
                 aria-label={`删除模板${editor.draft.name}`}

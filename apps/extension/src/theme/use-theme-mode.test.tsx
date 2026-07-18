@@ -6,7 +6,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_SETTINGS, SETTINGS_STORAGE_KEY, type SaltoSettings } from "./theme-settings";
+import { DEFAULT_SETTINGS, type SaltoSettings } from "./theme-settings";
 import { useThemeMode } from "./use-theme-mode";
 
 function ThemeProbe() {
@@ -22,18 +22,19 @@ describe("useThemeMode", () => {
 
   it("loads, subscribes to, and unsubscribes from theme settings", async () => {
     const darkSettings: SaltoSettings = { ...DEFAULT_SETTINGS, themeMode: "dark" };
-    let storageListener: ((changes: Record<string, { newValue?: unknown }>) => void) | undefined;
+    let runtimeListener: ((message: unknown) => void) | undefined;
     const removeListener = vi.fn();
 
-    vi.stubGlobal("chrome", {
-      storage: {
-        local: {
-          get: vi.fn().mockResolvedValue({ [SETTINGS_STORAGE_KEY]: darkSettings }),
-          set: vi.fn(),
-        },
-        onChanged: {
-          addListener: vi.fn((listener: typeof storageListener) => {
-            storageListener = listener;
+    vi.stubGlobal("browser", {
+      runtime: {
+        sendMessage: vi.fn().mockResolvedValue({
+          ok: true,
+          type: "get-extension-settings",
+          data: darkSettings,
+        }),
+        onMessage: {
+          addListener: vi.fn((listener: typeof runtimeListener) => {
+            runtimeListener = listener;
           }),
           removeListener,
         },
@@ -46,10 +47,9 @@ describe("useThemeMode", () => {
     expect(await screen.findByText("dark")).toBeInTheDocument();
 
     act(() => {
-      storageListener?.({
-        [SETTINGS_STORAGE_KEY]: {
-          newValue: { ...darkSettings, themeMode: "light" },
-        },
+      runtimeListener?.({
+        type: "extension-settings-changed",
+        payload: { ...darkSettings, themeMode: "light" },
       });
     });
 

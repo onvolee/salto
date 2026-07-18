@@ -5,6 +5,7 @@ import {
   isValidExtensionSettings,
   isValidQueryTemplate,
   isValidQueryTemplateInput,
+  normalizeLlmPublicConfig,
   normalizeVocabularyText,
   type EnrichmentJob,
   type EnrichmentJobFor,
@@ -31,7 +32,11 @@ import {
 } from "@salto/core";
 import Dexie from "dexie";
 
-import type { SaltoDatabase, StoredExtensionSettings } from "../db/database";
+import type {
+  SaltoDatabase,
+  StoredExtensionSettings,
+  StoredLlmConfig,
+} from "../db/database";
 
 export type RepositoryDependencies = {
   readonly clock: () => string;
@@ -42,7 +47,9 @@ export interface SettingsRepository {
   ensureDefaults(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }>;
   getActive(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }>;
   get(): Promise<ExtensionSettings>;
+  getMigrationState(): Promise<{ readonly legacySettingsCompleted: boolean }>;
   save(settings: ExtensionSettings): Promise<ExtensionSettings>;
+  saveLegacySettingsMigration(settings: ExtensionSettings): Promise<ExtensionSettings>;
   update(settings: ExtensionSettings): Promise<ExtensionSettings>;
 }
 
@@ -413,6 +420,23 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
   }
 
   async save(settings: ExtensionSettings): Promise<ExtensionSettings> {
+    return this.saveSettings(settings, false);
+  }
+
+  async saveLegacySettingsMigration(settings: ExtensionSettings): Promise<ExtensionSettings> {
+    return this.saveSettings(settings, true);
+  }
+
+  async getMigrationState(): Promise<{ readonly legacySettingsCompleted: boolean }> {
+    await this.ensureDefaults();
+    const stored = await this.database.settings.get("extension");
+    return { legacySettingsCompleted: stored?.legacySettingsMigrationCompleted === true };
+  }
+
+  private async saveSettings(
+    settings: ExtensionSettings,
+    completeLegacySettingsMigration: boolean,
+  ): Promise<ExtensionSettings> {
     if (!isValidExtensionSettings(settings)) {
       throw new QueryTemplateRepositoryError("settings-invalid", "Invalid extension settings");
     }
@@ -425,7 +449,19 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
         if (!template) {
           throw new QueryTemplateRepositoryError("template-not-found", "Query template was not found");
         }
-        const stored = { ...settings, id: "extension" as const };
+        const current = await this.database.settings.get("extension");
+        const stored: StoredExtensionSettings = {
+          id: "extension",
+          activeQueryTemplateId: settings.activeQueryTemplateId,
+          targetLanguage: settings.targetLanguage,
+          highlightEnabled: settings.highlightEnabled,
+          themeMode: settings.themeMode,
+          activeDictionaryProvider: "youdao-web",
+          ...(completeLegacySettingsMigration
+            || current?.legacySettingsMigrationCompleted === true
+            ? { legacySettingsMigrationCompleted: true }
+            : {})
+        };
         await this.database.settings.put(stored);
         return stripSettingsId(stored);
       }
@@ -538,7 +574,9 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
         }
         await this.database.queryTemplates.delete(id);
         if (settings.activeQueryTemplateId === id) {
+          const current = await this.database.settings.get("extension");
           await this.database.settings.put({
+            ...current,
             ...settings,
             id: "extension",
             activeQueryTemplateId: "system-default"
@@ -616,11 +654,11 @@ class DexieLlmSettingsRepository implements LlmSettingsRepository {
       this.database.llmConfigs.get("active"),
       this.database.llmSecrets.get("active")
     ]);
-    if (!storedConfig) {
-      return { hasApiKey: false };
+    const config = normalizeStoredLlmConfig(storedConfig);
+    if (!config) {
+      return { hasApiKey: isValidApiKey(storedSecret?.apiKey) };
     }
-    const { id: _id, ...config } = storedConfig;
-    return { config, hasApiKey: Boolean(storedSecret?.apiKey) };
+    return { config, hasApiKey: isValidApiKey(storedSecret?.apiKey) };
   }
 
   async getCredentials() {
@@ -628,37 +666,56 @@ class DexieLlmSettingsRepository implements LlmSettingsRepository {
       this.database.llmConfigs.get("active"),
       this.database.llmSecrets.get("active")
     ]);
-    if (!storedConfig || !storedSecret?.apiKey) {
+    const config = normalizeStoredLlmConfig(storedConfig);
+    if (!config || !isValidApiKey(storedSecret?.apiKey)) {
       return null;
     }
-    const { id: _configId, ...config } = storedConfig;
     const { id: _secretId, ...secret } = storedSecret;
     return { config, secret };
   }
 
   async save(config: LlmPublicConfig, secret?: LlmSecret): Promise<void> {
+    const normalizedConfig = normalizeLlmPublicConfig(config).config;
+    const nextApiKey = typeof secret?.apiKey === "string" ? secret.apiKey.trim() : "";
     await this.database.transaction(
       "rw",
       [this.database.llmConfigs, this.database.llmSecrets],
       async () => {
         const existingSecret = await this.database.llmSecrets.get("active");
-        if (!secret?.apiKey && !existingSecret?.apiKey) {
+        if (!nextApiKey && !isValidApiKey(existingSecret?.apiKey)) {
           throw new Error("An API key is required for the first LLM configuration");
         }
-        await this.database.llmConfigs.put({ id: "active", ...config });
-        if (secret?.apiKey) {
-          await this.database.llmSecrets.put({ id: "active", apiKey: secret.apiKey });
+        await this.database.llmConfigs.put({ id: "active", ...normalizedConfig });
+        if (nextApiKey) {
+          await this.database.llmSecrets.put({ id: "active", apiKey: nextApiKey });
         }
       }
     );
   }
 }
 
+function isValidApiKey(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function normalizeStoredLlmConfig(
+  stored: StoredLlmConfig | undefined,
+): LlmPublicConfig | undefined {
+  if (!stored) {
+    return undefined;
+  }
+  const { id: _id, ...config } = stored;
+  try {
+    return normalizeLlmPublicConfig(config).config;
+  } catch {
+    return undefined;
+  }
+}
+
 function normalizeStoredSettings(value: StoredExtensionSettings | undefined): StoredExtensionSettings {
   const raw: Record<string, unknown> = isRecord(value) ? value : {};
-  const settings: Record<string, unknown> = {
-    ...raw,
-    id: "extension" as const,
+  return {
+    id: "extension",
     activeQueryTemplateId: isNonEmptyString(raw.activeQueryTemplateId)
       ? raw.activeQueryTemplateId
       : DEFAULT_EXTENSION_SETTINGS.activeQueryTemplateId,
@@ -670,17 +727,12 @@ function normalizeStoredSettings(value: StoredExtensionSettings | undefined): St
       : DEFAULT_EXTENSION_SETTINGS.highlightEnabled,
     themeMode: raw.themeMode === "system" || raw.themeMode === "light" || raw.themeMode === "dark"
       ? raw.themeMode
-      : DEFAULT_EXTENSION_SETTINGS.themeMode
+      : DEFAULT_EXTENSION_SETTINGS.themeMode,
+    activeDictionaryProvider: "youdao-web",
+    ...(raw.legacySettingsMigrationCompleted === true
+      ? { legacySettingsMigrationCompleted: true }
+      : {})
   };
-  if (raw.activeDictionaryProvider === undefined) {
-    delete settings.activeDictionaryProvider;
-  } else if (
-    raw.activeDictionaryProvider !== "youdao-web"
-    && raw.activeDictionaryProvider !== "cambridge-web"
-  ) {
-    delete settings.activeDictionaryProvider;
-  }
-  return settings as unknown as StoredExtensionSettings;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -692,7 +744,13 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function stripSettingsId({ id: _id, ...settings }: StoredExtensionSettings): ExtensionSettings {
-  return settings;
+  return {
+    activeQueryTemplateId: settings.activeQueryTemplateId,
+    targetLanguage: settings.targetLanguage,
+    highlightEnabled: settings.highlightEnabled,
+    themeMode: settings.themeMode,
+    activeDictionaryProvider: "youdao-web"
+  };
 }
 
 export function createLocalRepositories(

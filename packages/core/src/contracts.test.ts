@@ -74,7 +74,8 @@ describe("@salto/core public contract", () => {
       activeQueryTemplateId: "system-default",
       targetLanguage: "zh-CN",
       highlightEnabled: true,
-      themeMode: "system"
+      themeMode: "system",
+      activeDictionaryProvider: "youdao-web"
     });
     expect(createDefaultQueryTemplate("2026-07-16T00:00:00.000Z")).toEqual({
       id: "system-default",

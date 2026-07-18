@@ -94,14 +94,15 @@ export interface ExtensionSettings {
   readonly targetLanguage: string;
   readonly highlightEnabled: boolean;
   readonly themeMode: "system" | "light" | "dark";
-  readonly activeDictionaryProvider?: "youdao-web" | "cambridge-web";
+  readonly activeDictionaryProvider: "youdao-web";
 }
 
 export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   activeQueryTemplateId: "system-default",
   targetLanguage: "zh-CN",
   highlightEnabled: true,
-  themeMode: "system"
+  themeMode: "system",
+  activeDictionaryProvider: "youdao-web"
 };
 
 export function isValidQueryTemplate(value: unknown): value is QueryTemplate {
@@ -153,13 +154,12 @@ export function isValidQueryTemplateInput(value: unknown): value is QueryTemplat
 
 export function isValidExtensionSettings(value: unknown): value is ExtensionSettings {
   return isRecord(value)
+    && Object.keys(value).length === 5
     && isNonEmptyString(value.activeQueryTemplateId)
     && isNonEmptyString(value.targetLanguage)
     && typeof value.highlightEnabled === "boolean"
     && (value.themeMode === "system" || value.themeMode === "light" || value.themeMode === "dark")
-    && (value.activeDictionaryProvider === undefined
-      || value.activeDictionaryProvider === "youdao-web"
-      || value.activeDictionaryProvider === "cambridge-web");
+    && value.activeDictionaryProvider === "youdao-web";
 }
 
 function isValidQuerySchemaField(value: unknown): value is QuerySchemaField {

@@ -23,12 +23,13 @@ import {
 type SuccessResponse = Extract<ExtensionResponse, { readonly ok: true }>;
 type TemplateListData = Extract<SuccessResponse, { readonly type: "list-query-templates" }>["data"];
 type DeleteTemplateData = Extract<SuccessResponse, { readonly type: "delete-query-template" }>["data"];
-type SetDefaultTemplateData = Extract<SuccessResponse, { readonly type: "set-default-query-template" }>["data"];
 
 type UseQueryTemplatesDependencies = {
   readonly client?: ExtensionMessageClient;
   readonly confirm?: (message: string) => boolean;
   readonly now?: () => string;
+  readonly onActiveTemplateChange?: (templateId: string) => void;
+  readonly onTemplateDeleted?: (deletedTemplateId: string, fallbackTemplateId: string) => void;
 };
 
 export type TemplateEditorStatus = "idle" | "loading" | "saving" | "error";
@@ -69,7 +70,6 @@ function responseError(response: ExtensionResponse): Error {
 function successData(response: ExtensionResponse, type: "list-query-templates"): TemplateListData;
 function successData(response: ExtensionResponse, type: "create-query-template" | "copy-query-template" | "update-query-template"): QueryTemplate;
 function successData(response: ExtensionResponse, type: "delete-query-template"): DeleteTemplateData;
-function successData(response: ExtensionResponse, type: "set-default-query-template"): SetDefaultTemplateData;
 function successData(
   response: ExtensionResponse,
   type: SuccessResponse["type"],
@@ -187,6 +187,9 @@ export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = 
       setErrors({ field: {} });
       setStatus("idle");
       setMessage("模板已保存");
+      if (draft.id === "new") {
+        dependencies.onActiveTemplateChange?.(saved.id);
+      }
       return true;
     } catch (error) {
       setStatus("error");
@@ -274,6 +277,7 @@ export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = 
       setDraft(templateDraftFromQueryTemplate(copied));
       setStatus("idle");
       setMessage("模板已复制");
+      dependencies.onActiveTemplateChange?.(copied.id);
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "模板复制失败");
@@ -297,25 +301,10 @@ export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = 
       setDraft(next ? templateDraftFromQueryTemplate(next) : null);
       setStatus("idle");
       setMessage("模板已删除");
+      dependencies.onTemplateDeleted?.(id, data.activeQueryTemplateId);
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "模板删除失败");
-    }
-  };
-
-  const setDefaultTemplate = async (id: string) => {
-    setStatus("saving");
-    try {
-      const data = successData(await client.send({
-        type: "set-default-query-template",
-        payload: { templateId: id },
-      }), "set-default-query-template");
-      setActiveTemplateId(data.activeQueryTemplateId);
-      setStatus("idle");
-      setMessage("已设为当前模板");
-    } catch (error) {
-      setStatus("error");
-      setMessage(error instanceof Error ? error.message : "设置当前模板失败");
     }
   };
 
@@ -335,7 +324,6 @@ export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = 
     saveDraft,
     selectTemplate,
     selectedTemplateId,
-    setDefaultTemplate,
     startNewTemplate,
     status,
     templates,

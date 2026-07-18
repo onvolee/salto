@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_SETTINGS,
-  SETTINGS_STORAGE_KEY,
+  saveSettings,
 } from "salto-src/theme/theme-settings";
 
 import { OptionsApp } from "./OptionsApp";
@@ -41,17 +41,24 @@ vi.mock("./llm-client", async (importOriginal) => {
   };
 });
 
+vi.mock("salto-src/theme/theme-settings", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("salto-src/theme/theme-settings")
+  >();
+  return {
+    ...actual,
+    loadSettings: vi.fn().mockResolvedValue(actual.DEFAULT_SETTINGS),
+    saveSettings: vi.fn().mockImplementation(async (settings) => settings),
+  };
+});
+
 describe("OptionsApp", () => {
   afterEach(() => {
     cleanup();
-    localStorage.clear();
+    vi.clearAllMocks();
   });
 
   it("switches sections and protects the system template from field edits", async () => {
-    localStorage.setItem(
-      SETTINGS_STORAGE_KEY,
-      JSON.stringify(DEFAULT_SETTINGS),
-    );
     render(<OptionsApp />);
     const user = userEvent.setup();
 
@@ -65,6 +72,8 @@ describe("OptionsApp", () => {
     expect(
       screen.getByRole("button", { name: "切换设置菜单" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "目标翻译语言" })).toBeInTheDocument();
+    expect(screen.queryByText("匿名诊断")).not.toBeInTheDocument();
 
     const selectionMenu = screen.getByRole("button", { name: "划词翻译" });
     await user.click(selectionMenu);
@@ -192,6 +201,12 @@ describe("OptionsApp", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(screen.getByRole("status")).toHaveTextContent("有未保存更改");
 
+    await user.click(screen.getByRole("button", { name: "浅色" }));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    await user.click(screen.getByRole("button", { name: "跟随系统" }));
+    expect(document.documentElement.dataset.theme).toBe("system");
+    await user.click(screen.getByRole("button", { name: "深色" }));
+
     await user.click(screen.getByRole("button", { name: "保存设置" }));
     await waitFor(() => {
       const status = screen.getByRole("status");
@@ -199,10 +214,29 @@ describe("OptionsApp", () => {
       expect(status).toHaveClass("text-success");
     });
 
-    const savedSettings = JSON.parse(
-      localStorage.getItem(SETTINGS_STORAGE_KEY) ?? "null",
-    ) as typeof DEFAULT_SETTINGS;
-    expect(savedSettings.themeMode).toBe("dark");
+    expect(saveSettings).toHaveBeenCalledWith({
+      ...DEFAULT_SETTINGS,
+      themeMode: "dark",
+    });
+  });
+
+  it("keeps saved-vocabulary highlighting in the global settings draft", async () => {
+    render(<OptionsApp />);
+    const user = userEvent.setup();
+
+    await screen.findByRole("heading", { name: "通用" });
+    const highlight = screen.getByRole("switch", { name: "高亮已保存词汇" });
+    expect(highlight).toBeChecked();
+
+    await user.click(highlight);
+    expect(highlight).not.toBeChecked();
+    expect(screen.getByRole("status")).toHaveTextContent("有未保存更改");
+
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({
+      ...DEFAULT_SETTINGS,
+      highlightEnabled: false,
+    }));
   });
 
   it("renders write-only AI configuration and privacy disclosure", async () => {

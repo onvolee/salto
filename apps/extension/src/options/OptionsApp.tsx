@@ -38,7 +38,6 @@ export function OptionsApp() {
     llmError,
     loadState,
     promptAnalysis,
-    resetSettings,
     save,
     saveStatus,
     settings,
@@ -46,7 +45,16 @@ export function OptionsApp() {
     updateLlm,
     updateSetting,
   } = useOptionsSettings();
-  const queryTemplates = useQueryTemplates();
+  const queryTemplates = useQueryTemplates({
+    onActiveTemplateChange(templateId) {
+      updateSetting("activeQueryTemplateId", templateId);
+    },
+    onTemplateDeleted(deletedTemplateId, fallbackTemplateId) {
+      if (settings.activeQueryTemplateId === deletedTemplateId) {
+        updateSetting("activeQueryTemplateId", fallbackTemplateId);
+      }
+    },
+  });
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.themeMode;
@@ -129,35 +137,45 @@ export function OptionsApp() {
               />
               <Separator className="mt-5" />
 
-              {activeSection === "general" ? (
-                <GeneralSection
-                  settings={settings}
-                  updateSetting={updateSetting}
-                />
-              ) : null}
-              {activeSection === "selection" ? (
-                <SelectionSection {...queryTemplates} />
-              ) : null}
-              {activeSection === "sources" ? (
-                <SourcesSection aiConfigured={llm.hasApiKey} />
-              ) : null}
-              {activeSection === "vocabulary" ? <VocabularySection /> : null}
-              {activeSection === "ai-provider" ? (
-                <AiProviderSection
-                  connectionStatus={connectionStatus}
-                  llm={llm}
-                  llmError={llmError}
-                  promptAnalysis={promptAnalysis}
-                  testConnection={testConnection}
-                  updateLlm={updateLlm}
-                />
-              ) : null}
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void save();
+                }}
+              >
+                {activeSection === "general" ? (
+                  <GeneralSection
+                    settings={settings}
+                    updateSetting={updateSetting}
+                  />
+                ) : null}
+                {activeSection === "selection" ? (
+                  <SelectionSection
+                    activeTemplateId={settings.activeQueryTemplateId}
+                    editor={queryTemplates}
+                    onActiveTemplateChange={(templateId) => {
+                      updateSetting("activeQueryTemplateId", templateId);
+                    }}
+                  />
+                ) : null}
+                {activeSection === "sources" ? (
+                  <SourcesSection aiConfigured={llm.hasApiKey} />
+                ) : null}
+                {activeSection === "vocabulary" ? <VocabularySection /> : null}
+                {activeSection === "ai-provider" ? (
+                  <AiProviderSection
+                    connectionStatus={connectionStatus}
+                    llm={llm}
+                    llmError={llmError}
+                    promptAnalysis={promptAnalysis}
+                    testConnection={testConnection}
+                    updateLlm={updateLlm}
+                  />
+                ) : null}
 
-              <Separator />
-              <SettingsActions
-                onSave={save}
-                saveStatus={saveStatus}
-              />
+                <Separator />
+                <SettingsActions saveStatus={saveStatus} />
+              </form>
             </div>
           </div>
         </SidebarInset>

@@ -394,8 +394,7 @@ describe("background message boundary", () => {
       create: vi.fn().mockResolvedValue(created),
       copy: vi.fn().mockResolvedValue({ ...created, id: "user-2" }),
       update: vi.fn().mockResolvedValue(created),
-      delete: vi.fn().mockResolvedValue(undefined),
-      setDefault: vi.fn().mockResolvedValue({ template: created, activeQueryTemplateId: created.id })
+      delete: vi.fn().mockResolvedValue(undefined)
     };
     const settings = {
       get: vi.fn().mockResolvedValue({
@@ -459,10 +458,6 @@ describe("background message boundary", () => {
       delete: vi.fn().mockRejectedValue(new QueryTemplateRepositoryError(
         "template-not-found",
         "Query template was not found"
-      )),
-      setDefault: vi.fn().mockRejectedValue(new QueryTemplateRepositoryError(
-        "template-not-found",
-        "Query template was not found"
       ))
     };
     const services = createBackgroundServices({
@@ -494,13 +489,6 @@ describe("background message boundary", () => {
       error: { code: "invalid-payload", message: "Invalid extension message payload" }
     });
     await expect(services.handleMessage({
-      type: "set-default-query-template",
-      payload: { templateId: " " }
-    }, { source: "extension-page" })).resolves.toEqual({
-      ok: false,
-      error: { code: "invalid-payload", message: "Invalid extension message payload" }
-    });
-    await expect(services.handleMessage({
       type: "update-query-template",
       payload: { template: { id: "system-default", name: "Default" } }
     }, { source: "extension-page" })).resolves.toEqual({
@@ -521,36 +509,72 @@ describe("background message boundary", () => {
       ok: false,
       error: { code: "template-not-found", message: "Query template was not found" }
     });
-    await expect(services.handleMessage({
-      type: "set-default-query-template",
-      payload: { templateId: "missing" }
-    }, { source: "extension-page" })).resolves.toEqual({
-      ok: false,
-      error: { code: "template-not-found", message: "Query template was not found" }
+  });
+
+  it("notifies subscribers when deleting the persisted active template applies a fallback", async () => {
+    const before = {
+      activeQueryTemplateId: "user-template",
+      targetLanguage: "zh-CN",
+      highlightEnabled: true,
+      themeMode: "system" as const,
+      activeDictionaryProvider: "youdao-web" as const,
+    };
+    const after = { ...before, activeQueryTemplateId: "system-default" };
+    const settings = {
+      get: vi.fn().mockResolvedValue(after),
+    };
+    const templates = { delete: vi.fn().mockResolvedValue(undefined) };
+    const notifySettingsChanged = vi.fn().mockResolvedValue(undefined);
+    const services = createBackgroundServices({
+      repositories: { settings, templates } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor(),
+      notifySettingsChanged,
     });
+
+    await expect(services.handleMessage({
+      type: "delete-query-template",
+      payload: { templateId: "user-template" },
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: true,
+      type: "delete-query-template",
+      data: {
+        deletedTemplateId: "user-template",
+        activeQueryTemplateId: "system-default",
+      },
+    });
+    expect(notifySettingsChanged).toHaveBeenCalledWith(after);
   });
 
   it("reads and writes extension settings and returns active template state", async () => {
+    const savedSettings = {
+      activeQueryTemplateId: "user-1",
+      targetLanguage: "ja-JP",
+      highlightEnabled: false,
+      themeMode: "dark" as const,
+      activeDictionaryProvider: "youdao-web" as const
+    };
     const settings = {
       get: vi.fn().mockResolvedValue({
         activeQueryTemplateId: template.id,
         targetLanguage: "zh-CN",
         highlightEnabled: true,
-        themeMode: "system"
+        themeMode: "system",
+        activeDictionaryProvider: "youdao-web"
       }),
-      save: vi.fn().mockResolvedValue({
-        activeQueryTemplateId: "user-1",
-        targetLanguage: "ja-JP",
-        highlightEnabled: false,
-        themeMode: "dark"
-      })
+      save: vi.fn().mockResolvedValue(savedSettings)
     };
     const templates = { list: vi.fn().mockResolvedValue([template]), setDefault: vi.fn() };
+    const prepareSettings = vi.fn().mockResolvedValue(undefined);
+    const notifySettingsChanged = vi.fn().mockRejectedValue(new Error("No receiver"));
     const services = createBackgroundServices({
       repositories: { settings, templates } as never,
       saveVocabulary: { save: vi.fn() } as never,
       enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
-      queryExecutor: createFakeQueryExecutor()
+      queryExecutor: createFakeQueryExecutor(),
+      prepareSettings,
+      notifySettingsChanged
     });
 
     await expect(services.handleMessage({ type: "get-extension-settings" }, { source: "extension-page" }))
@@ -559,21 +583,19 @@ describe("background message boundary", () => {
         type: "get-extension-settings",
         data: await settings.get()
       });
-    const nextSettings = {
-      activeQueryTemplateId: "user-1",
-      targetLanguage: "ja-JP",
-      highlightEnabled: false,
-      themeMode: "dark" as const
-    };
+    const nextSettings = savedSettings;
     await expect(services.handleMessage({
       type: "save-extension-settings",
       payload: nextSettings
     }, { source: "extension-page" })).resolves.toEqual({
       ok: true,
       type: "save-extension-settings",
-      data: await settings.save(nextSettings)
+      data: savedSettings
     });
     expect(settings.save).toHaveBeenCalledWith(nextSettings);
+    expect(prepareSettings).toHaveBeenCalledTimes(2);
+    expect(prepareSettings).toHaveBeenCalledBefore(settings.get);
+    expect(notifySettingsChanged).toHaveBeenCalledWith(savedSettings);
   });
 
   it("exposes public LLM state without serializing the API key", async () => {

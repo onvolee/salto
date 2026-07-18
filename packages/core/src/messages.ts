@@ -3,15 +3,18 @@ import type {
   LlmOptionsState,
   LlmPublicConfig,
 } from "./llm/types";
-import type {
-  ExtensionSettings,
-  PromptContext,
-  QueryFieldResult,
-  QueryTemplate,
-  QueryTemplateInput,
+import {
+  isValidExtensionSettings,
+  type ExtensionSettings,
+  type PromptContext,
+  type QueryFieldResult,
+  type QueryTemplate,
+  type QueryTemplateInput,
 } from "./query-template/types";
+import type {
+  SelectionPath,
+} from "./vocabulary/types";
 import type { SaveVocabularyInput, SaveVocabularyResult } from "./vocabulary/ports";
-import type { SelectionPath } from "./vocabulary/types";
 
 export type TranslateSelectionRequest = {
   readonly type: "translate-selection";
@@ -86,11 +89,6 @@ export type DeleteQueryTemplateRequest = {
   readonly payload: { readonly templateId: string };
 };
 
-export type SetDefaultQueryTemplateRequest = {
-  readonly type: "set-default-query-template";
-  readonly payload: { readonly templateId: string };
-};
-
 export type GetExtensionSettingsRequest = {
   readonly type: "get-extension-settings";
 };
@@ -99,6 +97,21 @@ export type SaveExtensionSettingsRequest = {
   readonly type: "save-extension-settings";
   readonly payload: ExtensionSettings;
 };
+
+export type ExtensionSettingsChangedNotification = {
+  readonly type: "extension-settings-changed";
+  readonly payload: ExtensionSettings;
+};
+
+export type ExtensionNotification = ExtensionSettingsChangedNotification;
+
+export function isExtensionNotification(value: unknown): value is ExtensionNotification {
+  return typeof value === "object"
+    && value !== null
+    && !Array.isArray(value)
+    && (value as { readonly type?: unknown }).type === "extension-settings-changed"
+    && isValidExtensionSettings((value as { readonly payload?: unknown }).payload);
+}
 
 export type ExtensionRequest =
   | TranslateSelectionRequest
@@ -115,7 +128,6 @@ export type ExtensionRequest =
   | CopyQueryTemplateRequest
   | UpdateQueryTemplateRequest
   | DeleteQueryTemplateRequest
-  | SetDefaultQueryTemplateRequest
   | GetExtensionSettingsRequest
   | SaveExtensionSettingsRequest;
 
@@ -191,11 +203,6 @@ export type ExtensionSuccessResponse =
       readonly ok: true;
       readonly type: "delete-query-template";
       readonly data: { readonly deletedTemplateId: string; readonly activeQueryTemplateId: string };
-    }
-  | {
-      readonly ok: true;
-      readonly type: "set-default-query-template";
-      readonly data: { readonly template: QueryTemplate; readonly activeQueryTemplateId: string };
     }
   | {
       readonly ok: true;

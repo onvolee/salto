@@ -27,7 +27,7 @@ const THEME_OPTIONS: Array<{ label: string; value: ThemeMode }> = [
 
 const LANGUAGE_OPTIONS: Array<{
   label: string;
-  value: SaltoSettings["language"];
+  value: SaltoSettings["targetLanguage"];
 }> = [
   { label: "简体中文", value: "zh-CN" },
   { label: "English", value: "en-US" },
@@ -78,19 +78,19 @@ export function GeneralSection({
         </SettingsField>
         <Separator />
         <SettingsField
-          description="用于界面和翻译结果的本地化。"
-          id="language"
-          title="界面语言"
+          description="用于划词翻译和 AI 输出；设置界面固定使用中文。"
+          id="target-language"
+          title="目标翻译语言"
         >
           <Select
             items={LANGUAGE_OPTIONS}
             onValueChange={(value) => {
-              if (value) updateSetting("language", value);
+              if (value) updateSetting("targetLanguage", value);
             }}
-            value={settings.language}
+            value={settings.targetLanguage}
           >
             <SelectTrigger
-              aria-labelledby="language-label"
+              aria-labelledby="target-language-label"
               className="w-full"
             >
               <SelectValue />
@@ -108,18 +108,18 @@ export function GeneralSection({
         </SettingsField>
         <Separator />
         <SettingsField
-          description="仅发送不包含页面内容和密钥的匿名运行信息。"
-          htmlFor="anonymous-diagnostics"
-          id="anonymous-diagnostics"
-          title="匿名诊断"
+          description="在网页中标记已保存的词汇；关闭后现有标记会被移除。"
+          htmlFor="highlight-saved-vocabulary"
+          id="highlight-saved-vocabulary"
+          title="高亮已保存词汇"
         >
           <div className="flex min-h-7 items-center justify-end">
             <Switch
-              checked={settings.anonymousDiagnostics}
-              id="anonymous-diagnostics"
-              onCheckedChange={(checked) =>
-                updateSetting("anonymousDiagnostics", checked)
-              }
+              checked={settings.highlightEnabled}
+              id="highlight-saved-vocabulary"
+              onCheckedChange={(checked) => {
+                updateSetting("highlightEnabled", checked);
+              }}
             />
           </div>
         </SettingsField>

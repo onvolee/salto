@@ -7,19 +7,17 @@ import { Spinner } from "salto-src/components/ui/spinner";
 import type { SaveStatus } from "../types";
 
 type SettingsActionsProps = {
-  onSave: () => Promise<void>;
   saveStatus: SaveStatus;
 };
 
 export function SettingsActions({
-  onSave,
   saveStatus,
 }: SettingsActionsProps) {
   const isSaving = saveStatus === "saving";
 
   return (
     <footer className="flex flex-wrap justify-end gap-2 py-5">
-      <Button disabled={isSaving} onClick={() => void onSave()} type="button">
+      <Button disabled={isSaving} type="submit">
         {isSaving ? (
           <Spinner aria-label="正在保存设置" data-icon="inline-start" />
         ) : (

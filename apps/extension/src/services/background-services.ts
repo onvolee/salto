@@ -8,6 +8,7 @@ import {
   type ExtensionErrorCode,
   type ExtensionRequest,
   type ExtensionResponse,
+  type ExtensionSettings,
   type LlmPublicConfig,
   type LlmQuerySchemaField,
   type PromptContext,
@@ -39,6 +40,8 @@ export type BackgroundServiceDependencies = {
   readonly queryExecutor: QueryExecutor;
   readonly hasOriginPermission?: (permissionOrigin: string) => Promise<boolean>;
   readonly testLlmConnection?: () => Promise<void>;
+  readonly prepareSettings?: () => Promise<void>;
+  readonly notifySettingsChanged?: (settings: ExtensionSettings) => Promise<void>;
 };
 
 const PROMPT_CONTEXT_KEYS = [
@@ -152,7 +155,6 @@ export function parseExtensionRequest(
   if (
     value.type === "copy-query-template"
     || value.type === "delete-query-template"
-    || value.type === "set-default-query-template"
   ) {
     return isTemplateIdPayload(value.payload) ? { type: value.type, payload: value.payload } : null;
   }
@@ -305,6 +307,8 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
             data: { cancelled: Boolean(controller) },
           };
         }
+
+        await dependencies.prepareSettings?.();
 
         if (request.type === "translate-selection") {
           translationControllers.get(request.payload.requestId)?.abort();
@@ -492,6 +496,11 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
           assertExtensionPage(context);
           await dependencies.repositories.templates.delete(request.payload.templateId);
           const settings = await dependencies.repositories.settings.get();
+          try {
+            await dependencies.notifySettingsChanged?.(settings);
+          } catch {
+            // The durable fallback remains valid when no subscriber is reachable.
+          }
           return {
             ok: true,
             type: request.type,
@@ -499,15 +508,6 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
               deletedTemplateId: request.payload.templateId,
               activeQueryTemplateId: settings.activeQueryTemplateId
             }
-          };
-        }
-
-        if (request.type === "set-default-query-template") {
-          assertExtensionPage(context);
-          return {
-            ok: true,
-            type: request.type,
-            data: await dependencies.repositories.templates.setDefault(request.payload.templateId)
           };
         }
 
@@ -522,10 +522,16 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
 
         if (request.type === "save-extension-settings") {
           assertExtensionPage(context);
+          const settings = await dependencies.repositories.settings.save(request.payload);
+          try {
+            await dependencies.notifySettingsChanged?.(settings);
+          } catch {
+            // Persistence succeeded; unavailable listeners must not turn the save into a failure.
+          }
           return {
             ok: true,
             type: request.type,
-            data: await dependencies.repositories.settings.save(request.payload)
+            data: settings
           };
         }
 

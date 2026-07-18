@@ -3,7 +3,9 @@ import {
   type LlmPublicConfig,
   type PromptTemplateAnalysis,
 } from "@salto/core";
+import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useRef, useState } from "react";
+import { z } from "zod";
 
 import {
   DEFAULT_SETTINGS,
@@ -55,6 +57,14 @@ const EMPTY_PROMPT_ANALYSIS: PromptTemplateAnalysis = {
   warnings: [],
 };
 
+const EXTENSION_SETTINGS_SCHEMA = z.object({
+  activeQueryTemplateId: z.string().trim().min(1),
+  targetLanguage: z.string().trim().min(1),
+  highlightEnabled: z.boolean(),
+  themeMode: z.enum(["system", "light", "dark"]),
+  activeDictionaryProvider: z.literal("youdao-web"),
+}).strict();
+
 function draftFromConfig(
   config: LlmPublicConfig | undefined,
   hasApiKey: boolean,
@@ -91,7 +101,15 @@ export function useOptionsSettings(dependencies: Dependencies = {}) {
     ?? ((permissionOrigin: string) => window.confirm(
       `服务地址已更换。是否移除旧地址 ${permissionOrigin} 的访问权限？`,
     ));
-  const [settings, setSettings] = useState<SaltoSettings>(DEFAULT_SETTINGS);
+  const settingsDefaultsRef = useRef<SaltoSettings>(DEFAULT_SETTINGS);
+  const settingsForm = useForm({
+    defaultValues: settingsDefaultsRef.current,
+    validators: { onChange: EXTENSION_SETTINGS_SCHEMA },
+    async onSubmit({ value }) {
+      await saveSettings(value);
+    },
+  });
+  const settings = useStore(settingsForm.store, (state) => state.values);
   const [llm, setLlm] = useState<LlmDraft>(EMPTY_LLM_DRAFT);
   const [llmError, setLlmError] = useState<string | null>(null);
   const [promptAnalysis, setPromptAnalysis] = useState(EMPTY_PROMPT_ANALYSIS);
@@ -105,12 +123,22 @@ export function useOptionsSettings(dependencies: Dependencies = {}) {
   const llmDirtyRef = useRef(false);
   const storedConfigRef = useRef<LlmPublicConfig | undefined>(undefined);
 
+  const replaceSettings = (next: SaltoSettings) => {
+    settingsDefaultsRef.current = next;
+    settingsForm.setFieldValue("activeQueryTemplateId", next.activeQueryTemplateId);
+    settingsForm.setFieldValue("targetLanguage", next.targetLanguage);
+    settingsForm.setFieldValue("highlightEnabled", next.highlightEnabled);
+    settingsForm.setFieldValue("themeMode", next.themeMode);
+    settingsForm.setFieldValue("activeDictionaryProvider", next.activeDictionaryProvider);
+    settingsForm.reset(next);
+  };
+
   useEffect(() => {
     let cancelled = false;
     void Promise.all([loadSettings(), llmClient.getConfig()])
       .then(([storedSettings, llmState]) => {
         if (cancelled) return;
-        setSettings(storedSettings);
+        replaceSettings(storedSettings);
         storedConfigRef.current = llmState.config;
         setLlm(draftFromConfig(llmState.config, llmState.hasApiKey));
         setPromptAnalysis(llmState.promptAnalysis);
@@ -122,14 +150,14 @@ export function useOptionsSettings(dependencies: Dependencies = {}) {
     return () => {
       cancelled = true;
     };
-  }, [llmClient]);
+  }, [llmClient, settingsForm]);
 
   const updateSetting = <K extends keyof SaltoSettings>(
     key: K,
     value: SaltoSettings[K],
   ) => {
     revisionRef.current += 1;
-    setSettings((current) => ({ ...current, [key]: value }));
+    settingsForm.setFieldValue(key, (current) => value as typeof current);
     setSaveStatus("dirty");
   };
 
@@ -142,12 +170,6 @@ export function useOptionsSettings(dependencies: Dependencies = {}) {
     setLlm((current) => ({ ...current, [key]: value }));
     setLlmError(null);
     setConnectionStatus({ status: "idle", message: "" });
-    setSaveStatus("dirty");
-  };
-
-  const resetSettings = () => {
-    revisionRef.current += 1;
-    setSettings({ ...DEFAULT_SETTINGS });
     setSaveStatus("dirty");
   };
 
@@ -216,10 +238,19 @@ export function useOptionsSettings(dependencies: Dependencies = {}) {
     const savedRevision = revisionRef.current;
     setSaveStatus("saving");
     try {
+      await settingsForm.validate("submit");
+      if (!settingsForm.state.isValid) {
+        throw new Error("Extension settings are invalid");
+      }
       if (llmDirtyRef.current) {
         await persistLlm();
       }
-      await saveSettings(settings);
+      await settingsForm.handleSubmit();
+      if (!settingsForm.state.isSubmitSuccessful) {
+        throw new Error("Extension settings are invalid");
+      }
+      settingsDefaultsRef.current = settingsForm.state.values;
+      settingsForm.reset(settingsForm.state.values);
       setSaveStatus(revisionRef.current === savedRevision ? "saved" : "dirty");
     } catch {
       setSaveStatus("error");
@@ -251,7 +282,6 @@ export function useOptionsSettings(dependencies: Dependencies = {}) {
     llmError,
     loadState,
     promptAnalysis,
-    resetSettings,
     save,
     saveStatus,
     settings,
