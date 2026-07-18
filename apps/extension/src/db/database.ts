@@ -15,6 +15,7 @@ import type {
 export type StoredExtensionSettings = ExtensionSettings & {
   readonly id: "extension";
   readonly legacySettingsMigrationCompleted?: true;
+  readonly activeQueryTemplateRecovery?: "active-template-unavailable";
 };
 export type StoredLlmConfig = LlmPublicConfig & { readonly id: "active" };
 export type StoredLlmSecret = LlmSecret & { readonly id: "active" };

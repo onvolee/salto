@@ -114,6 +114,32 @@ function isTemplateIdPayload(value: unknown): value is { readonly templateId: st
   return isRecord(value) && typeof value.templateId === "string" && value.templateId.trim().length > 0;
 }
 
+function publicQueryTemplateSnapshot(template: QueryTemplate): QueryTemplate {
+  return {
+    id: template.id,
+    name: template.name,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+    fields: template.fields.map((field) => {
+      const common = {
+        id: field.id,
+        label: field.label,
+        source: field.source,
+        type: field.type,
+        order: field.order,
+        enabled: field.enabled,
+      };
+      return field.source === "llm"
+        ? { ...common, source: "llm" as const, instruction: field.instruction }
+        : {
+            ...common,
+            source: "dictionary" as const,
+            dictionaryField: field.dictionaryField,
+          } as QueryTemplate["fields"][number];
+    }),
+  };
+}
+
 export function parseExtensionRequest(
   value: unknown,
 ): ExtensionRequest | null | "unknown" {
@@ -125,14 +151,19 @@ export function parseExtensionRequest(
       && typeof value.payload.requestId === "string"
       && value.payload.requestId.length > 0
       && isPromptContext(value.payload.context)
+      && isValidQueryTemplate(value.payload.template)
       ? {
         type: value.type,
         payload: {
           requestId: value.payload.requestId,
           context: value.payload.context,
+          template: publicQueryTemplateSnapshot(value.payload.template),
         },
       }
       : null;
+  }
+  if (value.type === "get-active-query-template") {
+    return { type: value.type };
   }
   if (value.type === "cancel-translation") {
     return isRecord(value.payload)
@@ -310,12 +341,22 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
 
         await dependencies.prepareSettings?.();
 
+        if (request.type === "get-active-query-template") {
+          const { template, resolution } = await dependencies.repositories.settings.getActive();
+          return {
+            ok: true,
+            type: request.type,
+            data: { template: publicQueryTemplateSnapshot(template), resolution },
+          };
+        }
+
         if (request.type === "translate-selection") {
           translationControllers.get(request.payload.requestId)?.abort();
           const controller = new AbortController();
           translationControllers.set(request.payload.requestId, controller);
           try {
-            const { settings, template } = await dependencies.repositories.settings.getActive();
+            const settings = await dependencies.repositories.settings.get();
+            const template = request.payload.template;
             const promptContext = {
               ...request.payload.context,
               targetLanguage: settings.targetLanguage,

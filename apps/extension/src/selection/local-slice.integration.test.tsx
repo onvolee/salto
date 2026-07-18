@@ -86,7 +86,7 @@ describe("local vertical slice", () => {
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Open selection panel" }));
     expect(await screen.findByText("Default")).toBeInTheDocument();
-    expect(screen.getByText("Fake translation: unfamiliar -> zh-CN")).toBeInTheDocument();
+    expect(await screen.findByText("Fake translation: unfamiliar -> zh-CN")).toBeInTheDocument();
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Save selection" }));
     expect(await screen.findByRole("button", { name: "Selection saved" })).toBeDisabled();

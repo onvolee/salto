@@ -31,7 +31,7 @@ const template: QueryTemplate = {
 
 const translateRequest = {
   type: "translate-selection" as const,
-  payload: { requestId: "request-1", context },
+  payload: { requestId: "request-1", context, template },
 };
 
 function createServices() {
@@ -42,6 +42,13 @@ function createServices() {
   const highlightTerms = { list: vi.fn().mockResolvedValue({ terms: ["unfamiliar"], paths: [] }) };
   const settings = {
     ensureDefaults: vi.fn(),
+    get: vi.fn().mockResolvedValue({
+      activeQueryTemplateId: template.id,
+      targetLanguage: "zh-CN",
+      highlightEnabled: true,
+      themeMode: "system",
+      activeDictionaryProvider: "youdao-web",
+    }),
     getActive: vi.fn().mockResolvedValue({
       settings: { activeQueryTemplateId: template.id, targetLanguage: "zh-CN", highlightEnabled: true, themeMode: "system" },
       template
@@ -61,6 +68,93 @@ function createServices() {
 }
 
 describe("background message boundary", () => {
+  it("returns one active-template snapshot with a non-secret recovery diagnostic", async () => {
+    const storedTemplate = {
+      ...template,
+      apiKey: "must-not-reach-content",
+      fields: template.fields.map((field) => ({
+        ...field,
+        secretMetadata: "must-not-reach-content",
+      })),
+    } as QueryTemplate;
+    const recovered = {
+      settings: {
+        activeQueryTemplateId: "system-default",
+        targetLanguage: "zh-CN",
+        highlightEnabled: true,
+        themeMode: "system" as const,
+        activeDictionaryProvider: "youdao-web" as const,
+      },
+      template: storedTemplate,
+      resolution: {
+        status: "recovered" as const,
+        code: "active-template-unavailable" as const,
+      },
+    };
+    const settings = { getActive: vi.fn().mockResolvedValue(recovered) };
+    const services = createBackgroundServices({
+      repositories: { settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor(),
+    });
+
+    const response = await services.handleMessage(
+      { type: "get-active-query-template" },
+      { source: "content-script" },
+    );
+
+    expect(response).toEqual({
+      ok: true,
+      type: "get-active-query-template",
+      data: { template, resolution: recovered.resolution },
+    });
+    expect(JSON.stringify(response)).not.toContain("must-not-reach-content");
+  });
+
+  it("executes the validated template snapshot supplied by the panel", async () => {
+    const snapshot = {
+      ...template,
+      id: "reading-snapshot",
+      name: "Reading snapshot",
+    };
+    const queryExecutor = {
+      execute: vi.fn().mockResolvedValue([
+        { fieldId: "first", status: "ready", type: "text", value: "snapshot value" },
+        { fieldId: "second", status: "ready", type: "list", value: ["snapshot item"] },
+      ]),
+    };
+    const settings = {
+      get: vi.fn().mockResolvedValue({
+        activeQueryTemplateId: "different-template",
+        targetLanguage: "ja-JP",
+        highlightEnabled: true,
+        themeMode: "system",
+        activeDictionaryProvider: "youdao-web",
+      }),
+    };
+    const services = createBackgroundServices({
+      repositories: { settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor,
+    });
+
+    await expect(services.handleMessage({
+      type: "translate-selection",
+      payload: { requestId: "snapshot-request", context, template: snapshot },
+    })).resolves.toMatchObject({
+      ok: true,
+      type: "translate-selection",
+      data: { templateId: "reading-snapshot", templateName: "Reading snapshot" },
+    });
+    expect(queryExecutor.execute).toHaveBeenCalledWith(
+      snapshot,
+      { ...context, targetLanguage: "ja-JP" },
+      expect.any(AbortSignal),
+    );
+  });
+
   it("translates valid input and preserves enabled template order", async () => {
     const { services } = createServices();
 
@@ -257,14 +351,12 @@ describe("background message boundary", () => {
 
   it("uses the background-owned target language", async () => {
     const { services, settings } = createServices();
-    settings.getActive.mockResolvedValue({
-      settings: {
-        activeQueryTemplateId: template.id,
-        targetLanguage: "ja-JP",
-        highlightEnabled: true,
-        themeMode: "system"
-      },
-      template
+    settings.get.mockResolvedValue({
+      activeQueryTemplateId: template.id,
+      targetLanguage: "ja-JP",
+      highlightEnabled: true,
+      themeMode: "system",
+      activeDictionaryProvider: "youdao-web",
     });
 
     const response = await services.handleMessage(translateRequest);
@@ -301,6 +393,13 @@ describe("background message boundary", () => {
       }),
     };
     const settings = {
+      get: vi.fn(async () => ({
+        activeQueryTemplateId: storedTemplate.id,
+        targetLanguage: "ja-JP",
+        highlightEnabled: true,
+        themeMode: "system" as const,
+        activeDictionaryProvider: "youdao-web" as const,
+      })),
       getActive: vi.fn(async () => ({
         settings: {
           activeQueryTemplateId: storedTemplate.id,
@@ -357,6 +456,7 @@ describe("background message boundary", () => {
       payload: {
         requestId: "saved-template-runtime",
         context: { ...context, sentence: "" },
+        template: savedTemplate,
       },
     })).resolves.toMatchObject({
       ok: true,

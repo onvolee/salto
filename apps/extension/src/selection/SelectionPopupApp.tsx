@@ -6,7 +6,10 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import type { PromptContext } from "@salto/core";
+import type {
+  PromptContext,
+  QueryTemplate,
+} from "@salto/core";
 
 import type { ThemeMode } from "salto-src/theme/theme-settings";
 import { useThemeMode } from "salto-src/theme/use-theme-mode";
@@ -23,6 +26,7 @@ import {
 } from "./positioning";
 import {
   SelectionPanel,
+  type ActiveTemplateState,
   type SelectionPanelProps,
   type TranslationState
 } from "./SelectionPanel";
@@ -65,9 +69,12 @@ export function SelectionPopupApp({
   const [panelPosition, setPanelPosition] = useState<Point>({ x: 0, y: 0 });
   const panelRef = useRef<HTMLElement>(null);
   const translationRequestRef = useRef<string | null>(null);
+  const panelGenerationRef = useRef(0);
+  const templateSnapshotRef = useRef<QueryTemplate | null>(null);
   const saveRequestRef = useRef(0);
   const [promptContext, setPromptContext] = useState<PromptContext | null>(null);
   const [translation, setTranslation] = useState<TranslationState>({ status: "loading" });
+  const [activeTemplate, setActiveTemplate] = useState<ActiveTemplateState>({ status: "loading" });
   const [saveState, setSaveState] = useState<SaveState>("idle");
 
   const refreshTrigger = useCallback(() => {
@@ -84,8 +91,10 @@ export function SelectionPopupApp({
   }, []);
 
   const closePanel = useCallback(() => {
+    panelGenerationRef.current += 1;
     const requestId = translationRequestRef.current;
     translationRequestRef.current = null;
+    templateSnapshotRef.current = null;
     if (requestId) {
       void messageClient.cancelTranslation?.(requestId).catch(() => undefined);
     }
@@ -95,7 +104,11 @@ export function SelectionPopupApp({
     setMode("hidden");
   }, [messageClient]);
 
-  const requestTranslation = useCallback((context: PromptContext) => {
+  const requestTranslation = useCallback((
+    context: PromptContext,
+    template: QueryTemplate,
+    generation: number,
+  ) => {
     const previousRequestId = translationRequestRef.current;
     if (previousRequestId) {
       void messageClient.cancelTranslation?.(previousRequestId).catch(() => undefined);
@@ -105,9 +118,12 @@ export function SelectionPopupApp({
     setTranslation({ status: "loading" });
     void messageClient.send({
       type: "translate-selection",
-      payload: { requestId, context },
+      payload: { requestId, context, template },
     }).then((response) => {
-      if (translationRequestRef.current !== requestId) {
+      if (
+        translationRequestRef.current !== requestId
+        || panelGenerationRef.current !== generation
+      ) {
         return;
       }
       if (response.ok && response.type === "translate-selection") {
@@ -119,7 +135,10 @@ export function SelectionPopupApp({
         });
       }
     }).catch(() => {
-      if (translationRequestRef.current === requestId) {
+      if (
+        translationRequestRef.current === requestId
+        && panelGenerationRef.current === generation
+      ) {
         setTranslation({ status: "request-error", message: "Translation request failed" });
       }
     });
@@ -130,6 +149,9 @@ export function SelectionPopupApp({
       return;
     }
 
+    const generation = panelGenerationRef.current + 1;
+    panelGenerationRef.current = generation;
+    templateSnapshotRef.current = null;
     const viewport = getViewportSize();
     setPanelPosition(
       getInitialPanelPosition(triggerPosition, TRIGGER_SIZE, getPanelSize(viewport), viewport),
@@ -138,13 +160,44 @@ export function SelectionPopupApp({
     saveRequestRef.current += 1;
     setPromptContext(context);
     setSaveState("idle");
+    setActiveTemplate({ status: "loading" });
+    setTranslation({ status: "loading" });
     setMode("panel-open");
-    requestTranslation(context);
-  }, [requestTranslation, session, triggerPosition]);
+    void messageClient.send({ type: "get-active-query-template" }).then((response) => {
+      if (panelGenerationRef.current !== generation) {
+        return;
+      }
+      if (!response.ok || response.type !== "get-active-query-template") {
+        setActiveTemplate({
+          status: "error",
+          message: response.ok ? "Unexpected response" : response.error.message,
+        });
+        return;
+      }
+      const snapshot = response.data.template;
+      templateSnapshotRef.current = snapshot;
+      setActiveTemplate({
+        status: "ready",
+        template: snapshot,
+        resolution: response.data.resolution,
+      });
+      requestTranslation(context, snapshot, generation);
+    }).catch(() => {
+      if (panelGenerationRef.current === generation) {
+        setActiveTemplate({
+          status: "error",
+          message: "Active template could not be loaded",
+        });
+      }
+    });
+  }, [messageClient, requestTranslation, session, triggerPosition]);
 
   const regenerateTranslation = useCallback(() => {
-    if (promptContext) {
-      requestTranslation(promptContext);
+    const template = templateSnapshotRef.current;
+    if (promptContext && template) {
+      const generation = panelGenerationRef.current + 1;
+      panelGenerationRef.current = generation;
+      requestTranslation(promptContext, template, generation);
     }
   }, [promptContext, requestTranslation]);
 
@@ -328,6 +381,7 @@ export function SelectionPopupApp({
   if (mode === "panel-open" && session) {
     return wrapSurface(
       <SelectionPanel
+        activeTemplate={activeTemplate}
         onClose={closePanel}
         onPositionChange={setPanelPosition}
         onRegenerate={regenerateTranslation}

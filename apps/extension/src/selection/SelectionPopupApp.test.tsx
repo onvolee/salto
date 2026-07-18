@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { QueryTemplate } from "@salto/core";
 import { SelectionPopupApp } from "./SelectionPopupApp";
 import type { ExtensionMessageClient } from "./message-client";
 
@@ -20,6 +21,40 @@ const anchorRect = {
   height: 20,
   toJSON: () => ({}),
 };
+
+const defaultTemplate: QueryTemplate = {
+  id: "system-default",
+  name: "Default",
+  createdAt: "2026-07-19T00:00:00.000Z",
+  updatedAt: "2026-07-19T00:00:00.000Z",
+  fields: [{
+    id: "translation",
+    label: "Translation",
+    source: "llm",
+    type: "text",
+    instruction: "Translate {{selection}}.",
+    order: 0,
+    enabled: true,
+  }],
+};
+
+function withActiveTemplate(
+  send: ExtensionMessageClient["send"],
+  template: QueryTemplate = defaultTemplate,
+): ExtensionMessageClient {
+  return {
+    send(request) {
+      if (request.type === "get-active-query-template") {
+        return Promise.resolve({
+          ok: true,
+          type: "get-active-query-template",
+          data: { template, resolution: { status: "active" } },
+        });
+      }
+      return send(request);
+    },
+  };
+}
 
 function selectNodeText(source: Element | null, start: number, end: number) {
   const text = source?.firstChild;
@@ -97,7 +132,7 @@ describe("SelectionPopupApp", () => {
         ]
       }
     });
-    render(<SelectionPopupApp messageClient={{ send }} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
     selectText(0, 10);
 
     expect(send).not.toHaveBeenCalled();
@@ -108,6 +143,141 @@ describe("SelectionPopupApp", () => {
     expect(screen.getByText("陌生的")).toBeInTheDocument();
     expect(screen.getByText("adjective")).toBeInTheDocument();
     expect(send).toHaveBeenCalledOnce();
+  });
+
+  it("uses the saved active template on the next open without rewriting the current panel", async () => {
+    const readingTemplate = { ...defaultTemplate, id: "reading", name: "Reading" };
+    const studyTemplate = { ...defaultTemplate, id: "study", name: "Study" };
+    const snapshots = [readingTemplate, studyTemplate];
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockImplementation(async (request) => {
+      if (request.type === "get-active-query-template") {
+        const template = snapshots.shift() ?? studyTemplate;
+        return {
+          ok: true,
+          type: "get-active-query-template",
+          data: { template, resolution: { status: "active" } },
+        };
+      }
+      if (request.type === "translate-selection") {
+        return {
+          ok: true,
+          type: "translate-selection",
+          data: {
+            templateId: request.payload.template.id,
+            templateName: request.payload.template.name,
+            schema: [{ id: "translation", label: "Translation" }],
+            fields: [{ fieldId: "translation", status: "ready", type: "text", value: "translated" }],
+          },
+        };
+      }
+      throw new Error(`Unexpected request: ${request.type}`);
+    });
+    render(<SelectionPopupApp messageClient={{ send }} />);
+
+    await openPanel();
+    expect(await screen.findByRole("heading", { name: "Reading" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    await act(async () => undefined);
+    expect(screen.getByRole("heading", { name: "Reading" })).toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));
+    await openPanel();
+
+    expect(await screen.findByRole("heading", { name: "Study" })).toBeInTheDocument();
+    expect(send.mock.calls.filter(([request]) => request.type === "get-active-query-template"))
+      .toHaveLength(2);
+  });
+
+  it("renders enabled field states in snapshot order while preserving ready siblings", async () => {
+    const stateTemplate: QueryTemplate = {
+      ...defaultTemplate,
+      id: "field-states",
+      name: "Field states",
+      fields: [
+        { ...defaultTemplate.fields[0], id: "ready", label: "Ready", order: 2 },
+        { ...defaultTemplate.fields[0], id: "failed", label: "Failed", order: 0 },
+        { ...defaultTemplate.fields[0], id: "unavailable", label: "Unavailable", order: 1 },
+        { ...defaultTemplate.fields[0], id: "disabled", label: "Disabled", order: 3, enabled: false },
+      ],
+    };
+    let resolveTranslation!: (response: Awaited<ReturnType<ExtensionMessageClient["send"]>>) => void;
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockImplementation((request) => {
+      if (request.type === "get-active-query-template") {
+        return Promise.resolve({
+          ok: true,
+          type: "get-active-query-template",
+          data: { template: stateTemplate, resolution: { status: "active" } },
+        });
+      }
+      return new Promise((resolve) => {
+        resolveTranslation = resolve;
+      });
+    });
+    render(<SelectionPopupApp messageClient={{ send }} />);
+    await openPanel();
+
+    expect(await screen.findByRole("heading", { name: "Field states" })).toBeInTheDocument();
+    expect(screen.getAllByRole("term").map((node) => node.textContent))
+      .toEqual(["Failed", "Unavailable", "Ready"]);
+    expect(screen.queryByText("Disabled")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Loading field...")).toHaveLength(3);
+
+    await act(async () => resolveTranslation({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: stateTemplate.id,
+        templateName: stateTemplate.name,
+        schema: [
+          { id: "failed", label: "Failed" },
+          { id: "unavailable", label: "Unavailable" },
+          { id: "ready", label: "Ready" },
+        ],
+        fields: [
+          { fieldId: "ready", status: "ready", type: "text", value: "Ready sibling" },
+          { fieldId: "failed", status: "failed", error: { code: "provider", message: "Field failed" } },
+          { fieldId: "unavailable", status: "unavailable", reason: "not-found" },
+        ],
+      },
+    }));
+
+    expect(screen.getByText("Ready sibling")).toBeInTheDocument();
+    expect(screen.getByText("Field failed")).toBeInTheDocument();
+    expect(screen.getByText("Field unavailable")).toBeInTheDocument();
+  });
+
+  it("shows a stable non-secret diagnostic when the active template is recovered", async () => {
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockImplementation(async (request) => {
+      if (request.type === "get-active-query-template") {
+        return {
+          ok: true,
+          type: "get-active-query-template",
+          data: {
+            template: defaultTemplate,
+            resolution: { status: "recovered", code: "active-template-unavailable" },
+          },
+        };
+      }
+      if (request.type === "translate-selection") {
+        return {
+          ok: true,
+          type: "translate-selection",
+          data: {
+            templateId: defaultTemplate.id,
+            templateName: defaultTemplate.name,
+            schema: [],
+            fields: [],
+          },
+        };
+      }
+      throw new Error("Unexpected request");
+    });
+    render(<SelectionPopupApp messageClient={{ send }} />);
+    await openPanel();
+
+    const diagnostic = await screen.findByText("The active template was unavailable. Using Default.");
+    expect(diagnostic).toHaveAttribute("data-code", "active-template-unavailable");
+    expect(document.body.textContent).not.toContain("apiKey");
   });
 
   it("renders partial field failures and saves idempotently", async () => {
@@ -130,7 +300,7 @@ describe("SelectionPopupApp", () => {
         type: "save-vocabulary",
         data: { status: "saved", vocabularyItemId: "item-1" }
       });
-    render(<SelectionPopupApp messageClient={{ send }} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
     await openPanel();
 
     expect(await screen.findByText("Field unavailable")).toBeInTheDocument();
@@ -147,7 +317,7 @@ describe("SelectionPopupApp", () => {
       ok: false,
       error: { code: "request-failed", message: "The extension request could not be completed" }
     });
-    render(<SelectionPopupApp messageClient={{ send }} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
     const panel = await openPanel();
 
     expect(await screen.findByText("The extension request could not be completed")).toBeInTheDocument();
@@ -170,7 +340,7 @@ describe("SelectionPopupApp", () => {
         type: "save-vocabulary",
         data: { status: "saved", vocabularyItemId: "item-1" }
       });
-    render(<SelectionPopupApp messageClient={{ send }} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
     await openPanel();
     const save = screen.getByRole("button", { name: "Save selection" });
 
@@ -193,7 +363,7 @@ describe("SelectionPopupApp", () => {
       .mockReturnValueOnce(new Promise((resolve) => {
         resolveSave = resolve;
       }));
-    render(<SelectionPopupApp messageClient={{ send }} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
     await openPanel();
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Save selection" }));
@@ -213,7 +383,7 @@ describe("SelectionPopupApp", () => {
     const send = vi.fn<ExtensionMessageClient["send"]>().mockReturnValue(new Promise((resolve) => {
       resolveRequest = resolve;
     }));
-    render(<SelectionPopupApp messageClient={{ send }} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
     await openPanel();
     await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));
 
@@ -232,6 +402,57 @@ describe("SelectionPopupApp", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("ignores a previous open response after a new panel is opened", async () => {
+    const firstTemplate = { ...defaultTemplate, id: "first-open", name: "First open" };
+    const secondTemplate = { ...defaultTemplate, id: "second-open", name: "Second open" };
+    const snapshots = [firstTemplate, secondTemplate];
+    const translationResolvers: Array<(
+      response: Awaited<ReturnType<ExtensionMessageClient["send"]>>,
+    ) => void> = [];
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockImplementation((request) => {
+      if (request.type === "get-active-query-template") {
+        const template = snapshots.shift() ?? secondTemplate;
+        return Promise.resolve({
+          ok: true,
+          type: "get-active-query-template",
+          data: { template, resolution: { status: "active" } },
+        });
+      }
+      return new Promise((resolve) => translationResolvers.push(resolve));
+    });
+    render(<SelectionPopupApp messageClient={{ send }} />);
+
+    await openPanel();
+    expect(await screen.findByRole("heading", { name: "First open" })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));
+    await openPanel();
+    expect(await screen.findByRole("heading", { name: "Second open" })).toBeInTheDocument();
+
+    await act(async () => translationResolvers[1]?.({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: secondTemplate.id,
+        templateName: secondTemplate.name,
+        schema: [{ id: "translation", label: "Translation" }],
+        fields: [{ fieldId: "translation", status: "ready", type: "text", value: "Current result" }],
+      },
+    }));
+    await act(async () => translationResolvers[0]?.({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: firstTemplate.id,
+        templateName: firstTemplate.name,
+        schema: [{ id: "translation", label: "Translation" }],
+        fields: [{ fieldId: "translation", status: "ready", type: "text", value: "Stale result" }],
+      },
+    }));
+
+    expect(screen.getByText("Current result")).toBeInTheDocument();
+    expect(screen.queryByText("Stale result")).not.toBeInTheDocument();
+  });
+
   it("cancels the previous request and ignores stale output when regenerating", async () => {
     const resolvers: Array<(
       response: Awaited<ReturnType<ExtensionMessageClient["send"]>>,
@@ -244,7 +465,7 @@ describe("SelectionPopupApp", () => {
     render(
       <SelectionPopupApp
         createRequestId={() => requestIds.shift() ?? "unexpected"}
-        messageClient={{ send, cancelTranslation }}
+        messageClient={{ ...withActiveTemplate(send), cancelTranslation }}
       />,
     );
     await openPanel();
@@ -256,7 +477,7 @@ describe("SelectionPopupApp", () => {
     expect(cancelTranslation).toHaveBeenCalledWith("request-a");
     expect(send).toHaveBeenNthCalledWith(2, expect.objectContaining({
       type: "translate-selection",
-      payload: expect.objectContaining({ requestId: "request-b" }),
+      payload: expect.objectContaining({ requestId: "request-b", template: defaultTemplate }),
     }));
     await act(async () => resolvers[1]?.({
       ok: true,
@@ -264,11 +485,11 @@ describe("SelectionPopupApp", () => {
       data: {
         templateId: "system-default",
         templateName: "Latest",
-        schema: [],
-        fields: [],
+        schema: [{ id: "translation", label: "Translation" }],
+        fields: [{ fieldId: "translation", status: "ready", type: "text", value: "Latest result" }],
       },
     }));
-    expect(await screen.findByText("Latest")).toBeInTheDocument();
+    expect(await screen.findByText("Latest result")).toBeInTheDocument();
 
     await act(async () => resolvers[0]?.({
       ok: true,
@@ -276,11 +497,11 @@ describe("SelectionPopupApp", () => {
       data: {
         templateId: "system-default",
         templateName: "Stale",
-        schema: [],
-        fields: [],
+        schema: [{ id: "translation", label: "Translation" }],
+        fields: [{ fieldId: "translation", status: "ready", type: "text", value: "Stale result" }],
       },
     }));
-    expect(screen.queryByText("Stale")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stale result")).not.toBeInTheDocument();
   });
 
   it("cancels the active provider request when the panel closes", async () => {
@@ -298,7 +519,7 @@ describe("SelectionPopupApp", () => {
     render(
       <SelectionPopupApp
         createRequestId={() => "request-close"}
-        messageClient={{ send, cancelTranslation }}
+        messageClient={{ ...withActiveTemplate(send), cancelTranslation }}
       />,
     );
     await openPanel();
@@ -324,7 +545,7 @@ describe("SelectionPopupApp", () => {
         type: "translate-selection",
         data: { templateId: "system-default", templateName: "Default", schema: [], fields: [] }
       });
-    render(<SelectionPopupApp messageClient={{ send }} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
     await openPanel();
     await userEvent.setup().click(screen.getByRole("button", { name: "Save selection" }));
     await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));

@@ -133,7 +133,12 @@ describe("local repositories", () => {
     expect((await repositories.settings.getActive()).template.id).toBe(created.id);
 
     await repositories.templates.delete(created.id);
-    expect((await repositories.settings.getActive()).template.id).toBe("system-default");
+    const fallback = await repositories.settings.getActive();
+    expect(fallback.template.id).toBe("system-default");
+    expect(fallback.resolution).toEqual({
+      status: "recovered",
+      code: "active-template-unavailable",
+    });
     expect(await database.queryTemplates.get(created.id)).toBeUndefined();
   });
 
@@ -178,9 +183,30 @@ describe("local repositories", () => {
 
     expect(recovered.template.id).toBe("system-default");
     expect(recovered.settings.activeQueryTemplateId).toBe("system-default");
+    expect(recovered.resolution).toEqual({
+      status: "recovered",
+      code: "active-template-unavailable",
+    });
+    expect((await repositories.settings.getActive()).resolution).toEqual({
+      status: "recovered",
+      code: "active-template-unavailable",
+    });
     expect((await database.queryTemplates.get(user.id) as (QueryTemplate & Record<string, unknown>) | undefined)?.recoveryMarker)
       .toBe("preserve-user");
     expect((await database.queryTemplates.get("system-default"))?.fields).toHaveLength(2);
+  });
+
+  it("clears the active-template recovery diagnostic after settings are explicitly saved", async () => {
+    const { database, repositories } = createTestRepositories("template-recovery-acknowledgement-test");
+    const user = await repositories.templates.create(userTemplateInput());
+    await repositories.templates.setDefault(user.id);
+    await database.queryTemplates.put({ ...user, fields: [] } as never);
+
+    expect((await repositories.settings.getActive()).resolution.status).toBe("recovered");
+    const recoveredSettings = await repositories.settings.get();
+    await repositories.settings.save(recoveredSettings);
+
+    expect((await repositories.settings.getActive()).resolution).toEqual({ status: "active" });
   });
 
   it("persists template, settings, and timestamps across a new repository instance", async () => {

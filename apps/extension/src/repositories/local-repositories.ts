@@ -7,6 +7,7 @@ import {
   isValidQueryTemplateInput,
   normalizeLlmPublicConfig,
   normalizeVocabularyText,
+  type ActiveQueryTemplateResolution,
   type EnrichmentJob,
   type EnrichmentJobFor,
   type EnrichmentJobRepository,
@@ -44,8 +45,16 @@ export type RepositoryDependencies = {
 };
 
 export interface SettingsRepository {
-  ensureDefaults(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }>;
-  getActive(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }>;
+  ensureDefaults(): Promise<{
+    readonly settings: ExtensionSettings;
+    readonly template: QueryTemplate;
+    readonly resolution: ActiveQueryTemplateResolution;
+  }>;
+  getActive(): Promise<{
+    readonly settings: ExtensionSettings;
+    readonly template: QueryTemplate;
+    readonly resolution: ActiveQueryTemplateResolution;
+  }>;
   get(): Promise<ExtensionSettings>;
   getMigrationState(): Promise<{ readonly legacySettingsCompleted: boolean }>;
   save(settings: ExtensionSettings): Promise<ExtensionSettings>;
@@ -394,7 +403,11 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
     private readonly dependencies: RepositoryDependencies
   ) {}
 
-  async ensureDefaults(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }> {
+  async ensureDefaults(): Promise<{
+    readonly settings: ExtensionSettings;
+    readonly template: QueryTemplate;
+    readonly resolution: ActiveQueryTemplateResolution;
+  }> {
     return this.database.transaction(
       "rw",
       [this.database.settings, this.database.queryTemplates],
@@ -402,7 +415,11 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
     );
   }
 
-  async getActive(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }> {
+  async getActive(): Promise<{
+    readonly settings: ExtensionSettings;
+    readonly template: QueryTemplate;
+    readonly resolution: ActiveQueryTemplateResolution;
+  }> {
     return this.ensureDefaults();
   }
 
@@ -579,7 +596,8 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
             ...current,
             ...settings,
             id: "extension",
-            activeQueryTemplateId: "system-default"
+            activeQueryTemplateId: "system-default",
+            activeQueryTemplateRecovery: "active-template-unavailable",
           });
         }
       }
@@ -600,10 +618,8 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
         if (!settings) {
           throw new QueryTemplateRepositoryError("settings-invalid", "Extension settings are unavailable");
         }
-        await this.database.settings.put({
-          ...settings,
-          activeQueryTemplateId: id
-        });
+        const { activeQueryTemplateRecovery: _recovery, ...acknowledgedSettings } = settings;
+        await this.database.settings.put({ ...acknowledgedSettings, activeQueryTemplateId: id });
         return { template, activeQueryTemplateId: id };
       }
     );
@@ -611,24 +627,37 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
 
   private async ensureDefaultsInTransaction() {
     let systemTemplate = await this.database.queryTemplates.get("system-default");
+    const rawSettings = await this.database.settings.get("extension");
+    const systemTemplateWasUnavailable = rawSettings !== undefined && !isValidQueryTemplate(systemTemplate);
     if (!isValidQueryTemplate(systemTemplate)) {
       systemTemplate = createDefaultQueryTemplate(this.dependencies.clock());
       await this.database.queryTemplates.put(systemTemplate);
     }
 
-    const rawSettings = await this.database.settings.get("extension");
     const settings = normalizeStoredSettings(rawSettings);
     const activeTemplate = await this.validTemplate(settings.activeQueryTemplateId);
+    const activeSettingWasMalformed = rawSettings !== undefined
+      && !isNonEmptyString(rawSettings.activeQueryTemplateId);
+    const recovered = rawSettings?.activeQueryTemplateRecovery === "active-template-unavailable"
+      || activeSettingWasMalformed
+      || !activeTemplate
+      || (settings.activeQueryTemplateId === "system-default" && systemTemplateWasUnavailable);
     const activeQueryTemplateId = activeTemplate ? settings.activeQueryTemplateId : systemTemplate.id;
-    const repairedSettings = {
+    const repairedSettings: StoredExtensionSettings = {
       ...settings,
       id: "extension" as const,
-      activeQueryTemplateId
+      activeQueryTemplateId,
+      ...(recovered
+        ? { activeQueryTemplateRecovery: "active-template-unavailable" as const }
+        : {}),
     };
     await this.database.settings.put(repairedSettings);
     return {
       settings: stripSettingsId(repairedSettings),
-      template: activeTemplate ?? systemTemplate
+      template: activeTemplate ?? systemTemplate,
+      resolution: recovered
+        ? { status: "recovered" as const, code: "active-template-unavailable" as const }
+        : { status: "active" as const },
     };
   }
 
@@ -731,7 +760,10 @@ function normalizeStoredSettings(value: StoredExtensionSettings | undefined): St
     activeDictionaryProvider: "youdao-web",
     ...(raw.legacySettingsMigrationCompleted === true
       ? { legacySettingsMigrationCompleted: true }
-      : {})
+      : {}),
+    ...(raw.activeQueryTemplateRecovery === "active-template-unavailable"
+      ? { activeQueryTemplateRecovery: "active-template-unavailable" as const }
+      : {}),
   };
 }
 

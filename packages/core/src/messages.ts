@@ -21,7 +21,19 @@ export type TranslateSelectionRequest = {
   readonly payload: {
     readonly requestId: string;
     readonly context: PromptContext;
+    readonly template: QueryTemplate;
   };
+};
+
+export type ActiveQueryTemplateResolution =
+  | { readonly status: "active" }
+  | {
+      readonly status: "recovered";
+      readonly code: "active-template-unavailable";
+    };
+
+export type GetActiveQueryTemplateRequest = {
+  readonly type: "get-active-query-template";
 };
 
 export type CancelTranslationRequest = {
@@ -115,6 +127,7 @@ export function isExtensionNotification(value: unknown): value is ExtensionNotif
 
 export type ExtensionRequest =
   | TranslateSelectionRequest
+  | GetActiveQueryTemplateRequest
   | CancelTranslationRequest
   | SaveVocabularyRequest
   | RetryEnrichmentRequest
@@ -140,6 +153,14 @@ export type ExtensionSuccessResponse =
         readonly templateName: string;
         readonly schema: readonly { readonly id: string; readonly label: string }[];
         readonly fields: readonly QueryFieldResult[];
+      };
+    }
+  | {
+      readonly ok: true;
+      readonly type: "get-active-query-template";
+      readonly data: {
+        readonly template: QueryTemplate;
+        readonly resolution: ActiveQueryTemplateResolution;
       };
     }
   | { readonly ok: true; readonly type: "save-vocabulary"; readonly data: SaveVocabularyResult }
