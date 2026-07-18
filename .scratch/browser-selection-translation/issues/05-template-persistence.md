@@ -1,6 +1,6 @@
 # 05 — 模板持久化和仓库操作
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Blocked by: 03（已完成）, 04（已完成）
 
@@ -33,11 +33,11 @@ Blocked by: 03（已完成）, 04（已完成）
 
 ## Acceptance criteria
 
-- [ ] 安装、恢复和读取路径重复执行 seed 后只存在一个 `system-default`，且不会覆盖用户模板。
-- [ ] create/copy/update/delete/set-default 在成功和非法输入时返回稳定结果；删除最后一个可用模板被拒绝。
-- [ ] 删除默认模板或发现默认模板损坏时，事务性恢复 system template 并更新 active template ID。
-- [ ] 新建 service/repository 实例后，模板、默认 ID 和时间戳仍可读取。
-- [ ] 迁移不会清空 vocabulary、contexts、fields 或 jobs；未知 template 数据按约定保留。
+- [x] 安装、恢复和读取路径重复执行 seed 后只存在一个 `system-default`，且不会覆盖用户模板。
+- [x] create/copy/update/delete/set-default 在成功和非法输入时返回稳定结果；删除最后一个可用模板被拒绝。
+- [x] 删除默认模板或发现默认模板损坏时，事务性恢复 system template 并更新 active template ID。
+- [x] 新建 service/repository 实例后，模板、默认 ID 和时间戳仍可读取。
+- [x] 迁移不会清空 vocabulary、contexts、fields 或 jobs；未知 template 数据按约定保留。
 
 ## Verification
 
@@ -54,3 +54,9 @@ Blocked by: 03（已完成）, 04（已完成）
 ## Rollback boundary
 
 可以回滚 template UI 或新 message，但必须保留 system template 和已有用户模板。schema 变更只能新增前向迁移，不得以清空 IndexedDB 作为回滚。
+
+## Comments
+
+- 2026-07-18: PR #24 (`229c35d`) implemented the template/settings repository, recovery behavior, forward migration, and background message boundary.
+- 2026-07-18: Follow-up verification on `codex/template-persistence-verification` added explicit v3-v6 migration coverage for vocabulary items, fields, contexts, enrichment jobs where present, active templates, and unknown template extensions. It also covers stable invalid create/copy/update/delete/set-default responses and repository readback after updates.
+- 2026-07-18: Verified `pnpm test` (22 core tests, 122 extension tests), `pnpm typecheck`, and `pnpm build`; options code has no Dexie or database import.
