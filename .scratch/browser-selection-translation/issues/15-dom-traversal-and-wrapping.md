@@ -1,18 +1,48 @@
 # 15 — DOM 遍历和包装
 
-**What to build:** DOM 遍历使用 TreeWalker/NodeIterator 遍历文本节点，跳过规则（a、button、input、code、contenteditable 等），拆分和包装匹配的文本范围，标记 Salto 包装器使扫描幂等，确定性清理恢复文本不删除宿主监听器。
+Status: ready-for-agent
 
-**Blocked by:** 14 — 纯匹配引擎
+Blocked by: 14 — 纯匹配引擎
 
-**Status:** ready-for-agent
+## Outcome
 
-- [ ] TreeWalker/NodeIterator：使用 TreeWalker 或 NodeIterator 遍历文本节点；永不重写页面 innerHTML
-- [ ] 跳过交互元素：跳过 a、button、input、textarea、select、option、code、pre 和 contenteditable 祖先
-- [ ] 跳过脚本和隐藏：跳过 script、style、hidden、disconnected 和扩展拥有的节点
-- [ ] 跳过 Salto UI：不跳过 Salto 拥有的 UI 内的高亮
-- [ ] 拆分和包装：仅拆分和包装每个文本节点中匹配的文本范围
-- [ ] 标记 Salto 包装器：标记 Salto 包装器使扫描幂等
-- [ ] 确定性清理：提供确定性清理，恢复文本而不删除宿主监听器
-- [ ] DOM 测试：证明跳过的元素保持未触及
-- [ ] 宿主监听器测试：证明宿主元素监听器在高亮和清理后存活
-- [ ] 可见样式：一种可见的波浪下划线样式，不在 UI 其他地方仅依赖颜色表示保存状态
+使用 TreeWalker/NodeIterator 将 14 返回的 match ranges 包装为可清理的 Salto highlight wrapper，不重写宿主页面 `innerHTML`，不触碰交互、编辑、代码、隐藏或扩展自有 UI。
+
+## Frozen decisions
+
+- 跳过 `a`、`button`、`input`、`textarea`、`select`、`option`、`code`、`pre` 和 contenteditable 祖先。
+- 跳过 `script`、`style`、hidden/disconnected 节点、已包装节点和 Salto 自有 UI/Shadow DOM。
+- 只拆分单个文本节点中的命中范围；不跨 DOM 节点匹配。
+- wrapper 有稳定的 Salto marker 和可见波浪下划线，不仅依赖颜色表达状态。
+- cleanup 只移除 Salto wrapper 并恢复原文本节点结构，不替换 `innerHTML`，不删除宿主元素 listener。
+
+## Scope
+
+- text-node traversal、skip predicate、range splitting/wrapping、marker 和 deterministic cleanup。
+- 与 14 matcher 的 seam adapter；不把 provider/storage 逻辑带入 DOM 层。
+
+## Non-goals
+
+- 不实现 initial scan、MutationObserver、frame budget；属于 16。
+- 不实现 saved-term subscription 或设置开关；属于 17。
+
+## Acceptance criteria
+
+- [ ] 所有 skip categories 的 fixture 保持原 DOM/text 和 listener 行为。
+- [ ] 一个文本节点中多个命中可正确拆分；overlap 服从 14 的最长术语规则。
+- [ ] 重复扫描不会产生嵌套或重复 wrapper。
+- [ ] cleanup 后页面文本和宿主元素 listener 保持，Salto wrapper 完全移除。
+- [ ] visible style 在 light/dark 下可见，保存状态不只由颜色表示。
+
+## Verification
+
+- DOM tests 覆盖 skip、split/wrap、idempotent scan、cleanup、listener survival 和 style marker。
+- `pnpm test`、`pnpm typecheck`、`pnpm build`；用 fixture 手动检查表单、链接、代码和 Salto UI。
+
+## Exit criteria
+
+- 16 可在不改变 wrapper 语义的情况下加入增量观察；17 可安全调用 cleanup。
+
+## Rollback boundary
+
+停止 highlighting 时只清理 Salto-owned wrappers；不得通过 innerHTML 或全页重建破坏宿主 DOM。
