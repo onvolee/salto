@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -27,6 +27,7 @@ vi.mock("./llm-client", async (importOriginal) => {
             fieldId: "field-warning",
             fieldLabel: "上下文",
             unknownVariables: ["pageText"],
+            malformedTokens: [{ raw: "{{ }}", reason: "empty-variable" }],
           }],
         },
       }),
@@ -122,6 +123,66 @@ describe("OptionsApp", () => {
     expect(screen.getByText("上下文")).toBeInTheDocument();
   });
 
+  it("inserts every prompt variable at the textarea selection without a provider request", async () => {
+    render(<OptionsApp />);
+    const user = userEvent.setup();
+
+    await screen.findByRole("heading", { name: "通用" });
+    await user.click(screen.getByRole("button", { name: "划词翻译" }));
+    await user.click(screen.getByRole("button", { name: "新建模板" }));
+    await user.click(screen.getByRole("button", { name: "编辑翻译" }));
+
+    const instruction = screen.getByLabelText("Instruction") as HTMLTextAreaElement;
+    const variableSelect = screen.getByLabelText("插入变量");
+    const variables = [
+      "selection",
+      "sentence",
+      "paragraphs",
+      "targetLanguage",
+      "webTitle",
+      "webUrl",
+      "webContent",
+    ] as const;
+
+    expect(screen.getAllByRole("option").map((option) => option.getAttribute("value")))
+      .toEqual(["", ...variables]);
+
+    for (const variable of variables) {
+      instruction.focus();
+      instruction.setSelectionRange(0, instruction.value.length);
+      await user.selectOptions(variableSelect, variable);
+      const expected = `{{${variable}}}`;
+      expect(instruction).toHaveValue(expected);
+      expect(instruction).toHaveFocus();
+      expect(instruction.selectionStart).toBe(expected.length);
+      expect(instruction.selectionEnd).toBe(expected.length);
+    }
+
+    expect(browserOptionsLlmClient.testConnection).not.toHaveBeenCalled();
+  });
+
+  it("links distinct prompt warnings to the instruction and keeps them non-blocking", async () => {
+    render(<OptionsApp />);
+    const user = userEvent.setup();
+
+    await screen.findByRole("heading", { name: "通用" });
+    await user.click(screen.getByRole("button", { name: "划词翻译" }));
+    await user.click(screen.getByRole("button", { name: "新建模板" }));
+    await user.click(screen.getByRole("button", { name: "编辑翻译" }));
+
+    const instruction = screen.getByLabelText("Instruction");
+    fireEvent.change(instruction, { target: { value: "Use {{pageText}} and {{ }}." } });
+
+    expect(screen.getByText("变量警告（仍可保存）")).toBeInTheDocument();
+    expect(screen.getByText("未知变量：{{pageText}}")).toBeInTheDocument();
+    expect(screen.getByText("畸形变量：{{ }}（变量名为空）")).toBeInTheDocument();
+    expect(instruction.getAttribute("aria-describedby")).toContain("instruction-warning");
+
+    await user.click(screen.getByRole("button", { name: "应用" }));
+    expect(screen.queryByRole("dialog", { name: "编辑字段" })).not.toBeInTheDocument();
+    expect(screen.getByText("2 个变量警告（仍可保存）")).toBeInTheDocument();
+  });
+
   it("previews and persists a changed theme", async () => {
     render(<OptionsApp />);
     const user = userEvent.setup();
@@ -157,7 +218,8 @@ describe("OptionsApp", () => {
     expect(screen.getByText("页面上下文传输")).toBeInTheDocument();
     expect(screen.getByText(/当前活动模板会发送：所选文本、目标语言/)).toBeInTheDocument();
     expect(screen.getByText("模板变量警告")).toBeInTheDocument();
-    expect(screen.getByText(/上下文：\{\{pageText\}\}/)).toBeInTheDocument();
+    expect(screen.getByText(/上下文：.*\{\{pageText\}\}/)).toBeInTheDocument();
+    expect(screen.getByText(/畸形变量 \{\{ \}\}/)).toBeInTheDocument();
   });
 
   it("shows provider availability without prototype-only controls", async () => {

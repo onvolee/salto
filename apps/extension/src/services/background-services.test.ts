@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PromptContext, QueryTemplate } from "@salto/core";
 
 import { QueryTemplateRepositoryError } from "../repositories";
+import { createOpenAiCompatibleQueryExecutor } from "../llm/openai-compatible-query-executor";
 import { createBackgroundServices } from "./background-services";
 import { createFakeQueryExecutor } from "./fake-query-executor";
 
@@ -277,6 +278,102 @@ describe("background message boundary", () => {
       });
   });
 
+  it("uses a saved editor instruction with the shared rendering rules on the next translation", async () => {
+    let storedTemplate: QueryTemplate = {
+      id: "user-template",
+      name: "Reading",
+      createdAt: "2026-07-16T00:00:00.000Z",
+      updatedAt: "2026-07-16T00:00:00.000Z",
+      fields: [{
+        id: "runtime-field",
+        label: "Runtime",
+        source: "llm",
+        type: "text",
+        instruction: "Old instruction",
+        order: 0,
+        enabled: true,
+      }],
+    };
+    const templates = {
+      update: vi.fn(async (next: QueryTemplate) => {
+        storedTemplate = next;
+        return next;
+      }),
+    };
+    const settings = {
+      getActive: vi.fn(async () => ({
+        settings: {
+          activeQueryTemplateId: storedTemplate.id,
+          targetLanguage: "ja-JP",
+          highlightEnabled: true,
+          themeMode: "system" as const,
+        },
+        template: storedTemplate,
+      })),
+    };
+    const complete = vi.fn().mockResolvedValue({ "runtime-field": "translated" });
+    const queryExecutor = createOpenAiCompatibleQueryExecutor({
+      llmSettings: {
+        getCredentials: vi.fn().mockResolvedValue({
+          config: {
+            provider: "openai-compatible",
+            baseUrl: "https://api.example.com/v1",
+            model: "model-a",
+          },
+          secret: { apiKey: "secret-a" },
+        }),
+      },
+      createClient: vi.fn().mockReturnValue({ complete, testConnection: vi.fn() }),
+      hasOriginPermission: vi.fn().mockResolvedValue(true),
+    });
+    const services = createBackgroundServices({
+      repositories: { templates, settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor,
+    });
+    const savedTemplate: QueryTemplate = {
+      ...storedTemplate,
+      fields: [{
+        id: "runtime-field",
+        label: "Runtime",
+        source: "llm",
+        type: "text",
+        instruction: "Translate {{ selection }} to {{targetLanguage}}; context={{sentence}}.",
+        order: 0,
+        enabled: true,
+      }],
+    };
+
+    await expect(services.handleMessage({
+      type: "update-query-template",
+      payload: { template: savedTemplate },
+    }, { source: "extension-page" })).resolves.toMatchObject({
+      ok: true,
+      type: "update-query-template",
+    });
+    await expect(services.handleMessage({
+      type: "translate-selection",
+      payload: {
+        requestId: "saved-template-runtime",
+        context: { ...context, sentence: "" },
+      },
+    })).resolves.toMatchObject({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        fields: [{ fieldId: "runtime-field", status: "ready", value: "translated" }],
+      },
+    });
+    expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+      fields: [{
+        id: "runtime-field",
+        type: "text",
+        instruction: "Translate unfamiliar to ja-JP; context=.",
+      }],
+    }));
+  });
+
   it.each([
     ["unknown request", { type: "read-api-key", payload: { secret: "do-not-echo" } }, "unknown-message"],
     ["malformed context", { type: "translate-selection", payload: { requestId: "bad", context: { selection: "x" } } }, "invalid-payload"],
@@ -519,6 +616,7 @@ describe("background message boundary", () => {
             fieldId: "second",
             fieldLabel: "Second",
             unknownVariables: ["pageText"],
+            malformedTokens: [],
           }],
         },
       },

@@ -1,6 +1,6 @@
 # 07 — 提示词变量解析和验证
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Blocked by: 03（已完成）, 05 — 模板持久化和仓库操作
 
@@ -30,11 +30,11 @@ Blocked by: 03（已完成）, 05 — 模板持久化和仓库操作
 
 ## Acceptance criteria
 
-- [ ] 七个 frozen variables 都能从插入菜单插入，手动输入产生相同 parser result。
-- [ ] 有效、重复、相邻、未知、空名和畸形 token 都有确定性测试结果。
-- [ ] 未知/畸形变量在保存界面显示 warning，保存成功；运行时为该字段保留可诊断错误，不把未知 token 当成上下文值。
-- [ ] missing context 与 unknown variable 在 UI 和 runtime result 中可区分。
-- [ ] parser 不触发网络请求，`webContent` 截断测试覆盖边界。
+- [x] 七个 frozen variables 都能从插入菜单插入，手动输入产生相同 parser result。
+- [x] 有效、重复、相邻、未知、空名和畸形 token 都有确定性测试结果。
+- [x] 未知/畸形变量在保存界面显示 warning，保存成功；运行时为该字段保留可诊断错误，不把未知 token 当成上下文值。
+- [x] missing context 与 unknown variable 在 UI 和 runtime result 中可区分。
+- [x] parser 不触发网络请求，`webContent` 截断测试覆盖边界。
 
 ## Verification
 
@@ -50,3 +50,9 @@ Blocked by: 03（已完成）, 05 — 模板持久化和仓库操作
 ## Rollback boundary
 
 可以回滚变量菜单，但不能改变已保存模板的变量解释方式而不提供迁移/兼容规则；未知变量不得因回滚被静默执行。
+
+## Comments
+
+- 2026-07-19：实现单一 core parser/renderer，兼容 `{{ selection }}`，插入统一输出 `{{selection}}`。unknown 与 malformed 分别使用 `unknown-prompt-variable` 和 `malformed-prompt-variable`，missing known context 渲染为空字符串。
+- 2026-07-19：options 字段编辑器提供七项原生变量选择器，在当前 caret/selection 插入并恢复 textarea 焦点；warning 通过 `aria-describedby` 关联 instruction，且模板保存测试证明 warning 不阻塞保存。
+- 2026-07-19：验证通过：`pnpm test`（core 38，extension 133）、`pnpm typecheck`、`pnpm build`（Chrome MV3 总大小 1.87 MB）。

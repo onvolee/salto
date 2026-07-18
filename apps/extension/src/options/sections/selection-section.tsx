@@ -6,6 +6,7 @@ import {
   Delete02Icon,
   DragDropVerticalIcon,
   FloppyDiskIcon,
+  InformationCircleIcon,
   PencilEdit02Icon,
   Refresh01Icon,
   Tick02Icon,
@@ -26,8 +27,24 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useForm } from "@tanstack/react-form";
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import {
+  parsePromptTemplate,
+  PROMPT_CONTEXT_VARIABLES,
+  type PromptMalformedReason,
+} from "@salto/core";
 
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "salto-src/components/ui/alert";
 import { Badge } from "salto-src/components/ui/badge";
 import { Button } from "salto-src/components/ui/button";
 import {
@@ -68,6 +85,30 @@ import {
 } from "../template-editor";
 
 type TemplateEditor = ReturnType<typeof useQueryTemplates>;
+
+const PROMPT_VARIABLE_LABELS = {
+  selection: "所选文本",
+  sentence: "所在句子",
+  paragraphs: "附近段落",
+  targetLanguage: "目标语言",
+  webTitle: "页面标题",
+  webUrl: "页面地址",
+  webContent: "页面正文",
+} as const;
+
+const MALFORMED_REASON_LABELS: Record<PromptMalformedReason, string> = {
+  "empty-variable": "变量名为空",
+  "invalid-identifier": "变量名格式无效",
+  "unmatched-opening-braces": "左括号未配对",
+  "unmatched-closing-braces": "右括号未配对",
+  "triple-brace-run": "不支持三重括号",
+};
+
+function promptWarnings(instruction: string) {
+  return parsePromptTemplate(instruction).diagnostics.filter(
+    (diagnostic) => diagnostic.kind !== "known",
+  );
+}
 
 type TemplateNameEditorProps = {
   readonly draft: NonNullable<TemplateEditor["draft"]>;
@@ -158,6 +199,16 @@ function FieldEditorDialog({
   const [draft, setDraft] = useState(field);
   const [localErrors, setLocalErrors] = useState<Readonly<Record<string, string>>>({});
   const [editedKeys, setEditedKeys] = useState<readonly string[]>([]);
+  const instructionRef = useRef<HTMLTextAreaElement>(null);
+  const pendingSelectionRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const position = pendingSelectionRef.current;
+    if (position === null) return;
+    pendingSelectionRef.current = null;
+    instructionRef.current?.focus();
+    instructionRef.current?.setSelectionRange(position, position);
+  });
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
@@ -205,6 +256,24 @@ function FieldEditorDialog({
   const instructionError = error("instruction");
   const dictionaryError = error("dictionaryField");
   const typeError = error("type");
+  const variableWarnings = draft.source === "llm"
+    ? promptWarnings(draft.instruction)
+    : [];
+  const instructionErrorId = `${field.id}-edit-instruction-error`;
+  const instructionWarningId = `${field.id}-edit-instruction-warning`;
+
+  const insertVariable = (variable: string) => {
+    if (!PROMPT_CONTEXT_VARIABLES.some((candidate) => candidate === variable)) return;
+    const textarea = instructionRef.current;
+    const instruction = textarea?.value ?? draft.instruction;
+    const start = textarea?.selectionStart ?? instruction.length;
+    const end = textarea?.selectionEnd ?? start;
+    const token = `{{${variable}}}`;
+    pendingSelectionRef.current = start + token.length;
+    updateDraft({
+      instruction: instruction.slice(0, start) + token + instruction.slice(end),
+    });
+  };
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
@@ -330,17 +399,59 @@ function FieldEditorDialog({
             {draft.source === "llm" ? (
               <Field data-invalid={Boolean(instructionError)}>
                 <FieldLabel htmlFor={`${field.id}-edit-instruction`}>Instruction</FieldLabel>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs font-medium" htmlFor={`${field.id}-edit-variable`}>
+                    插入变量
+                  </label>
+                  <select
+                    className="h-8 min-w-48 rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+                    id={`${field.id}-edit-variable`}
+                    name="promptVariable"
+                    onChange={(event) => insertVariable(event.target.value)}
+                    value=""
+                  >
+                    <option value="">选择变量</option>
+                    {PROMPT_CONTEXT_VARIABLES.map((variable) => (
+                      <option key={variable} value={variable}>
+                        {variable} · {PROMPT_VARIABLE_LABELS[variable]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <Textarea
-                  aria-describedby={instructionError ? `${field.id}-edit-instruction-error` : undefined}
+                  aria-describedby={[
+                    instructionError ? instructionErrorId : null,
+                    variableWarnings.length > 0 ? instructionWarningId : null,
+                  ].filter(Boolean).join(" ") || undefined}
                   aria-invalid={Boolean(instructionError)}
                   autoComplete="off"
                   id={`${field.id}-edit-instruction`}
                   name="instruction"
                   onChange={(event) => updateDraft({ instruction: event.target.value })}
+                  ref={instructionRef}
                   rows={5}
                   value={draft.instruction}
                 />
-                <FieldError id={`${field.id}-edit-instruction-error`}>{instructionError}</FieldError>
+                <FieldError id={instructionErrorId}>{instructionError}</FieldError>
+                {variableWarnings.length > 0 ? (
+                  <Alert id={instructionWarningId} role="note">
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={InformationCircleIcon}
+                      strokeWidth={2}
+                    />
+                    <AlertTitle>变量警告（仍可保存）</AlertTitle>
+                    <AlertDescription>
+                      {variableWarnings.map((warning) => (
+                        <span className="block" key={`${warning.start}:${warning.end}`}>
+                          {warning.kind === "unknown"
+                            ? `未知变量：{{${warning.variable}}}`
+                            : `畸形变量：${warning.raw}（${MALFORMED_REASON_LABELS[warning.reason]}）`}
+                        </span>
+                      ))}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
               </Field>
             ) : null}
           </FieldGroup>
@@ -372,6 +483,9 @@ function SortableFieldRow({
     transition: sortable.transition,
   };
   const hasErrors = Boolean(errors.field[field.id]);
+  const variableWarningCount = field.source === "llm"
+    ? promptWarnings(field.instruction).length
+    : 0;
 
   return (
     <li
@@ -398,6 +512,12 @@ function SortableFieldRow({
           </div>
           {hasErrors ? (
             <p className="mt-1 text-xs text-destructive" data-field-error>字段配置有误</p>
+          ) : null}
+          {variableWarningCount > 0 ? (
+            <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <HugeiconsIcon aria-hidden="true" icon={InformationCircleIcon} strokeWidth={2} />
+              {variableWarningCount} 个变量警告（仍可保存）
+            </p>
           ) : null}
         </div>
         <Switch

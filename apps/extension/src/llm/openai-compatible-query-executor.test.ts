@@ -181,4 +181,44 @@ describe("OpenAI-compatible query executor", () => {
 
     expect(complete.mock.calls[0]?.[0].signal).toBe(controller.signal);
   });
+
+  it("isolates unknown and malformed prompt fields with distinct stable codes", async () => {
+    const { complete, executor } = createDependencies({
+      output: { valid: "translated" },
+    });
+    const template = {
+      ...createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"),
+      id: "prompt-diagnostics",
+      fields: [
+        { id: "valid", label: "Valid", source: "llm" as const, type: "text" as const, instruction: "Use {{selection}}.", order: 0, enabled: true },
+        { id: "unknown", label: "Unknown", source: "llm" as const, type: "text" as const, instruction: "Use {{pageText}}.", order: 1, enabled: true },
+        { id: "malformed", label: "Malformed", source: "llm" as const, type: "text" as const, instruction: "Use {{ }}.", order: 2, enabled: true },
+      ],
+    };
+
+    const result = await executor.execute(template, context);
+
+    expect(result).toEqual([
+      { fieldId: "valid", status: "ready", type: "text", value: "translated" },
+      {
+        fieldId: "unknown",
+        status: "failed",
+        error: {
+          code: "unknown-prompt-variable",
+          message: "Unknown prompt variable: pageText",
+        },
+      },
+      {
+        fieldId: "malformed",
+        status: "failed",
+        error: {
+          code: "malformed-prompt-variable",
+          message: "Malformed prompt variable (empty-variable): {{ }}",
+        },
+      },
+    ]);
+    expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+      fields: [{ id: "valid", type: "text", instruction: "Use bank." }],
+    }));
+  });
 });

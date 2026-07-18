@@ -272,9 +272,18 @@ export function AiProviderSection({
           <AlertDescription>
             {promptAnalysis.warnings.map((warning) => (
               <span className="block" key={warning.fieldId}>
-                {warning.fieldLabel}：{warning.unknownVariables
-                  .map((variable) => `{{${variable}}}`)
-                  .join("、")}
+                {warning.fieldLabel}：
+                {warning.unknownVariables.length > 0
+                  ? `未知变量 ${warning.unknownVariables
+                    .map((variable) => `{{${variable}}}`)
+                    .join("、")}`
+                  : null}
+                {warning.unknownVariables.length > 0 && warning.malformedTokens.length > 0
+                  ? "；"
+                  : null}
+                {warning.malformedTokens.length > 0
+                  ? `畸形变量 ${warning.malformedTokens.map(({ raw }) => raw).join("、")}`
+                  : null}
               </span>
             ))}
           </AlertDescription>
