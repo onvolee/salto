@@ -289,6 +289,110 @@ describe("background message boundary", () => {
     expect(JSON.stringify(response)).not.toContain("do-not-echo");
   });
 
+  it("keeps template management behind the extension-page boundary and validates payloads", async () => {
+    const created = { ...template, id: "user-1", name: "User template" };
+    const templates = {
+      list: vi.fn().mockResolvedValue([template, created]),
+      create: vi.fn().mockResolvedValue(created),
+      copy: vi.fn().mockResolvedValue({ ...created, id: "user-2" }),
+      update: vi.fn().mockResolvedValue(created),
+      delete: vi.fn().mockResolvedValue(undefined),
+      setDefault: vi.fn().mockResolvedValue({ template: created, activeQueryTemplateId: created.id })
+    };
+    const settings = {
+      get: vi.fn().mockResolvedValue({
+        activeQueryTemplateId: template.id,
+        targetLanguage: "zh-CN",
+        highlightEnabled: true,
+        themeMode: "system"
+      }),
+      save: vi.fn().mockResolvedValue({
+        activeQueryTemplateId: created.id,
+        targetLanguage: "zh-CN",
+        highlightEnabled: true,
+        themeMode: "system"
+      })
+    };
+    const services = createBackgroundServices({
+      repositories: { templates, settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor()
+    });
+    const input = { name: "New template", fields: [template.fields[0]] };
+
+    await expect(services.handleMessage({
+      type: "create-query-template",
+      payload: input
+    }, { source: "content-script" })).resolves.toEqual({
+      ok: false,
+      error: { code: "forbidden", message: "This request is available only from extension settings" }
+    });
+    await expect(services.handleMessage({
+      type: "create-query-template",
+      payload: input
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: true,
+      type: "create-query-template",
+      data: created
+    });
+    expect(templates.create).toHaveBeenCalledWith(input);
+
+    await expect(services.handleMessage({
+      type: "update-query-template",
+      payload: { template: { id: "user-1", name: "missing-fields" } }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-payload", message: "Invalid extension message payload" }
+    });
+  });
+
+  it("reads and writes extension settings and returns active template state", async () => {
+    const settings = {
+      get: vi.fn().mockResolvedValue({
+        activeQueryTemplateId: template.id,
+        targetLanguage: "zh-CN",
+        highlightEnabled: true,
+        themeMode: "system"
+      }),
+      save: vi.fn().mockResolvedValue({
+        activeQueryTemplateId: "user-1",
+        targetLanguage: "ja-JP",
+        highlightEnabled: false,
+        themeMode: "dark"
+      })
+    };
+    const templates = { list: vi.fn().mockResolvedValue([template]), setDefault: vi.fn() };
+    const services = createBackgroundServices({
+      repositories: { settings, templates } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor()
+    });
+
+    await expect(services.handleMessage({ type: "get-extension-settings" }, { source: "extension-page" }))
+      .resolves.toEqual({
+        ok: true,
+        type: "get-extension-settings",
+        data: await settings.get()
+      });
+    const nextSettings = {
+      activeQueryTemplateId: "user-1",
+      targetLanguage: "ja-JP",
+      highlightEnabled: false,
+      themeMode: "dark" as const
+    };
+    await expect(services.handleMessage({
+      type: "save-extension-settings",
+      payload: nextSettings
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: true,
+      type: "save-extension-settings",
+      data: await settings.save(nextSettings)
+    });
+    expect(settings.save).toHaveBeenCalledWith(nextSettings);
+  });
+
   it("exposes public LLM state without serializing the API key", async () => {
     const { settings } = createServices();
     const llmSettings = {
