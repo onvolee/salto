@@ -63,5 +63,16 @@ export class SaltoDatabase extends Dexie {
     this.version(6).stores({
       vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt, selectionPath"
     });
+
+    this.version(7).stores({
+      queryTemplates: "&id, updatedAt",
+      settings: "&id, activeQueryTemplateId"
+    }).upgrade(async (transaction) => {
+      await transaction.table("settings").toCollection().modify((record: Record<string, unknown>) => {
+        if (typeof record.activeQueryTemplateId !== "string" && typeof record.activeTemplateId === "string") {
+          record.activeQueryTemplateId = record.activeTemplateId;
+        }
+      });
+    });
   }
 }

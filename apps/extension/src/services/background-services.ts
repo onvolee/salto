@@ -1,5 +1,8 @@
 import {
   analyzeLlmPromptFields,
+  isValidExtensionSettings,
+  isValidQueryTemplate,
+  isValidQueryTemplateInput,
   LlmConfigError,
   normalizeLlmPublicConfig,
   type ExtensionErrorCode,
@@ -14,6 +17,7 @@ import {
 
 import type { SaveVocabularyService } from "@salto/core";
 import type { LocalRepositories } from "../repositories";
+import { QueryTemplateRepositoryError } from "../repositories";
 import type { EnrichmentQueue } from "../enrichment/enrichment-queue";
 
 export interface QueryExecutor {
@@ -103,6 +107,10 @@ function isLlmPublicConfig(value: unknown): value is LlmPublicConfig {
     && (value.temperature === undefined || typeof value.temperature === "number");
 }
 
+function isTemplateIdPayload(value: unknown): value is { readonly templateId: string } {
+  return isRecord(value) && typeof value.templateId === "string" && value.templateId.trim().length > 0;
+}
+
 export function parseExtensionRequest(
   value: unknown,
 ): ExtensionRequest | null | "unknown" {
@@ -132,6 +140,31 @@ export function parseExtensionRequest(
   }
   if (value.type === "save-vocabulary") {
     return isSavePayload(value.payload) ? { type: value.type, payload: value.payload } : null;
+  }
+  if (value.type === "list-query-templates" || value.type === "get-extension-settings") {
+    return { type: value.type };
+  }
+  if (value.type === "create-query-template") {
+    return isValidQueryTemplateInput(value.payload)
+      ? { type: value.type, payload: value.payload }
+      : null;
+  }
+  if (
+    value.type === "copy-query-template"
+    || value.type === "delete-query-template"
+    || value.type === "set-default-query-template"
+  ) {
+    return isTemplateIdPayload(value.payload) ? { type: value.type, payload: value.payload } : null;
+  }
+  if (value.type === "update-query-template") {
+    return isRecord(value.payload) && isValidQueryTemplate(value.payload.template)
+      ? { type: value.type, payload: { template: value.payload.template } }
+      : null;
+  }
+  if (value.type === "save-extension-settings") {
+    return isValidExtensionSettings(value.payload)
+      ? { type: value.type, payload: value.payload }
+      : null;
   }
   if (value.type === "retry-enrichment") {
     return {
@@ -221,6 +254,9 @@ function mapUnknownError(error: unknown): ExtensionResponse {
   }
   if (error instanceof LlmConfigError) {
     return errorResponse("configuration-invalid", error.message);
+  }
+  if (error instanceof QueryTemplateRepositoryError) {
+    return errorResponse(error.code, error.message);
   }
   if (isRecord(error) && typeof error.code === "string") {
     const code = error.code.replace(/^llm-/, "") as ExtensionErrorCode;
@@ -409,6 +445,87 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
               ...llmState,
               promptAnalysis: analyzeLlmPromptFields(llmFields),
             },
+          };
+        }
+
+        if (request.type === "list-query-templates") {
+          assertExtensionPage(context);
+          const [templates, settings] = await Promise.all([
+            dependencies.repositories.templates.list(),
+            dependencies.repositories.settings.get()
+          ]);
+          return {
+            ok: true,
+            type: request.type,
+            data: { templates, activeQueryTemplateId: settings.activeQueryTemplateId }
+          };
+        }
+
+        if (request.type === "create-query-template") {
+          assertExtensionPage(context);
+          return {
+            ok: true,
+            type: request.type,
+            data: await dependencies.repositories.templates.create(request.payload)
+          };
+        }
+
+        if (request.type === "copy-query-template") {
+          assertExtensionPage(context);
+          return {
+            ok: true,
+            type: request.type,
+            data: await dependencies.repositories.templates.copy(request.payload.templateId)
+          };
+        }
+
+        if (request.type === "update-query-template") {
+          assertExtensionPage(context);
+          return {
+            ok: true,
+            type: request.type,
+            data: await dependencies.repositories.templates.update(request.payload.template)
+          };
+        }
+
+        if (request.type === "delete-query-template") {
+          assertExtensionPage(context);
+          await dependencies.repositories.templates.delete(request.payload.templateId);
+          const settings = await dependencies.repositories.settings.get();
+          return {
+            ok: true,
+            type: request.type,
+            data: {
+              deletedTemplateId: request.payload.templateId,
+              activeQueryTemplateId: settings.activeQueryTemplateId
+            }
+          };
+        }
+
+        if (request.type === "set-default-query-template") {
+          assertExtensionPage(context);
+          return {
+            ok: true,
+            type: request.type,
+            data: await dependencies.repositories.templates.setDefault(request.payload.templateId)
+          };
+        }
+
+        if (request.type === "get-extension-settings") {
+          assertExtensionPage(context);
+          return {
+            ok: true,
+            type: request.type,
+            data: await dependencies.repositories.settings.get()
+          };
+        }
+
+        if (request.type === "save-extension-settings") {
+          assertExtensionPage(context);
+          return {
+            ok: true,
+            type: request.type,
+            data: await dependencies.repositories.settings.save(request.payload)
           };
         }
 

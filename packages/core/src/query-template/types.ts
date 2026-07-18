@@ -50,6 +50,8 @@ export interface QueryTemplate {
   readonly updatedAt: IsoDateTimeString;
 }
 
+export type QueryTemplateInput = Pick<QueryTemplate, "name" | "fields">;
+
 export interface PromptContext {
   readonly selection: string;
   readonly sentence: string;
@@ -101,6 +103,118 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   highlightEnabled: true,
   themeMode: "system"
 };
+
+export function isValidQueryTemplate(value: unknown): value is QueryTemplate {
+  if (!isRecord(value)
+    || !isNonEmptyString(value.id)
+    || !isNonEmptyString(value.name)
+    || !Array.isArray(value.fields)
+    || !isIsoDateTime(value.createdAt)
+    || !isIsoDateTime(value.updatedAt)
+  ) {
+    return false;
+  }
+
+  const fieldIds = new Set<string>();
+  const orders = new Set<number>();
+  let enabledFieldCount = 0;
+  for (const field of value.fields) {
+    if (!isValidQuerySchemaField(field)) {
+      return false;
+    }
+    if (fieldIds.has(field.id) || orders.has(field.order)) {
+      return false;
+    }
+    fieldIds.add(field.id);
+    orders.add(field.order);
+    if (field.enabled) {
+      enabledFieldCount += 1;
+    }
+  }
+
+  return value.fields.length > 0 && enabledFieldCount > 0;
+}
+
+export function isValidQueryTemplateInput(value: unknown): value is QueryTemplateInput {
+  if (!isRecord(value) || !isNonEmptyString(value.name) || !Array.isArray(value.fields)) {
+    return false;
+  }
+
+  return isValidQueryTemplate({
+    id: "validation",
+    name: value.name,
+    fields: value.fields,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z"
+  });
+}
+
+export function isValidExtensionSettings(value: unknown): value is ExtensionSettings {
+  return isRecord(value)
+    && isNonEmptyString(value.activeQueryTemplateId)
+    && isNonEmptyString(value.targetLanguage)
+    && typeof value.highlightEnabled === "boolean"
+    && (value.themeMode === "system" || value.themeMode === "light" || value.themeMode === "dark")
+    && (value.activeDictionaryProvider === undefined
+      || value.activeDictionaryProvider === "youdao-web"
+      || value.activeDictionaryProvider === "cambridge-web");
+}
+
+function isValidQuerySchemaField(value: unknown): value is QuerySchemaField {
+  if (!isRecord(value)
+    || !isNonEmptyString(value.id)
+    || !isNonEmptyString(value.label)
+    || !Number.isInteger(value.order)
+    || (value.order as number) < 0
+    || typeof value.enabled !== "boolean"
+  ) {
+    return false;
+  }
+
+  if (value.source === "llm") {
+    return (value.type === "text" || value.type === "list")
+      && typeof value.instruction === "string"
+      && !("dictionaryField" in value);
+  }
+
+  if (value.source === "dictionary") {
+    if (!("dictionaryField" in value) || !isDictionaryQueryField(value.dictionaryField)) {
+      return false;
+    }
+    return value.type === DICTIONARY_QUERY_FIELD_TYPES[value.dictionaryField]
+      && !("instruction" in value);
+  }
+
+  return false;
+}
+
+const DICTIONARY_QUERY_FIELD_TYPES: DictionaryQueryFieldSpec = {
+  phonetic: "text",
+  partOfSpeech: "text",
+  meaning: "text",
+  synonyms: "list",
+  wordForms: "list"
+};
+
+function isDictionaryQueryField(value: unknown): value is DictionaryQueryField {
+  return value === "phonetic"
+    || value === "partOfSpeech"
+    || value === "meaning"
+    || value === "synonyms"
+    || value === "wordForms";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isIsoDateTime(value: unknown): value is IsoDateTimeString {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
 
 export function createDefaultQueryTemplate(seedTime: IsoDateTimeString): QueryTemplate {
   return {

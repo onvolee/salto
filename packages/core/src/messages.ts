@@ -3,7 +3,13 @@ import type {
   LlmOptionsState,
   LlmPublicConfig,
 } from "./llm/types";
-import type { PromptContext, QueryFieldResult } from "./query-template/types";
+import type {
+  ExtensionSettings,
+  PromptContext,
+  QueryFieldResult,
+  QueryTemplate,
+  QueryTemplateInput,
+} from "./query-template/types";
 import type { SaveVocabularyInput, SaveVocabularyResult } from "./vocabulary/ports";
 import type { SelectionPath } from "./vocabulary/types";
 
@@ -56,6 +62,44 @@ export type TestLlmConnectionRequest = {
   readonly type: "test-llm-connection";
 };
 
+export type ListQueryTemplatesRequest = {
+  readonly type: "list-query-templates";
+};
+
+export type CreateQueryTemplateRequest = {
+  readonly type: "create-query-template";
+  readonly payload: QueryTemplateInput;
+};
+
+export type CopyQueryTemplateRequest = {
+  readonly type: "copy-query-template";
+  readonly payload: { readonly templateId: string };
+};
+
+export type UpdateQueryTemplateRequest = {
+  readonly type: "update-query-template";
+  readonly payload: { readonly template: QueryTemplate };
+};
+
+export type DeleteQueryTemplateRequest = {
+  readonly type: "delete-query-template";
+  readonly payload: { readonly templateId: string };
+};
+
+export type SetDefaultQueryTemplateRequest = {
+  readonly type: "set-default-query-template";
+  readonly payload: { readonly templateId: string };
+};
+
+export type GetExtensionSettingsRequest = {
+  readonly type: "get-extension-settings";
+};
+
+export type SaveExtensionSettingsRequest = {
+  readonly type: "save-extension-settings";
+  readonly payload: ExtensionSettings;
+};
+
 export type ExtensionRequest =
   | TranslateSelectionRequest
   | CancelTranslationRequest
@@ -65,7 +109,15 @@ export type ExtensionRequest =
   | ListHighlightTermsRequest
   | GetLlmConfigRequest
   | SaveLlmConfigRequest
-  | TestLlmConnectionRequest;
+  | TestLlmConnectionRequest
+  | ListQueryTemplatesRequest
+  | CreateQueryTemplateRequest
+  | CopyQueryTemplateRequest
+  | UpdateQueryTemplateRequest
+  | DeleteQueryTemplateRequest
+  | SetDefaultQueryTemplateRequest
+  | GetExtensionSettingsRequest
+  | SaveExtensionSettingsRequest;
 
 export type ExtensionSuccessResponse =
   | {
@@ -121,6 +173,34 @@ export type ExtensionSuccessResponse =
       readonly ok: true;
       readonly type: "test-llm-connection";
       readonly data: { readonly connected: true };
+    }
+  | {
+      readonly ok: true;
+      readonly type: "list-query-templates";
+      readonly data: {
+        readonly templates: readonly QueryTemplate[];
+        readonly activeQueryTemplateId: string;
+      };
+    }
+  | {
+      readonly ok: true;
+      readonly type: "create-query-template" | "copy-query-template" | "update-query-template";
+      readonly data: QueryTemplate;
+    }
+  | {
+      readonly ok: true;
+      readonly type: "delete-query-template";
+      readonly data: { readonly deletedTemplateId: string; readonly activeQueryTemplateId: string };
+    }
+  | {
+      readonly ok: true;
+      readonly type: "set-default-query-template";
+      readonly data: { readonly template: QueryTemplate; readonly activeQueryTemplateId: string };
+    }
+  | {
+      readonly ok: true;
+      readonly type: "get-extension-settings" | "save-extension-settings";
+      readonly data: ExtensionSettings;
     };
 
 export type ExtensionErrorCode =
@@ -137,6 +217,11 @@ export type ExtensionErrorCode =
   | "rate-limit"
   | "request-failed"
   | "timeout"
+  | "template-not-found"
+  | "template-protected"
+  | "last-template"
+  | "template-invalid"
+  | "settings-invalid"
   | "unknown-message";
 
 export type ExtensionErrorResponse = {

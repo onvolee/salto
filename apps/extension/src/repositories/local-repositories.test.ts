@@ -3,6 +3,7 @@ import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createDefaultQueryTemplate, type QueryTemplate } from "@salto/core";
 import { SaltoDatabase } from "../db/database";
 import { createLocalRepositories } from "./local-repositories";
 
@@ -15,6 +16,21 @@ function createTestRepositories(databaseName: string) {
   const database = new SaltoDatabase(databaseName);
   databases.push(database);
   return { database, repositories: createLocalRepositories(database, { clock, createId }) };
+}
+
+function userTemplateInput(name = "Reading notes") {
+  return {
+    name,
+    fields: [{
+      id: "translation",
+      label: "Translation",
+      source: "llm" as const,
+      type: "text" as const,
+      instruction: "Translate {{selection}}.",
+      order: 0,
+      enabled: true
+    }]
+  };
 }
 
 afterEach(async () => {
@@ -40,6 +56,116 @@ describe("local repositories", () => {
     const recovered = await repositories.settings.ensureDefaults();
     expect(recovered.template.id).toBe("system-default");
     expect(recovered.template.createdAt).toBe(clock());
+  });
+
+  it("creates, copies, updates, activates, and deletes user templates without losing extra data", async () => {
+    const { database, repositories } = createTestRepositories("template-crud-test");
+    const created = await repositories.templates.create({
+      ...userTemplateInput(),
+      extraMetadata: { owner: "reader" }
+    } as never);
+
+    expect(created).toEqual(expect.objectContaining({
+      id: "test-id-1",
+      name: "Reading notes",
+      createdAt: clock(),
+      updatedAt: clock(),
+      extraMetadata: { owner: "reader" }
+    }));
+    expect((await repositories.templates.copy(created.id)).id).not.toBe(created.id);
+
+    const updated = await repositories.templates.update({
+      ...created,
+      name: "Updated notes",
+      fields: [{
+        ...created.fields[0],
+        extraFieldData: "retained"
+      }]
+    } as never);
+    expect(updated).toEqual(expect.objectContaining({
+      id: created.id,
+      name: "Updated notes",
+      createdAt: created.createdAt,
+      updatedAt: clock(),
+      extraMetadata: { owner: "reader" }
+    }));
+    expect((updated.fields[0] as Record<string, unknown>).extraFieldData).toBe("retained");
+
+    const activated = await repositories.templates.setDefault(created.id);
+    expect(activated.activeQueryTemplateId).toBe(created.id);
+    expect((await repositories.settings.getActive()).template.id).toBe(created.id);
+
+    await repositories.templates.delete(created.id);
+    expect((await repositories.settings.getActive()).template.id).toBe("system-default");
+    expect(await database.queryTemplates.get(created.id)).toBeUndefined();
+  });
+
+  it("protects the system template and rejects invalid template or settings writes", async () => {
+    const { repositories } = createTestRepositories("template-validation-test");
+
+    await expect(repositories.templates.create({
+      name: "Invalid",
+      fields: [
+        { ...userTemplateInput().fields[0], order: 0 },
+        { ...userTemplateInput().fields[0], id: "other", order: 0 }
+      ]
+    })).rejects.toMatchObject({ code: "template-invalid" });
+    await expect(repositories.templates.delete("system-default"))
+      .rejects.toMatchObject({ code: "template-protected" });
+    await expect(repositories.templates.update(createDefaultQueryTemplate(clock())))
+      .rejects.toMatchObject({ code: "template-protected" });
+    await expect(repositories.settings.save({
+      activeQueryTemplateId: "missing",
+      targetLanguage: "zh-CN",
+      highlightEnabled: true,
+      themeMode: "system"
+    })).rejects.toMatchObject({ code: "template-not-found" });
+  });
+
+  it("recovers a corrupted system template and preserves a malformed user record", async () => {
+    const { database, repositories } = createTestRepositories("template-recovery-test");
+    const user = await repositories.templates.create(userTemplateInput());
+    await repositories.templates.setDefault(user.id);
+    await database.queryTemplates.put({
+      ...createDefaultQueryTemplate(clock()),
+      fields: [],
+      recoveryMarker: "preserve-invalid-record"
+    } as never);
+    await database.queryTemplates.put({ ...user, fields: [], recoveryMarker: "preserve-user" } as never);
+
+    const recovered = await repositories.settings.getActive();
+
+    expect(recovered.template.id).toBe("system-default");
+    expect(recovered.settings.activeQueryTemplateId).toBe("system-default");
+    expect((await database.queryTemplates.get(user.id) as (QueryTemplate & Record<string, unknown>) | undefined)?.recoveryMarker)
+      .toBe("preserve-user");
+    expect((await database.queryTemplates.get("system-default"))?.fields).toHaveLength(2);
+  });
+
+  it("persists template, settings, and timestamps across a new repository instance", async () => {
+    const databaseName = "template-reopen-test";
+    const first = createTestRepositories(databaseName);
+    const template = await first.repositories.templates.create(userTemplateInput("Persisted"));
+    await first.repositories.settings.save({
+      activeQueryTemplateId: template.id,
+      targetLanguage: "ja-JP",
+      highlightEnabled: false,
+      themeMode: "dark",
+      activeDictionaryProvider: "youdao-web",
+      extraSetting: "preserve"
+    } as never);
+    first.database.close();
+
+    const reopened = createTestRepositories(databaseName);
+    expect(await reopened.repositories.templates.get(template.id)).toEqual(template);
+    expect(await reopened.repositories.settings.get()).toEqual(expect.objectContaining({
+      activeQueryTemplateId: template.id,
+      targetLanguage: "ja-JP",
+      highlightEnabled: false,
+      themeMode: "dark",
+      activeDictionaryProvider: "youdao-web",
+      extraSetting: "preserve"
+    }));
   });
 
   it("saves once, makes repeated saves idempotent, and stores the ready term field", async () => {
@@ -199,6 +325,42 @@ describe("local repositories", () => {
     expect(await upgraded.database.table("learningCards").get("legacy-card")).toEqual(
       expect.objectContaining({ vocabularyItemId: "legacy-item" })
     );
+  });
+
+  it("migrates the legacy active template key without dropping template extensions", async () => {
+    const databaseName = "template-migration-test";
+    const legacy = new Dexie(databaseName);
+    legacy.version(2).stores({
+      vocabularyItems: "&id, &canonicalKey, language, sync.updatedAt",
+      vocabularyFields: "&id, &[vocabularyItemId+key], vocabularyItemId, key, status, sync.updatedAt",
+      vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt",
+      learningCards: "&id, &[vocabularyItemId+cardType], vocabularyItemId, cardType, sync.updatedAt",
+      queryTemplates: "&id, updatedAt",
+      settings: "&id, activeQueryTemplateId"
+    });
+    const template: QueryTemplate = {
+      ...createDefaultQueryTemplate(clock()),
+      id: "legacy-user",
+      name: "Legacy user",
+      extraMetadata: { migrated: true }
+    } as never;
+    await legacy.table("queryTemplates").add(template);
+    await legacy.table("settings").add({
+      id: "extension",
+      activeTemplateId: "legacy-user",
+      targetLanguage: "zh-CN",
+      highlightEnabled: true,
+      themeMode: "system"
+    });
+    legacy.close();
+
+    const upgraded = createTestRepositories(databaseName);
+    const active = await upgraded.repositories.settings.getActive();
+
+    expect(active.template.id).toBe("legacy-user");
+    expect(active.settings.activeQueryTemplateId).toBe("legacy-user");
+    expect(((await upgraded.repositories.templates.get("legacy-user")) as (QueryTemplate & Record<string, unknown>) | undefined)?.extraMetadata)
+      .toEqual({ migrated: true });
   });
 
   it("stores public LLM configuration separately from its write-only secret", async () => {

@@ -2,6 +2,9 @@ import {
   DEFAULT_EXTENSION_SETTINGS,
   canonicalizeEnglishTerm,
   createDefaultQueryTemplate,
+  isValidExtensionSettings,
+  isValidQueryTemplate,
+  isValidQueryTemplateInput,
   normalizeVocabularyText,
   type EnrichmentJob,
   type EnrichmentJobFor,
@@ -15,6 +18,7 @@ import {
   type LlmPublicConfig,
   type LlmSecret,
   type QueryTemplate,
+  type QueryTemplateInput,
   type RemoteVocabularyFieldKey,
   type SaveVocabularyInput,
   type SaveVocabularyResult,
@@ -37,6 +41,36 @@ export type RepositoryDependencies = {
 export interface SettingsRepository {
   ensureDefaults(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }>;
   getActive(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }>;
+  get(): Promise<ExtensionSettings>;
+  save(settings: ExtensionSettings): Promise<ExtensionSettings>;
+  update(settings: ExtensionSettings): Promise<ExtensionSettings>;
+}
+
+export type QueryTemplateRepositoryErrorCode =
+  | "template-not-found"
+  | "template-protected"
+  | "last-template"
+  | "template-invalid"
+  | "settings-invalid";
+
+export class QueryTemplateRepositoryError extends Error {
+  constructor(
+    readonly code: QueryTemplateRepositoryErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "QueryTemplateRepositoryError";
+  }
+}
+
+export interface QueryTemplateRepository {
+  list(): Promise<readonly QueryTemplate[]>;
+  get(id: string): Promise<QueryTemplate | undefined>;
+  create(input: QueryTemplateInput): Promise<QueryTemplate>;
+  copy(id: string): Promise<QueryTemplate>;
+  update(template: QueryTemplate): Promise<QueryTemplate>;
+  delete(id: string): Promise<void>;
+  setDefault(id: string): Promise<{ readonly template: QueryTemplate; readonly activeQueryTemplateId: string }>;
 }
 
 export interface HighlightTermRepository {
@@ -65,6 +99,8 @@ export interface LlmSettingsRepository {
 export type LocalRepositories = {
   readonly vocabulary: VocabularyRepository;
   readonly settings: SettingsRepository;
+  readonly templates: QueryTemplateRepository;
+  readonly queryTemplates: QueryTemplateRepository;
   readonly highlightTerms: HighlightTermRepository;
   readonly llmSettings: LlmSettingsRepository;
   readonly enrichmentJobs: EnrichmentJobRepository;
@@ -345,40 +381,230 @@ class DexieSaveVocabularyService implements SaveVocabularyService {
   }
 }
 
-class DexieSettingsRepository implements SettingsRepository {
+class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsRepository {
   constructor(
     private readonly database: SaltoDatabase,
     private readonly dependencies: RepositoryDependencies
   ) {}
 
-  async ensureDefaults() {
+  async ensureDefaults(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }> {
+    return this.database.transaction(
+      "rw",
+      [this.database.settings, this.database.queryTemplates],
+      async () => this.ensureDefaultsInTransaction()
+    );
+  }
+
+  async getActive(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }> {
+    return this.ensureDefaults();
+  }
+
+  async get(): Promise<ExtensionSettings>;
+  async get(id: string): Promise<QueryTemplate | undefined>;
+  async get(id?: string): Promise<ExtensionSettings | QueryTemplate | undefined> {
+    if (id !== undefined) {
+      if (!isNonEmptyString(id)) {
+        return undefined;
+      }
+      await this.ensureDefaults();
+      return this.validTemplate(id);
+    }
+    return (await this.ensureDefaults()).settings;
+  }
+
+  async save(settings: ExtensionSettings): Promise<ExtensionSettings> {
+    if (!isValidExtensionSettings(settings)) {
+      throw new QueryTemplateRepositoryError("settings-invalid", "Invalid extension settings");
+    }
     return this.database.transaction(
       "rw",
       [this.database.settings, this.database.queryTemplates],
       async () => {
-        let settings = await this.database.settings.get("extension");
-        if (!settings) {
-          settings = { id: "extension", ...DEFAULT_EXTENSION_SETTINGS };
-          await this.database.settings.add(settings);
-        }
-
-        let template = await this.database.queryTemplates.get(settings.activeQueryTemplateId);
+        await this.ensureDefaultsInTransaction();
+        const template = await this.validTemplate(settings.activeQueryTemplateId);
         if (!template) {
-          template = createDefaultQueryTemplate(this.dependencies.clock());
-          await this.database.queryTemplates.put(template);
-          if (settings.activeQueryTemplateId !== template.id) {
-            settings = { ...settings, activeQueryTemplateId: template.id };
-            await this.database.settings.put(settings);
-          }
+          throw new QueryTemplateRepositoryError("template-not-found", "Query template was not found");
         }
-
-        return { settings: stripSettingsId(settings), template };
+        const stored = { ...settings, id: "extension" as const };
+        await this.database.settings.put(stored);
+        return stripSettingsId(stored);
       }
     );
   }
 
-  getActive() {
-    return this.ensureDefaults();
+  update(settings: ExtensionSettings): Promise<ExtensionSettings>;
+  update(template: QueryTemplate): Promise<QueryTemplate>;
+  update(value: ExtensionSettings | QueryTemplate): Promise<ExtensionSettings | QueryTemplate> {
+    return "fields" in value ? this.updateTemplate(value) : this.save(value);
+  }
+
+  async list(): Promise<readonly QueryTemplate[]> {
+    await this.ensureDefaults();
+    const templates = await this.database.queryTemplates.toArray();
+    return templates.filter(isValidQueryTemplate);
+  }
+
+  async create(input: QueryTemplateInput): Promise<QueryTemplate> {
+    if (!isValidQueryTemplateInput(input)) {
+      throw new QueryTemplateRepositoryError("template-invalid", "Invalid query template");
+    }
+    return this.database.transaction(
+      "rw",
+      [this.database.settings, this.database.queryTemplates],
+      async () => {
+        await this.ensureDefaultsInTransaction();
+        const id = await this.nextTemplateId();
+        const timestamp = this.dependencies.clock();
+        const template = {
+          ...input,
+          id,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        } as QueryTemplate;
+        await this.database.queryTemplates.add(template);
+        return template;
+      }
+    );
+  }
+
+  async copy(id: string): Promise<QueryTemplate> {
+    return this.database.transaction(
+      "rw",
+      [this.database.settings, this.database.queryTemplates],
+      async () => {
+        await this.ensureDefaultsInTransaction();
+        const source = await this.validTemplate(id);
+        if (!source) {
+          throw new QueryTemplateRepositoryError("template-not-found", "Query template was not found");
+        }
+        const timestamp = this.dependencies.clock();
+        const copy = {
+          ...source,
+          id: await this.nextTemplateId(),
+          name: `${source.name} copy`,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        } as QueryTemplate;
+        await this.database.queryTemplates.add(copy);
+        return copy;
+      }
+    );
+  }
+
+  private async updateTemplate(template: QueryTemplate): Promise<QueryTemplate> {
+    if (!isValidQueryTemplate(template)) {
+      throw new QueryTemplateRepositoryError("template-invalid", "Invalid query template");
+    }
+    return this.database.transaction(
+      "rw",
+      [this.database.settings, this.database.queryTemplates],
+      async () => {
+        await this.ensureDefaultsInTransaction();
+        if (template.id === "system-default") {
+          throw new QueryTemplateRepositoryError("template-protected", "The system template cannot be changed");
+        }
+        const existing = await this.validTemplate(template.id);
+        if (!existing) {
+          throw new QueryTemplateRepositoryError("template-not-found", "Query template was not found");
+        }
+        const updated = {
+          ...existing,
+          ...template,
+          createdAt: existing.createdAt,
+          updatedAt: this.dependencies.clock()
+        } as QueryTemplate;
+        await this.database.queryTemplates.put(updated);
+        return updated;
+      }
+    );
+  }
+
+  async delete(id: string): Promise<void> {
+    return this.database.transaction(
+      "rw",
+      [this.database.settings, this.database.queryTemplates],
+      async () => {
+        const { settings } = await this.ensureDefaultsInTransaction();
+        if (id === "system-default") {
+          throw new QueryTemplateRepositoryError("template-protected", "The system template cannot be deleted");
+        }
+        const existing = await this.validTemplate(id);
+        if (!existing) {
+          throw new QueryTemplateRepositoryError("template-not-found", "Query template was not found");
+        }
+        const availableTemplates = (await this.database.queryTemplates.toArray()).filter(isValidQueryTemplate);
+        if (availableTemplates.length <= 1) {
+          throw new QueryTemplateRepositoryError("last-template", "At least one query template must remain");
+        }
+        await this.database.queryTemplates.delete(id);
+        if (settings.activeQueryTemplateId === id) {
+          await this.database.settings.put({
+            ...settings,
+            id: "extension",
+            activeQueryTemplateId: "system-default"
+          });
+        }
+      }
+    );
+  }
+
+  async setDefault(id: string): Promise<{ readonly template: QueryTemplate; readonly activeQueryTemplateId: string }> {
+    return this.database.transaction(
+      "rw",
+      [this.database.settings, this.database.queryTemplates],
+      async () => {
+        await this.ensureDefaultsInTransaction();
+        const template = await this.validTemplate(id);
+        if (!template) {
+          throw new QueryTemplateRepositoryError("template-not-found", "Query template was not found");
+        }
+        const settings = await this.database.settings.get("extension");
+        if (!settings) {
+          throw new QueryTemplateRepositoryError("settings-invalid", "Extension settings are unavailable");
+        }
+        await this.database.settings.put({
+          ...settings,
+          activeQueryTemplateId: id
+        });
+        return { template, activeQueryTemplateId: id };
+      }
+    );
+  }
+
+  private async ensureDefaultsInTransaction() {
+    let systemTemplate = await this.database.queryTemplates.get("system-default");
+    if (!isValidQueryTemplate(systemTemplate)) {
+      systemTemplate = createDefaultQueryTemplate(this.dependencies.clock());
+      await this.database.queryTemplates.put(systemTemplate);
+    }
+
+    const rawSettings = await this.database.settings.get("extension");
+    const settings = normalizeStoredSettings(rawSettings);
+    const activeTemplate = await this.validTemplate(settings.activeQueryTemplateId);
+    const activeQueryTemplateId = activeTemplate ? settings.activeQueryTemplateId : systemTemplate.id;
+    const repairedSettings = {
+      ...settings,
+      id: "extension" as const,
+      activeQueryTemplateId
+    };
+    await this.database.settings.put(repairedSettings);
+    return {
+      settings: stripSettingsId(repairedSettings),
+      template: activeTemplate ?? systemTemplate
+    };
+  }
+
+  private async validTemplate(id: string): Promise<QueryTemplate | undefined> {
+    const template = await this.database.queryTemplates.get(id);
+    return isValidQueryTemplate(template) ? template : undefined;
+  }
+
+  private async nextTemplateId(): Promise<string> {
+    let id = this.dependencies.createId();
+    while (!isNonEmptyString(id) || id === "system-default" || await this.database.queryTemplates.get(id)) {
+      id = this.dependencies.createId();
+    }
+    return id;
   }
 }
 
@@ -428,6 +654,43 @@ class DexieLlmSettingsRepository implements LlmSettingsRepository {
   }
 }
 
+function normalizeStoredSettings(value: StoredExtensionSettings | undefined): StoredExtensionSettings {
+  const raw: Record<string, unknown> = isRecord(value) ? value : {};
+  const settings: Record<string, unknown> = {
+    ...raw,
+    id: "extension" as const,
+    activeQueryTemplateId: isNonEmptyString(raw.activeQueryTemplateId)
+      ? raw.activeQueryTemplateId
+      : DEFAULT_EXTENSION_SETTINGS.activeQueryTemplateId,
+    targetLanguage: isNonEmptyString(raw.targetLanguage)
+      ? raw.targetLanguage
+      : DEFAULT_EXTENSION_SETTINGS.targetLanguage,
+    highlightEnabled: typeof raw.highlightEnabled === "boolean"
+      ? raw.highlightEnabled
+      : DEFAULT_EXTENSION_SETTINGS.highlightEnabled,
+    themeMode: raw.themeMode === "system" || raw.themeMode === "light" || raw.themeMode === "dark"
+      ? raw.themeMode
+      : DEFAULT_EXTENSION_SETTINGS.themeMode
+  };
+  if (raw.activeDictionaryProvider === undefined) {
+    delete settings.activeDictionaryProvider;
+  } else if (
+    raw.activeDictionaryProvider !== "youdao-web"
+    && raw.activeDictionaryProvider !== "cambridge-web"
+  ) {
+    delete settings.activeDictionaryProvider;
+  }
+  return settings as unknown as StoredExtensionSettings;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function stripSettingsId({ id: _id, ...settings }: StoredExtensionSettings): ExtensionSettings {
   return settings;
 }
@@ -436,9 +699,12 @@ export function createLocalRepositories(
   database: SaltoDatabase,
   dependencies: RepositoryDependencies
 ): LocalRepositories {
+  const templateRepository = new DexieQueryTemplateRepository(database, dependencies);
   return {
     vocabulary: new DexieVocabularyRepository(database),
-    settings: new DexieSettingsRepository(database, dependencies),
+    settings: templateRepository,
+    templates: templateRepository,
+    queryTemplates: templateRepository,
     llmSettings: new DexieLlmSettingsRepository(database),
     enrichmentJobs: new DexieEnrichmentJobRepository(database),
     learning: new DexieLearningRepository(database),
