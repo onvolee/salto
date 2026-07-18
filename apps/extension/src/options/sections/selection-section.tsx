@@ -6,6 +6,7 @@ import {
   Delete02Icon,
   DragDropVerticalIcon,
   FloppyDiskIcon,
+  PencilEdit02Icon,
   Refresh01Icon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
@@ -25,10 +26,20 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useForm } from "@tanstack/react-form";
-import { useEffect } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { Badge } from "salto-src/components/ui/badge";
 import { Button } from "salto-src/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "salto-src/components/ui/dialog";
 import {
   Field,
   FieldDescription,
@@ -50,7 +61,11 @@ import {
 import { Switch } from "salto-src/components/ui/switch";
 
 import type { useQueryTemplates } from "../hooks/use-query-templates";
-import type { TemplateFieldDraft } from "../template-editor";
+import {
+  switchDraftSource,
+  validateTemplateDraft,
+  type TemplateFieldDraft,
+} from "../template-editor";
 
 type TemplateEditor = ReturnType<typeof useQueryTemplates>;
 
@@ -128,6 +143,218 @@ type SortableFieldRowProps = {
   onUpdate: TemplateEditor["updateField"];
 };
 
+type FieldEditorDialogProps = Pick<
+  SortableFieldRowProps,
+  "errors" | "field" | "onChangeSource" | "onUpdate"
+>;
+
+function FieldEditorDialog({
+  errors,
+  field,
+  onChangeSource,
+  onUpdate,
+}: FieldEditorDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(field);
+  const [localErrors, setLocalErrors] = useState<Readonly<Record<string, string>>>({});
+  const [editedKeys, setEditedKeys] = useState<readonly string[]>([]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setDraft(field);
+      setLocalErrors({});
+      setEditedKeys([]);
+    }
+    setOpen(nextOpen);
+  };
+
+  const updateDraft = (update: Partial<TemplateFieldDraft>) => {
+    const keys = Object.keys(update);
+    setDraft((current) => ({ ...current, ...update }));
+    setLocalErrors((current) => Object.fromEntries(
+      Object.entries(current).filter(([key]) => !keys.includes(key)),
+    ));
+    setEditedKeys((current) => [...new Set([...current, ...keys])]);
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const validation = validateTemplateDraft({
+      name: "field",
+      fields: [{ ...draft, enabled: true, order: 0 }],
+    });
+    if (!validation.success) {
+      const nextErrors = validation.errors.field[field.id] ?? {};
+      setLocalErrors(nextErrors);
+      const firstError = ["label", "dictionaryField", "type", "instruction"]
+        .find((key) => nextErrors[key]);
+      const control = firstError === "dictionaryField" || firstError === "type"
+        ? "dictionary"
+        : firstError;
+      if (control) document.getElementById(`${field.id}-edit-${control}`)?.focus();
+      return;
+    }
+    if (draft.source !== field.source && !onChangeSource(field.id, draft.source)) return;
+    onUpdate(field.id, draft);
+    setOpen(false);
+  };
+
+  const error = (key: string) => localErrors[key]
+    ?? (editedKeys.includes(key) ? undefined : fieldError(errors, field.id, key));
+  const labelError = error("label");
+  const instructionError = error("instruction");
+  const dictionaryError = error("dictionaryField");
+  const typeError = error("type");
+
+  return (
+    <Dialog onOpenChange={handleOpenChange} open={open}>
+      <DialogTrigger
+        render={(
+          <Button
+            aria-label={`编辑${field.label || "字段"}`}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          />
+        )}
+      >
+        <HugeiconsIcon aria-hidden="true" icon={PencilEdit02Icon} strokeWidth={2} />
+      </DialogTrigger>
+      <DialogContent>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>编辑字段</DialogTitle>
+            <DialogDescription>字段 {field.order + 1}</DialogDescription>
+          </DialogHeader>
+
+          <FieldGroup className="max-h-[calc(min(85vh,42rem)-8rem)] overflow-y-auto p-5">
+            <Field data-invalid={Boolean(labelError)}>
+              <FieldLabel htmlFor={`${field.id}-edit-label`}>Label</FieldLabel>
+              <Input
+                aria-describedby={labelError ? `${field.id}-edit-label-error` : undefined}
+                aria-invalid={Boolean(labelError)}
+                autoComplete="off"
+                id={`${field.id}-edit-label`}
+                name="label"
+                onChange={(event) => updateDraft({ label: event.target.value })}
+                value={draft.label}
+              />
+              <FieldError id={`${field.id}-edit-label-error`}>{labelError}</FieldError>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor={`${field.id}-edit-source`}>来源</FieldLabel>
+              <Select
+                items={[
+                  { label: "LLM", value: "llm" },
+                  { label: "词典", value: "dictionary" },
+                ]}
+                onValueChange={(value) => {
+                  if (value === "llm" || value === "dictionary") {
+                    setDraft((current) => switchDraftSource(current, value));
+                    setLocalErrors({});
+                    setEditedKeys((current) => [
+                      ...new Set([...current, "source", "type", "instruction", "dictionaryField"]),
+                    ]);
+                  }
+                }}
+                name="source"
+                value={draft.source}
+              >
+                <SelectTrigger id={`${field.id}-edit-source`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="llm">LLM</SelectItem>
+                    <SelectItem value="dictionary">词典</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+
+            {draft.source === "llm" ? (
+              <Field>
+                <FieldLabel htmlFor={`${field.id}-edit-type`}>类型</FieldLabel>
+                <Select
+                  items={[{ label: "文本", value: "text" }, { label: "列表", value: "list" }]}
+                  onValueChange={(value) => {
+                    if (value === "text" || value === "list") updateDraft({ type: value });
+                  }}
+                  name="type"
+                  value={draft.type}
+                >
+                  <SelectTrigger id={`${field.id}-edit-type`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="text">文本</SelectItem>
+                      <SelectItem value="list">列表</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+            ) : (
+              <Field data-invalid={Boolean(dictionaryError || typeError)}>
+                <FieldLabel htmlFor={`${field.id}-edit-dictionary`}>词典字段</FieldLabel>
+                <Select
+                  items={DICTIONARY_FIELDS.map(({ label, value }) => ({ label, value }))}
+                  onValueChange={(value) => {
+                    const option = DICTIONARY_FIELDS.find((candidate) => candidate.value === value);
+                    if (option) updateDraft({ dictionaryField: option.value, type: option.type });
+                  }}
+                  name="dictionaryField"
+                  value={draft.dictionaryField}
+                >
+                  <SelectTrigger
+                    aria-describedby={dictionaryError || typeError ? `${field.id}-edit-dictionary-error` : undefined}
+                    aria-invalid={Boolean(dictionaryError || typeError)}
+                    id={`${field.id}-edit-dictionary`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {DICTIONARY_FIELDS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>类型：{draft.type === "list" ? "列表" : "文本"}</FieldDescription>
+                <FieldError id={`${field.id}-edit-dictionary-error`}>{dictionaryError ?? typeError}</FieldError>
+              </Field>
+            )}
+
+            {draft.source === "llm" ? (
+              <Field data-invalid={Boolean(instructionError)}>
+                <FieldLabel htmlFor={`${field.id}-edit-instruction`}>Instruction</FieldLabel>
+                <Textarea
+                  aria-describedby={instructionError ? `${field.id}-edit-instruction-error` : undefined}
+                  aria-invalid={Boolean(instructionError)}
+                  autoComplete="off"
+                  id={`${field.id}-edit-instruction`}
+                  name="instruction"
+                  onChange={(event) => updateDraft({ instruction: event.target.value })}
+                  rows={5}
+                  value={draft.instruction}
+                />
+                <FieldError id={`${field.id}-edit-instruction-error`}>{instructionError}</FieldError>
+              </Field>
+            ) : null}
+          </FieldGroup>
+
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" />}>取消</DialogClose>
+            <Button type="submit">应用</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SortableFieldRow({
   field,
   index,
@@ -144,18 +371,15 @@ function SortableFieldRow({
     transform: transformStyle(sortable.transform),
     transition: sortable.transition,
   };
-  const labelError = fieldError(errors, field.id, "label");
-  const instructionError = fieldError(errors, field.id, "instruction");
-  const dictionaryError = fieldError(errors, field.id, "dictionaryField");
-  const typeError = fieldError(errors, field.id, "type");
+  const hasErrors = Boolean(errors.field[field.id]);
 
   return (
     <li
-      className="flex flex-col gap-3 rounded-md border border-border/70 bg-background p-3"
+      className="rounded-md border border-border/70 bg-background p-3 has-[[data-field-error]]:border-destructive/60"
       ref={sortable.setNodeRef}
       style={style}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex w-full items-center gap-2">
         <button
           className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
           type="button"
@@ -167,130 +391,26 @@ function SortableFieldRow({
           <HugeiconsIcon aria-hidden="true" icon={DragDropVerticalIcon} strokeWidth={2} />
         </button>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium">字段 {index + 1}</span>
-            <Badge variant={field.enabled ? "success" : "outline"}>
-              {field.enabled ? "已启用" : "已停用"}
-            </Badge>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="max-w-full truncate text-xs font-medium">{field.label || `字段 ${index + 1}`}</span>
             <Badge variant="secondary">{field.source === "llm" ? "LLM" : "词典"}</Badge>
+            <Badge variant="outline">{field.type === "list" ? "列表" : "文本"}</Badge>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">顺序 {field.order}</p>
+          {hasErrors ? (
+            <p className="mt-1 text-xs text-destructive" data-field-error>字段配置有误</p>
+          ) : null}
         </div>
         <Switch
           aria-label={`${field.enabled ? "停用" : "启用"}${field.label || "字段"}`}
           checked={field.enabled}
           onCheckedChange={() => onToggle(field.id)}
         />
-      </div>
-
-      <FieldGroup className="grid gap-3 sm:grid-cols-2">
-        <Field data-invalid={Boolean(labelError)}>
-          <FieldLabel htmlFor={`${field.id}-label`}>Label</FieldLabel>
-          <Input
-            aria-describedby={labelError ? `${field.id}-label-error` : undefined}
-            aria-invalid={Boolean(labelError)}
-            id={`${field.id}-label`}
-            onChange={(event) => onUpdate(field.id, { label: event.target.value })}
-            value={field.label}
-          />
-          <FieldError id={`${field.id}-label-error`}>{labelError}</FieldError>
-        </Field>
-
-        <Field>
-          <FieldLabel htmlFor={`${field.id}-source`}>来源</FieldLabel>
-          <Select
-            items={[
-              { label: "LLM", value: "llm" },
-              { label: "词典", value: "dictionary" },
-            ]}
-            onValueChange={(value) => {
-              if (value === "llm" || value === "dictionary") onChangeSource(field.id, value);
-            }}
-            value={field.source}
-          >
-            <SelectTrigger aria-label={`${field.label || "字段"}来源`} id={`${field.id}-source`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="llm">LLM</SelectItem>
-                <SelectItem value="dictionary">词典</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-
-        {field.source === "llm" ? (
-          <Field>
-            <FieldLabel htmlFor={`${field.id}-type`}>类型</FieldLabel>
-            <Select
-              items={[{ label: "文本", value: "text" }, { label: "列表", value: "list" }]}
-              onValueChange={(value) => {
-                if (value === "text" || value === "list") onUpdate(field.id, { type: value });
-              }}
-              value={field.type}
-            >
-              <SelectTrigger aria-label={`${field.label || "字段"}类型`} id={`${field.id}-type`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="text">文本</SelectItem>
-                  <SelectItem value="list">列表</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-        ) : (
-          <Field data-invalid={Boolean(dictionaryError || typeError)}>
-            <FieldLabel htmlFor={`${field.id}-dictionary`}>词典字段</FieldLabel>
-            <Select
-              items={DICTIONARY_FIELDS.map(({ label, value }) => ({ label, value }))}
-              onValueChange={(value) => {
-                const option = DICTIONARY_FIELDS.find((candidate) => candidate.value === value);
-                if (option) onUpdate(field.id, { dictionaryField: option.value, type: option.type });
-              }}
-              value={field.dictionaryField}
-            >
-              <SelectTrigger
-                aria-describedby={dictionaryError || typeError ? `${field.id}-dictionary-error` : undefined}
-                aria-invalid={Boolean(dictionaryError || typeError)}
-                aria-label={`${field.label || "字段"}词典字段`}
-                id={`${field.id}-dictionary`}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {DICTIONARY_FIELDS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <FieldDescription>类型由固定词典字段决定：{field.type === "list" ? "列表" : "文本"}</FieldDescription>
-            <FieldError id={`${field.id}-dictionary-error`}>{dictionaryError ?? typeError}</FieldError>
-          </Field>
-        )}
-
-        {field.source === "llm" ? (
-          <Field className="sm:col-span-2" data-invalid={Boolean(instructionError)}>
-            <FieldLabel htmlFor={`${field.id}-instruction`}>Instruction</FieldLabel>
-            <Textarea
-              aria-describedby={instructionError ? `${field.id}-instruction-error` : undefined}
-              aria-invalid={Boolean(instructionError)}
-              id={`${field.id}-instruction`}
-              onChange={(event) => onUpdate(field.id, { instruction: event.target.value })}
-              rows={3}
-              value={field.instruction}
-            />
-            <FieldDescription>保存前必须填写 LLM instruction。</FieldDescription>
-            <FieldError id={`${field.id}-instruction-error`}>{instructionError}</FieldError>
-          </Field>
-        ) : null}
-      </FieldGroup>
-
-      <div className="flex flex-wrap items-center justify-end gap-1 border-t border-border/60 pt-2">
+        <FieldEditorDialog
+          errors={errors}
+          field={field}
+          onChangeSource={onChangeSource}
+          onUpdate={onUpdate}
+        />
         <Button
           aria-label={`上移${field.label || "字段"}`}
           disabled={index === 0}

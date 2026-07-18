@@ -76,6 +76,52 @@ describe("OptionsApp", () => {
     expect(screen.getByRole("button", { name: "添加字段" })).toBeDisabled();
   });
 
+  it("edits template fields in a dialog instead of inline in the list", async () => {
+    render(<OptionsApp />);
+    const user = userEvent.setup();
+
+    await screen.findByRole("heading", { name: "通用" });
+    await user.click(screen.getByRole("button", { name: "划词翻译" }));
+    await user.click(screen.getByRole("button", { name: "新建模板" }));
+
+    expect(screen.queryByLabelText("Label")).not.toBeInTheDocument();
+    expect(screen.getByText("翻译")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "编辑翻译" }));
+    expect(screen.getByRole("dialog", { name: "编辑字段" })).toBeInTheDocument();
+
+    const labelInput = screen.getByLabelText("Label");
+    await user.clear(labelInput);
+    await user.click(screen.getByRole("button", { name: "应用" }));
+
+    expect(screen.getByRole("dialog", { name: "编辑字段" })).toBeInTheDocument();
+    expect(labelInput).toHaveFocus();
+    expect(screen.getByText("字段名称不能为空")).toBeInTheDocument();
+
+    await user.type(labelInput, "摘要");
+    await user.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(screen.queryByRole("dialog", { name: "编辑字段" })).not.toBeInTheDocument();
+    expect(screen.getByText("翻译")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "编辑翻译" }));
+    await user.clear(screen.getByLabelText("Label"));
+    await user.type(screen.getByLabelText("Label"), "摘要");
+    await user.click(screen.getByRole("button", { name: "应用" }));
+
+    expect(screen.queryByRole("dialog", { name: "编辑字段" })).not.toBeInTheDocument();
+    expect(screen.getByText("摘要")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "添加字段" }));
+    await user.click(screen.getByRole("button", { name: "编辑新字段" }));
+    await user.clear(screen.getByLabelText("Label"));
+    await user.type(screen.getByLabelText("Label"), "上下文");
+    await user.type(screen.getByLabelText("Instruction"), "Summarize the context.");
+    await user.click(screen.getByRole("button", { name: "应用" }));
+
+    expect(screen.getByText("上下文")).toBeInTheDocument();
+  });
+
   it("previews and persists a changed theme", async () => {
     render(<OptionsApp />);
     const user = userEvent.setup();

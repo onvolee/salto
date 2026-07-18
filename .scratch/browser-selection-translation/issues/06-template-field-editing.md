@@ -1,6 +1,6 @@
 # 06 — 模板字段编辑和排序
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Blocked by: 05 — 模板持久化和仓库操作
 
@@ -34,17 +34,21 @@ Blocked by: 05 — 模板持久化和仓库操作
 
 ## Acceptance criteria
 
-- [ ] label、enabled、LLM type/instruction、dictionary field 和 order 可保存并在重新打开后保持。
-- [ ] 新建、复制、编辑、删除和设为 active/default 可完成；删除 system template 或最后一个 template 被拒绝。
-- [ ] 非法 source/type/field 组合、空 label、空 instruction 和重复/断裂 order 被拒绝并显示字段级错误。
-- [ ] source 切换确认、取消和清空规则可测试；切换不会留下同时存在的 LLM 与 dictionary 专属值。
-- [ ] pointer drag、键盘上移/下移和禁用状态产生相同的最终顺序。
-- [ ] 保存空字段列表或全部 disabled 的 template 被拒绝，并显示可关联的表单错误。
+- [x] label、enabled、LLM type/instruction、dictionary field 和 order 可保存并在重新打开后保持。
+- [x] 新建、复制、编辑、删除和设为 active/default 可完成；删除 system template 或最后一个 template 被拒绝。
+- [x] 非法 source/type/field 组合、空 label、空 instruction 和重复/断裂 order 被拒绝并显示字段级错误。
+- [x] source 切换确认、取消和清空规则可测试；切换不会留下同时存在的 LLM 与 dictionary 专属值。
+- [x] pointer drag、键盘上移/下移和禁用状态产生相同的最终顺序。
+- [x] 保存空字段列表或全部 disabled 的 template 被拒绝，并显示可关联的表单错误。
 
 ## Verification
 
-- options/service tests 覆盖 template CRUD、active/default、draft cancel、每种字段 union、来源切换、删除保护、拖拽、键盘重排和保存失败。
-- 手动用键盘完成编辑、重排、取消和错误修复；运行 `pnpm test`、`pnpm typecheck`、`pnpm build`。
+- [x] options/service tests 覆盖 template CRUD、active/default、draft cancel、每种字段 union、来源切换、删除保护、拖拽、键盘重排和保存失败。
+- [x] 手动用键盘完成编辑、重排、取消和错误修复；运行 `pnpm test`、`pnpm typecheck`、`pnpm build`。
+
+## Comments
+
+- 2026-07-19: Implementation and automated verification completed. Requester manually verified keyboard editing, reordering, cancellation, and error recovery.
 
 ## Exit criteria
 
