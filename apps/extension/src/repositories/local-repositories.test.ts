@@ -33,6 +33,42 @@ function userTemplateInput(name = "Reading notes") {
   };
 }
 
+function defineLegacySchema(database: Dexie, targetVersion: 3 | 4 | 5 | 6): void {
+  database.version(1).stores({
+    vocabularyItems: "&id, canonicalKey, language, sync.updatedAt",
+    vocabularyFields: "&id, vocabularyItemId, key, status, sync.updatedAt",
+    vocabularyContexts: "&id, vocabularyItemId, savedAt, sync.updatedAt",
+    learningCards: "&id, vocabularyItemId, cardType, sync.updatedAt",
+    learningStates: "&id, learningCardId, dueAt, state, sync.updatedAt",
+    reviewLogs: "&id, learningCardId, reviewedAt, sync.updatedAt"
+  });
+  database.version(2).stores({
+    vocabularyItems: "&id, &canonicalKey, language, sync.updatedAt",
+    vocabularyFields: "&id, &[vocabularyItemId+key], vocabularyItemId, key, status, sync.updatedAt",
+    vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt",
+    queryTemplates: "&id, updatedAt",
+    settings: "&id, activeQueryTemplateId"
+  });
+  if (targetVersion >= 3) {
+    database.version(3).stores({ llmConfigs: "&id, provider", llmSecrets: "&id" });
+  }
+  if (targetVersion >= 4) {
+    database.version(4).stores({
+      enrichmentJobs: "&id, [status+nextRunAt], vocabularyItemId, fieldKey"
+    });
+  }
+  if (targetVersion >= 5) {
+    database.version(5).stores({
+      learningCards: "&id, &[vocabularyItemId+cardType], vocabularyItemId, cardType, sync.updatedAt"
+    });
+  }
+  if (targetVersion >= 6) {
+    database.version(6).stores({
+      vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt, selectionPath"
+    });
+  }
+}
+
 afterEach(async () => {
   await Promise.all(databases.splice(0).map(async (database) => {
     database.close();
@@ -90,6 +126,7 @@ describe("local repositories", () => {
       extraMetadata: { owner: "reader" }
     }));
     expect((updated.fields[0] as Record<string, unknown>).extraFieldData).toBe("retained");
+    expect(await repositories.templates.get(created.id)).toEqual(updated);
 
     const activated = await repositories.templates.setDefault(created.id);
     expect(activated.activeQueryTemplateId).toBe(created.id);
@@ -110,8 +147,11 @@ describe("local repositories", () => {
         { ...userTemplateInput().fields[0], id: "other", order: 0 }
       ]
     })).rejects.toMatchObject({ code: "template-invalid" });
+    await repositories.settings.ensureDefaults();
+    expect(await repositories.templates.list()).toHaveLength(1);
     await expect(repositories.templates.delete("system-default"))
       .rejects.toMatchObject({ code: "template-protected" });
+    expect(await repositories.templates.list()).toHaveLength(1);
     await expect(repositories.templates.update(createDefaultQueryTemplate(clock())))
       .rejects.toMatchObject({ code: "template-protected" });
     await expect(repositories.settings.save({
@@ -362,6 +402,94 @@ describe("local repositories", () => {
     expect(((await upgraded.repositories.templates.get("legacy-user")) as (QueryTemplate & Record<string, unknown>) | undefined)?.extraMetadata)
       .toEqual({ migrated: true });
   });
+
+  it.each([3, 4, 5, 6] as const)(
+    "upgrades schema v%i without losing persisted template or vocabulary data",
+    async (version) => {
+      const databaseName = `migration-v${version}-test`;
+      const legacy = new Dexie(databaseName);
+      defineLegacySchema(legacy, version);
+      const legacyTemplate = {
+        ...createDefaultQueryTemplate(clock()),
+        id: `legacy-template-v${version}`,
+        name: `Legacy template v${version}`,
+        migrationExtension: { version },
+        fields: [{
+          ...createDefaultQueryTemplate(clock()).fields[0],
+          migrationFieldExtension: `v${version}`
+        }]
+      };
+      await legacy.table("vocabularyItems").add({
+        id: `legacy-item-v${version}`,
+        canonicalKey: `en:legacy-${version}`,
+        language: "en",
+        term: `Legacy ${version}`,
+        sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
+      });
+      await legacy.table("vocabularyFields").add({
+        id: `legacy-item-v${version}:term`,
+        vocabularyItemId: `legacy-item-v${version}`,
+        key: "term",
+        source: "system",
+        status: "ready",
+        value: `Legacy ${version}`,
+        sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
+      });
+      await legacy.table("vocabularyContexts").add({
+        id: `legacy-context-v${version}`,
+        vocabularyItemId: `legacy-item-v${version}`,
+        sentence: `Legacy sentence ${version}.`,
+        paragraphs: "",
+        pageTitle: "Legacy",
+        pageUrl: `https://example.com/v${version}`,
+        selectionPath: { xpath: "/html/body/p[1]", startOffset: 0, endOffset: 6 },
+        savedAt: clock(),
+        sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
+      });
+      await legacy.table("queryTemplates").add(legacyTemplate);
+      await legacy.table("settings").add({
+        id: "extension",
+        activeQueryTemplateId: legacyTemplate.id,
+        targetLanguage: "zh-CN",
+        highlightEnabled: true,
+        themeMode: "system"
+      });
+      if (version >= 4) {
+        await legacy.table("enrichmentJobs").add({
+          id: `legacy-job-v${version}`,
+          vocabularyItemId: `legacy-item-v${version}`,
+          fieldKey: "meaning",
+          source: "dictionary",
+          status: "queued",
+          attempts: 0,
+          nextRunAt: clock()
+        });
+      }
+      legacy.close();
+
+      const upgraded = createTestRepositories(databaseName);
+      const active = await upgraded.repositories.settings.getActive();
+      const migratedTemplate = await upgraded.repositories.templates.get(legacyTemplate.id);
+
+      expect(active.settings.activeQueryTemplateId).toBe(legacyTemplate.id);
+      expect(active.template.id).toBe(legacyTemplate.id);
+      expect(migratedTemplate).toEqual(expect.objectContaining({
+        migrationExtension: { version }
+      }));
+      expect((migratedTemplate?.fields[0] as Record<string, unknown>).migrationFieldExtension)
+        .toBe(`v${version}`);
+      expect(await upgraded.database.vocabularyItems.get(`legacy-item-v${version}`))
+        .toEqual(expect.objectContaining({ term: `Legacy ${version}` }));
+      expect(await upgraded.database.vocabularyFields.get(`legacy-item-v${version}:term`))
+        .toEqual(expect.objectContaining({ value: `Legacy ${version}` }));
+      expect(await upgraded.database.vocabularyContexts.get(`legacy-context-v${version}`))
+        .toEqual(expect.objectContaining({ pageUrl: `https://example.com/v${version}` }));
+      if (version >= 4) {
+        expect(await upgraded.database.enrichmentJobs.get(`legacy-job-v${version}`))
+          .toEqual(expect.objectContaining({ status: "queued" }));
+      }
+    }
+  );
 
   it("stores public LLM configuration separately from its write-only secret", async () => {
     const { database, repositories } = createTestRepositories("llm-settings-test");

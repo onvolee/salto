@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { PromptContext, QueryTemplate } from "@salto/core";
 
+import { QueryTemplateRepositoryError } from "../repositories";
 import { createBackgroundServices } from "./background-services";
 import { createFakeQueryExecutor } from "./fake-query-executor";
 
@@ -344,6 +345,88 @@ describe("background message boundary", () => {
     }, { source: "extension-page" })).resolves.toEqual({
       ok: false,
       error: { code: "invalid-payload", message: "Invalid extension message payload" }
+    });
+  });
+
+  it("returns stable template mutation failures", async () => {
+    const templates = {
+      create: vi.fn(),
+      copy: vi.fn(),
+      update: vi.fn().mockRejectedValue(new QueryTemplateRepositoryError(
+        "template-protected",
+        "The system template cannot be changed"
+      )),
+      delete: vi.fn().mockRejectedValue(new QueryTemplateRepositoryError(
+        "template-not-found",
+        "Query template was not found"
+      )),
+      setDefault: vi.fn().mockRejectedValue(new QueryTemplateRepositoryError(
+        "template-not-found",
+        "Query template was not found"
+      ))
+    };
+    const services = createBackgroundServices({
+      repositories: { templates } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor()
+    });
+
+    await expect(services.handleMessage({
+      type: "create-query-template",
+      payload: { name: "", fields: [] }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-payload", message: "Invalid extension message payload" }
+    });
+    await expect(services.handleMessage({
+      type: "copy-query-template",
+      payload: { templateId: " " }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-payload", message: "Invalid extension message payload" }
+    });
+    await expect(services.handleMessage({
+      type: "delete-query-template",
+      payload: { templateId: " " }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-payload", message: "Invalid extension message payload" }
+    });
+    await expect(services.handleMessage({
+      type: "set-default-query-template",
+      payload: { templateId: " " }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-payload", message: "Invalid extension message payload" }
+    });
+    await expect(services.handleMessage({
+      type: "update-query-template",
+      payload: { template: { id: "system-default", name: "Default" } }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-payload", message: "Invalid extension message payload" }
+    });
+    await expect(services.handleMessage({
+      type: "update-query-template",
+      payload: { template }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: false,
+      error: { code: "template-protected", message: "The system template cannot be changed" }
+    });
+    await expect(services.handleMessage({
+      type: "delete-query-template",
+      payload: { templateId: "missing" }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: false,
+      error: { code: "template-not-found", message: "Query template was not found" }
+    });
+    await expect(services.handleMessage({
+      type: "set-default-query-template",
+      payload: { templateId: "missing" }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: false,
+      error: { code: "template-not-found", message: "Query template was not found" }
     });
   });
 
