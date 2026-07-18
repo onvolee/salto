@@ -1,16 +1,50 @@
 # 19 — 迁移安全和恢复
 
-**What to build:** 从每个已发布 schema 版本的前向 Dexie 迁移测试，畸形本地设置恢复到安全默认值（不删除词汇），服务启动时处理 queued/running/failed/completed 作业，提供者配置删除时剩余作业的行为，扩展更新时幂等重新注册默认值/警报/命令。
+Status: ready-for-agent
 
-**Blocked by:** 05 — 模板持久化和仓库操作, 13 — 字典充实集成
+Blocked by: 05 — 模板持久化和仓库操作, 08 — 扩展设置持久化, 13 — 字典充实集成
 
-**Status:** ready-for-agent
+## Outcome
 
-- [ ] 前向迁移测试：从每个已发布 schema 版本添加前向 Dexie 迁移测试
-- [ ] 畸形设置恢复：验证畸形本地设置恢复到安全默认值而不删除词汇
-- [ ] 服务启动作业状态：验证服务启动时处理 queued、running、failed 和 completed 作业
-- [ ] 提供者配置删除行为：定义提供者配置删除而作业仍排队时的行为
-- [ ] 幂等重新注册：确保扩展更新时幂等重新注册所需的默认值、警报和命令
-- [ ] 异步路径审计：审计所有异步路径的处理拒绝和过期响应行为
-- [ ] 迁移测试：覆盖缺失、旧的和畸形设置
-- [ ] 队列恢复测试：覆盖服务启动时的各种作业状态
+为每个已发布 schema 版本提供前向 Dexie migration test；畸形 settings 恢复安全默认值而不删除 vocabulary；service worker 重启后 queued/running/failed/completed jobs 能继续或安全结束。
+
+## Frozen decisions
+
+- migration 只前向执行，任何失败都保留原数据并返回稳定 recovery/error 状态；不得清库。
+- malformed settings 恢复 `system-default`、`zh-CN`、highlight enabled、system theme 和 MVP 的 `youdao-web` provider defaults。
+- startup 将 stale running jobs 恢复为 queued/failed（遵循 04 的 claim policy）；completed jobs 不重复执行。
+- provider 配置被移除时，相关待处理 dictionary jobs 保持 pending/queued，不消耗 attempt；ready fields 保留。
+- install/update 的 default seed、alarm、command registration 都必须幂等。
+- 所有 async response 在 close/restart/retry 后验证 request identity，不写入过期结果。
+
+## Scope
+
+- 每个历史 schema version 的 fixture 和 forward migration。
+- malformed/missing/old settings、job recovery、provider removal、idempotent installation/update registration。
+- service worker async rejection、stale response 和 listener startup audit。
+
+## Non-goals
+
+- 不新增 schema feature、不改 04 retry policy、不实现 sync/cloud migration。
+- 不通过删除用户数据修复 migration failure。
+
+## Acceptance criteria
+
+- [ ] 每个已发布 schema fixture 可升级到当前版本，vocabulary/contexts/fields/jobs 保留。
+- [ ] 缺失、旧的、畸形 settings 恢复安全默认值并可重复执行。
+- [ ] 各 job status 在 restart 后按 frozen policy 处理，completed 不重复、running 不永久卡住。
+- [ ] provider removal 不丢 ready data、不消耗无意义 attempts，重新启用后可恢复执行。
+- [ ] install/update 重复触发不会重复 alarms、commands、system template 或 listener。
+
+## Verification
+
+- migration/queue tests 覆盖历史 fixtures、restart、provider removal、repeated startup 和 stale response。
+- `pnpm test`、`pnpm typecheck`、`pnpm build`；必要时执行扩展 reload/restart 手动检查。
+
+## Exit criteria
+
+- 数据安全和 worker recovery 有可重复证据；20 可以审计所有外部请求和 secret path。
+
+## Rollback boundary
+
+migration 失败只能停止升级并保留原库；不得 reset/delete IndexedDB、vocabulary、contexts、fields、cards 或 jobs。

@@ -1,17 +1,49 @@
 # 20 — 安全和隐私审计
 
-**What to build:** 清单每个权限和主机权限的产品原因，移除生产构建未使用的权限，验证内容脚本无法访问 API 密钥或通用后台 fetch，验证日志和错误不包含密钥/授权头/完整页面内容，验证 PRD 披露，审查打包输出。
+Status: ready-for-agent
 
-**Blocked by:** 18 — 键盘快捷键和无障碍, 19 — 迁移安全和恢复
+Blocked by: 08 — 扩展设置持久化, 10 — 字典客户端边界和契约, 11 — `youdao-web` 字典适配器, 12 — 字典查询执行集成, 13 — 字典充实集成, 17 — 保存后高亮集成, 19 — 迁移安全和恢复
 
-**Status:** ready-for-agent
+## Outcome
 
-- [ ] 权限清单：清单每个清单权限和主机权限的具体产品原因
-- [ ] 移除未使用权限：移除生产构建未行使的权限
-- [ ] 内容脚本隔离：验证内容脚本无法访问 API 密钥或通用后台 fetch 能力
-- [ ] 日志和错误安全：验证日志和错误不包含密钥、授权头、完整页面内容或持久化词汇值（除非显式需要和保护）
-- [ ] PRD 披露验证：验证 PRD 披露何时远程发送选中文本、句子、附近段落、标题、URL 和有界页面内容
-- [ ] 显式意图验证：验证提供者请求仅在显式用户意图或先前授权的保存词汇充实作业后发生
-- [ ] 可选主机权限：验证用户输入的 LLM 主机保持可选，并且仅配置和授予的 origin 可通过类型化后台请求路径访问
-- [ ] 打包输出审查：审查打包输出的 source maps、fixtures、环境文件和仅开发适配器
-- [ ] 安全测试：覆盖权限、隔离、日志安全
+审计所有 LLM/dictionary 请求、API-key、page context、权限、日志、错误、打包 artifacts 和 background message boundaries，形成可复现的安全验收证据。
+
+## Frozen decisions
+
+- 所有外部请求只从 background 发出；content/options 通过 typed messages，不携带 API key。
+- LLM 只能请求 settings 配置且已 granted 的 origin；dictionary 只能请求 registered `youdao-web` origin，不接受任意 URL proxy。
+- API key 不出现在 UI read response、message、logs、errors、analytics、fixtures 或 packaged source。
+- selection/page content 在发送前 bounded/transient；`webContent` 最大 2000 UTF-16 code units，不写日志、cache 或持久化记录。
+- permission 请求只发生在显式 save/test gesture；权限拒绝是可见、可恢复状态。
+
+## Scope
+
+- message payload validation、origin allowlist、permission handling、secret redaction、page-content bounds 和 adapter request guards。
+- source scan/packaged artifact 检查，日志/error fixture 检查，异常和拒绝路径测试。
+- 记录 manifest permissions 的最小性、provider brittleness 和已知隐私限制。
+
+## Non-goals
+
+- 不增加 authentication、cloud sync、analytics 或新的 provider。
+- 不把“通过审计”扩展为正式第三方安全认证。
+
+## Acceptance criteria
+
+- [ ] malformed/unknown messages 被拒绝且返回稳定、无 secret 的错误。
+- [ ] 不能通过 background message 访问任意 URL；LLM/Youdao origin 检查覆盖配置、授权和替换后的状态。
+- [ ] API key 和完整 page content 的 source/artifact/log scan 无命中；错误路径也无泄露。
+- [ ] permission denied、timeout、provider failure、worker restart 和 stale response 不泄露敏感输入。
+- [ ] 审计结果记录命令、日期、构建版本和已知限制。
+
+## Verification
+
+- security/message tests、origin tests、artifact grep/scan、异常路径测试；运行 `pnpm test`、`pnpm typecheck`、`pnpm build`。
+- 检查 MV3 manifest 与实际请求路径一致；不执行默认 live provider request。
+
+## Exit criteria
+
+- 所有请求和 secret ownership 都能追溯到 background seam，21/22 可引用审计证据。
+
+## Rollback boundary
+
+发现问题时可禁用 provider/request path，保留本地 vocabulary 和 settings；不得以清理日志之外的方式删除用户数据。

@@ -18,7 +18,7 @@ Salto is a Chrome/Chromium browser extension that lets users select an English w
 4. As a reader, I want to click the floating trigger or press a keyboard shortcut to open the translation panel, so that I control when provider requests are made.
 5. As a reader, I want the translation panel to appear near my selection and flip at viewport edges, so that it is always visible and does not obscure the text I am reading.
 6. As a reader, I want to see the active query template name in the panel, so that I know which template is producing the output.
-7. As a reader, I want to switch between query templates from the panel, so that I can compare different translation configurations.
+7. As a power user, I want to choose the active query template from the Settings page, so that the translation panel uses my preferred configuration.
 8. As a reader, I want translation fields to appear in schema order with independent loading, ready, unavailable, and failed states, so that I can understand the status of each field.
 9. As a reader, I want to save the selected vocabulary without waiting for a provider request, so that saving is instant and does not depend on network availability.
 10. As a reader, I want re-saving the same word to append a deduplicated reading context rather than creating a duplicate vocabulary item, so that my vocabulary list stays clean.
@@ -67,11 +67,11 @@ Salto is a Chrome/Chromium browser extension that lets users select an English w
 
 - **Stack**: WXT.js extension under `apps/extension`, React at UI entrypoint edges, TypeScript 7.x, IndexedDB through Dexie, Vitest for testing. Storage-neutral domain contracts live under `packages/core` and must not import WXT, React, Dexie, IndexedDB, or browser APIs.
 
-- **Boundary ownership**: `entrypoints/background.ts` owns persistent writes, external requests, permission-checked adapter execution, enrichment scheduling, and API-key access. `entrypoints/content.ts` owns selection, page-context extraction, the panel host, highlighting, and typed messages. `entrypoints/options/` owns template and extension configuration through services/messages, not direct Dexie table access.
+- **Boundary ownership**: `entrypoints/background.ts` owns persistent writes, external requests, permission-checked adapter execution, enrichment scheduling, and API-key access. `entrypoints/content.ts` owns selection, page-context extraction, the panel host, highlighting, and typed messages. `entrypoints/setting.options/` owns template and extension configuration through services/messages, not direct Dexie table access.
 
 - **Selection translation and saved vocabulary are separate workflows**: Translation panel results are transient reading output and never populate vocabulary fields. Saving uses a separate path that creates or reuses a `VocabularyItem` by canonical key, stores fixed fields and a deduplicated `VocabularyContext`, creates enrichment jobs, and commits atomically.
 
-- **Query template contract**: Query templates are extension-local configuration, not syncable vocabulary fields. Fields have `source: "llm" | "dictionary"`, `type: "text" | "list"`, and dictionary fields derive their type from `DictionaryQueryFieldSpec`. All enabled LLM fields merge into one LLM request per run; all enabled dictionary fields merge into one lookup per adapter and run. Results preserve schema order. Disabled fields are absent, not failed.
+- **Query template contract**: Query templates are extension-local configuration, not syncable vocabulary fields. A valid template has at least one enabled field. Fields have `source: "llm" | "dictionary"`, `type: "text" | "list"`, and dictionary fields derive their type from `DictionaryQueryFieldSpec`. All enabled LLM fields merge into one LLM request per run; all enabled dictionary fields merge into one lookup per adapter and run. Results preserve schema order. Disabled fields are absent, not failed.
 
 - **Query field result shape**: Per-field results are discriminated unions with `status: "ready" | "unavailable" | "failed"`. Ready results carry `type: "text"` with `value: string` or `type: "list"` with `value: readonly string[]`. Missing configuration or expected-but-absent values are `unavailable`; malformed or type-mismatched provider output is `failed`. Neither state discards successful siblings.
 
@@ -79,7 +79,7 @@ Salto is a Chrome/Chromium browser extension that lets users select an English w
 
 - **LLM configuration**: One active OpenAI-compatible configuration with `provider`, `baseUrl`, `model`, and optional `temperature`. Public config and API-key secret are stored separately. The options UI can replace but not read back the key. Content scripts never receive the key. Manifest declares `https://*/*` and `http://*/*` as `optional_host_permissions`. Permission is requested for `<origin>/*` only during an explicit save or test gesture. The background permits requests only to the configured and granted origin.
 
-- **Dictionary adapter rollout**: MVP targets `youdao-web` and `cambridge-web` behind one normalized `DictionaryClient` boundary, but rollout is sequential. The first adapter must reach stable acceptance before the second begins. No aggregation or automatic fallback. The active adapter is explicit in extension settings.
+- **Dictionary adapter rollout**: MVP targets `youdao-web` first and defers `cambridge-web` until the first adapter reaches stable acceptance. Both use one normalized `DictionaryClient` boundary. There is no aggregation or automatic fallback; while Youdao is the only adapter, Settings displays it as active without a provider selector.
 
 - **Fixed vocabulary schema**: System-owned, not user-editable in MVP. Fields: `term` (system/text), `phonetic` (dictionary/text), `partOfSpeech` (dictionary/text), `meaning` (dictionary/text), `examples` (llm/list), `synonyms` (dictionary/list), `wordForms` (dictionary/list). Value shape is determined by the field key. A ready `text` field contains a string; a ready `list` field contains `readonly string[]`.
 
@@ -91,7 +91,7 @@ Salto is a Chrome/Chromium browser extension that lets users select an English w
 
 - **Storage indexes**: `vocabulary_items` (pk `id`, unique `canonicalKey`, indexes `language`, `sync.updatedAt`); `vocabulary_fields` (pk `id`, unique `vocabularyItemId + key`, indexes `vocabularyItemId`, `key`, `status`); `vocabulary_contexts` (pk `id`, indexes `vocabularyItemId`, `pageUrl`); `learning_cards` (pk `id`, unique `vocabularyItemId + cardType`); `enrichment_jobs` (pk `id`, indexes `status + nextRunAt`, `vocabularyItemId`, `fieldKey`).
 
-- **Extension settings**: `activeQueryTemplateId`, `targetLanguage` (default `"zh-CN"`), `highlightEnabled` (default `true`), `themeMode` (default `"system"`), optional `activeDictionaryProvider`. Default system template seeds idempotently.
+- **Extension settings**: `activeQueryTemplateId`, `targetLanguage` (default `"zh-CN"`), `highlightEnabled` (default `true`), `themeMode` (default `"system"`), and the MVP-fixed `activeDictionaryProvider="youdao-web"` after adapter registration. Default system template seeds idempotently.
 
 - **Learning cards**: MVP generates only meaning-recall cards after both `term` and `meaning` fields are ready. Cards reference vocabulary fields for rendering rather than storing snapshots. `LearningState` and `ReviewLog` are not created until review behavior exists.
 
@@ -146,9 +146,9 @@ Salto is a Chrome/Chromium browser extension that lets users select an English w
 
 - **Phase plan**: The MVP is implemented in 8 ordered phases. Phase 01 (freeze spec) and Phase 02 (local vertical slice) are complete. Phase 03 (OpenAI-compatible translation) is next. Phases 04-08 cover enrichment, templates/settings, dictionary adapters, highlighting hardening, and release hardening.
 
-- **Dictionary adapter order**: The first adapter is selected based on current access reliability and required-field coverage. The second begins only after the first satisfies Phase 06 exit criteria.
+- **Dictionary adapter order**: `youdao-web` is the first MVP adapter. The Settings page displays it as the active provider but does not show a provider selector while it is the only available adapter. `cambridge-web` is deferred until `youdao-web` satisfies the complete adapter acceptance contract; there is no aggregation or automatic fallback.
 
-- **Open non-blocking questions**: (1) Which dictionary adapter is implemented first — deferred to Phase 06 implementer. (2) Whether Phase 05 includes a read-only vocabulary-schema view — optional, does not block acceptance. (3) Whether the second dictionary adapter ships in the same release — deferred to Phase 06 product owner.
+- **Open non-blocking questions**: (1) A read-only vocabulary-schema view is optional and does not block acceptance. (2) Whether `cambridge-web` ships in the same release remains a release decision after `youdao-web` acceptance; it does not block the first adapter or core MVP.
 
 - **Definition of done**: Every phase must satisfy: preconditions and acceptance criteria written before implementation; tests at agreed public seams fail before behavior exists; implementation does not broaden scope; errors are explicit and do not expose secrets; tests pass; `pnpm test`, `pnpm typecheck`, and `pnpm build` pass; browser acceptance script passes; security/privacy effects recorded; documentation updated; change committed as one coherent stack.
 

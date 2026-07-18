@@ -1,30 +1,53 @@
-# 21 — 端到端黄金路径和发布
+# 21 — 端到端黄金路径验收
 
-**What to build:** 完整 PRD 用户流程的自动化或手动证据，浏览器验收矩阵（静态文章、SPA 导航、长页面、表单页面、窄视口、浅色/深色、选项、工作器重启），运行 pnpm test/typecheck/build，检查生成的 MV3 清单和打包文件列表，在 Chrome 中加载生产输出并执行验收矩阵，更新版本和发布说明。
+Status: ready-for-agent
 
-**Blocked by:** 20 — 安全和隐私审计
+Blocked by: 06 — 模板字段编辑和排序, 08 — 扩展设置持久化, 09 — 活动模板读取和翻译面板集成, 11 — `youdao-web` 字典适配器, 12 — 字典查询执行集成, 13 — 字典充实集成, 17 — 保存后高亮集成, 18 — 键盘快捷键和无障碍, 19 — 迁移安全和恢复, 20 — 安全和隐私审计
 
-**Status:** ready-for-agent
+## Outcome
 
-- [ ] 选择支持：选择支持最多 500 字符的词和短短语
-- [ ] 选择无查询：选择本身永不启动提供者查询
-- [ ] 浮动触发器和快捷键：浮动触发器和键盘快捷键都故意打开翻译
-- [ ] 面板行为：面板保持在视口内，支持拖动、外部点击和 Esc
-- [ ] 模板功能：活动模板名称、切换、有序字段、刷新和保存工作
-- [ ] 字段批处理：LLM 和字典字段按提供者批处理并隔离字段失败
-- [ ] 立即保存：保存立即且独立于翻译面板输出
-- [ ] 重复保存去重：重复保存正确去重词汇项和阅读上下文
-- [ ] 充实恢复：充实在服务工作者和浏览器重启后恢复
-- [ ] 失败字段重试：失败字段可以重试而不覆盖成功字段
-- [ ] 高亮功能：保存的术语在初始和动态页面内容上高亮
-- [ ] 学习卡片生成：Meaning-recall 卡片记录仅在 term 和 meaning 就绪后出现
-- [ ] 浏览器验收矩阵：静态文章、SPA 导航、长页面、表单页面、窄视口、浅色/深色主机页面、扩展选项、工作者重启
-- [ ] 运行 pnpm test：运行 pnpm test
-- [ ] 运行 pnpm typecheck：运行 pnpm typecheck
-- [ ] 运行 pnpm build：运行 pnpm build
-- [ ] 检查 MV3 清单：检查生成的 MV3 清单和打包文件列表
-- [ ] Chrome 加载测试：在 Chrome 中加载确切的生产输出目录并执行验收矩阵
-- [ ] 版本和发布说明：仅在验收通过后更新版本和发布说明
-- [ ] Chrome Web Store 发布：如果发布到 Chrome Web Store，创建或更新 CHROMEWEBSTORE.md、权限理由、隐私披露、截图和包排除
-- [ ] 记录已知限制：记录已知提供者限制和支持诊断
-- [ ] 关闭问题：仅使用包含验证证据的链接或注释关闭本地问题
+在生产构建上验证 PRD 的核心用户路径和浏览器兼容矩阵。该 ticket 只产出验收证据和问题清单，不承担功能修复、商店发布或版本号变更。
+
+## Frozen decisions
+
+- 黄金路径使用本地 deterministic fake 证明默认测试；`youdao-web` live smoke 只作为显式 opt-in 证据。
+- template 在 settings 的 Selection section 选择并 Save；panel 只显示并使用 active template，不提供 panel selector。
+- selection 本身不请求 provider；floating trigger/keyboard command 或 panel regenerate 才允许请求。
+- 保存立即完成本地 transaction；enrichment 可异步，worker restart 后恢复；ready sibling 不因 failed sibling 消失。
+- 发布候选构建必须通过 `pnpm test`、`pnpm typecheck`、`pnpm build` 和 manifest/artifact 检查。
+
+## Scope
+
+- 选择最多 500 UTF-16 code units、无查询、显式 trigger、panel viewport/drag/outside-click/Esc、active template name/schema order/regenerate/save。
+- mixed LLM/dictionary field batching、field-level failures、immediate save、deduplicated re-save、worker restart、retry 和 meaning-recall card timing。
+- highlight 初始/动态内容、disable/restore、options settings、keyboard/accessibility 和 migration/restart evidence。
+- Chrome/Chromium 矩阵：静态文章、SPA-like navigation、长页面、表单/code 页面、窄 viewport、light/dark/system、options、worker restart。
+
+## Non-goals
+
+- 不在此 ticket 修复实现问题；发现问题必须链接到新 issue 或对应实现 ticket。
+- 不执行 Chrome Web Store 发布、不改版本号、不生成未批准的权限或隐私声明；属于 22/发布流程。
+- 不要求默认 CI 发出 live provider requests。
+
+## Acceptance criteria
+
+- [ ] 黄金路径脚本能从 settings 选 Youdao-backed template，到 selection、trigger、ordered output、save、reload、highlight 完成。
+- [ ] 重复 save/context dedupe、worker restart、failed field retry 和 card readiness 有证据。
+- [ ] 浏览器矩阵每项有 pass/fail、环境、构建版本和截图/日志链接；失败项有明确 owner/issue。
+- [ ] test/typecheck/build、manifest permission 和 package file list 检查结果已记录。
+- [ ] 没有未归属的失败或以“以后处理”替代的阻断项。
+
+## Verification
+
+- 运行 `pnpm test`、`pnpm typecheck`、`pnpm build`。
+- 在 Chrome 和至少一个 Chromium 环境加载精确 production output，执行矩阵并保存证据。
+- 检查默认自动化测试没有 live provider request。
+
+## Exit criteria
+
+- 所有核心路径通过，或每个失败项都有链接、复现步骤和明确阻塞关系。
+- 21 只交付验收记录；功能修复不能混入验收 ticket。
+
+## Rollback boundary
+
+删除验收 fixture/脚本不会影响运行时用户数据。不要通过修改生产数据或放宽安全检查来让验收通过。
