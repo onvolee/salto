@@ -2,12 +2,16 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   DEFAULT_EXTENSION_SETTINGS,
+  DICTIONARY_FIELD_TYPES,
   createDefaultQueryTemplate,
   canonicalizeEnglishTerm,
   isValidQueryTemplate,
   MEANING_RECALL_CARD_TYPE,
   VOCABULARY_FIELD_KEYS,
   type DictionaryAdapter,
+  type DictionaryFieldKey,
+  type DictionaryQueryField,
+  type DictionaryQueryFieldSpec,
   type LearningCard,
   type LlmClient,
   type PromptContext,
@@ -39,6 +43,19 @@ describe("@salto/core public contract", () => {
     expectTypeOf<DictionaryAdapter>().toHaveProperty("lookup");
     expectTypeOf<VocabularyItem>().toHaveProperty("canonicalKey").toEqualTypeOf<string>();
     expectTypeOf<LearningCard>().toHaveProperty("cardType").toEqualTypeOf<"meaning-recall">();
+  });
+
+  it("uses the dictionary contract as the query-template field source", () => {
+    expect(DICTIONARY_FIELD_TYPES).toEqual({
+      phonetic: "text",
+      partOfSpeech: "text",
+      meaning: "text",
+      synonyms: "list",
+      wordForms: "list"
+    });
+    expectTypeOf<DictionaryQueryField>().toEqualTypeOf<DictionaryFieldKey>();
+    expectTypeOf<DictionaryQueryFieldSpec>()
+      .toEqualTypeOf<typeof DICTIONARY_FIELD_TYPES>();
   });
 
   it("freezes query result and prompt context shapes", () => {

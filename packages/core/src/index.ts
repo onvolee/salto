@@ -1,3 +1,5 @@
+export * from "./dictionary/client";
+export * from "./dictionary/errors";
 export * from "./dictionary/types";
 export * from "./learning/types";
 export * from "./llm/config";

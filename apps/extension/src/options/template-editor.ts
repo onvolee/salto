@@ -1,28 +1,16 @@
 import { z } from "zod";
 
-import type {
-  DictionaryQueryField,
-  QuerySchemaField,
-  QuerySchemaFieldType,
-  QueryTemplate,
-  QueryTemplateInput,
+import {
+  DICTIONARY_FIELD_TYPES,
+  type DictionaryQueryField,
+  type QuerySchemaField,
+  type QueryTemplate,
+  type QueryTemplateInput,
 } from "@salto/core";
 
-const DICTIONARY_FIELD_TYPES: Record<DictionaryQueryField, QuerySchemaFieldType> = {
-  phonetic: "text",
-  partOfSpeech: "text",
-  meaning: "text",
-  synonyms: "list",
-  wordForms: "list",
-};
-
-const dictionaryFieldSchema = z.enum([
-  "phonetic",
-  "partOfSpeech",
-  "meaning",
-  "synonyms",
-  "wordForms",
-]);
+const dictionaryFieldSchema = z.enum(
+  Object.keys(DICTIONARY_FIELD_TYPES) as [DictionaryQueryField, ...DictionaryQueryField[]],
+);
 
 const fieldDraftSchema = z.object({
   id: z.string().trim().min(1, "字段 ID 不能为空"),
