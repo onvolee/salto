@@ -24,7 +24,7 @@ const template: QueryTemplate = {
   fields: [
     { id: "second", label: "Second", source: "llm", type: "list", instruction: "Use {{selection}} with {{pageText}}.", order: 1, enabled: true },
     { id: "first", label: "First", source: "llm", type: "text", instruction: "Use {{targetLanguage}}.", order: 0, enabled: true },
-    { id: "disabled", label: "Disabled", source: "llm", type: "text", instruction: "", order: 2, enabled: false }
+    { id: "disabled", label: "Disabled", source: "llm", type: "text", instruction: "This disabled field is reserved.", order: 2, enabled: false }
   ]
 };
 
@@ -320,7 +320,10 @@ describe("background message boundary", () => {
       enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
       queryExecutor: createFakeQueryExecutor()
     });
-    const input = { name: "New template", fields: [template.fields[0]] };
+    const input = {
+      name: "New template",
+      fields: [{ ...template.fields[0], order: 0 }]
+    };
 
     await expect(services.handleMessage({
       type: "create-query-template",

@@ -21,7 +21,7 @@ import { SettingsHeader } from "./components/settings-header";
 import { SettingsLoading } from "./components/settings-loading";
 import { SettingsSidebar } from "./components/settings-sidebar";
 import { useOptionsSettings } from "./hooks/use-options-settings";
-import { useTranslationFields } from "./hooks/use-translation-fields";
+import { useQueryTemplates } from "./hooks/use-query-templates";
 import { AiProviderSection } from "./sections/ai-provider-section";
 import { GeneralSection } from "./sections/general-section";
 import { SelectionSection } from "./sections/selection-section";
@@ -46,7 +46,7 @@ export function OptionsApp() {
     updateLlm,
     updateSetting,
   } = useOptionsSettings();
-  const translationFields = useTranslationFields();
+  const queryTemplates = useQueryTemplates();
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.themeMode;
@@ -136,11 +136,7 @@ export function OptionsApp() {
                 />
               ) : null}
               {activeSection === "selection" ? (
-                <SelectionSection
-                  settings={settings}
-                  updateSetting={updateSetting}
-                  {...translationFields}
-                />
+                <SelectionSection {...queryTemplates} />
               ) : null}
               {activeSection === "sources" ? (
                 <SourcesSection aiConfigured={llm.hasApiKey} />
