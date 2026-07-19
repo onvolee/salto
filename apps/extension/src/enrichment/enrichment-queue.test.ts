@@ -441,6 +441,48 @@ describe("enrichment queue", () => {
     expect(cards).toHaveLength(1);
   });
 
+  it("recovers queued and stale running jobs after restart without rerunning failed or completed jobs", async () => {
+    const databaseName = "restart-status-matrix";
+    const firstDatabase = createTestDatabase(databaseName);
+    const firstRepositories = createRepositories(firstDatabase);
+    const saved = await saveFixture(firstRepositories);
+    await firstDatabase.enrichmentJobs.bulkDelete([
+      `${saved.vocabularyItemId}:synonyms:job`,
+      `${saved.vocabularyItemId}:wordForms:job`,
+    ]);
+    await firstDatabase.enrichmentJobs.update(`${saved.vocabularyItemId}:partOfSpeech:job`, {
+      status: "running",
+      attempts: 1,
+      nextRunAt: "2020-01-01T00:00:00.000Z",
+    });
+    await firstDatabase.enrichmentJobs.update(`${saved.vocabularyItemId}:meaning:job`, {
+      status: "failed",
+      attempts: 3,
+    });
+    await firstDatabase.enrichmentJobs.update(`${saved.vocabularyItemId}:examples:job`, {
+      status: "succeeded",
+      attempts: 1,
+    } as never);
+    firstDatabase.close();
+
+    const secondDatabase = createTestDatabase(databaseName);
+    const secondRepositories = createRepositories(secondDatabase);
+    const queue = createQueue(secondDatabase, secondRepositories);
+    await queue.recover();
+    await queue.wake();
+
+    expect(await secondDatabase.vocabularyFields.get(`${saved.vocabularyItemId}:phonetic`))
+      .toEqual(expect.objectContaining({ status: "ready" }));
+    expect(await secondDatabase.vocabularyFields.get(`${saved.vocabularyItemId}:partOfSpeech`))
+      .toEqual(expect.objectContaining({ status: "ready" }));
+    expect(await secondDatabase.enrichmentJobs.get(`${saved.vocabularyItemId}:meaning:job`))
+      .toEqual(expect.objectContaining({ status: "failed", attempts: 3 }));
+    expect(await secondDatabase.enrichmentJobs.get(`${saved.vocabularyItemId}:examples:job`))
+      .toEqual(expect.objectContaining({ status: "succeeded", attempts: 1 }));
+    expect(await secondDatabase.vocabularyFields.get(`${saved.vocabularyItemId}:examples`))
+      .toEqual(expect.objectContaining({ status: "pending" }));
+  });
+
   it("creates only one meaning-recall card per item", async () => {
     const database = createTestDatabase("idempotent-card");
     const repositories = createRepositories(database);
@@ -520,6 +562,50 @@ describe("enrichment queue", () => {
       .toBeUndefined();
     expect(await database.enrichmentJobs.get(`${saved.vocabularyItemId}:meaning:job`))
       .toEqual(expect.objectContaining({ status: "queued", attempts: 0 }));
+  });
+
+  it("ignores a stale response after the job is reclaimed by a new worker", async () => {
+    const database = createTestDatabase("stale-response-identity");
+    const repositories = createRepositories(database);
+    const saved = await saveFixture(repositories);
+    const jobId = `${saved.vocabularyItemId}:meaning:job`;
+    await database.enrichmentJobs.bulkDelete([
+      `${saved.vocabularyItemId}:phonetic:job`,
+      `${saved.vocabularyItemId}:partOfSpeech:job`,
+      `${saved.vocabularyItemId}:examples:job`,
+      `${saved.vocabularyItemId}:synonyms:job`,
+      `${saved.vocabularyItemId}:wordForms:job`,
+    ]);
+
+    let resolveFirst: ((value: readonly import("./types").EnrichmentFieldResult[]) => void) | undefined;
+    let resolveSecond: ((value: readonly import("./types").EnrichmentFieldResult[]) => void) | undefined;
+    const firstSource: EnrichmentSource = {
+      executeBatch: vi.fn(() => new Promise<readonly import("./types").EnrichmentFieldResult[]>((resolve) => { resolveFirst = resolve; })),
+    };
+    const secondSource: EnrichmentSource = {
+      executeBatch: vi.fn(() => new Promise<readonly import("./types").EnrichmentFieldResult[]>((resolve) => { resolveSecond = resolve; })),
+    };
+    const firstWorker = createQueueWithSources(database, repositories, [firstSource]);
+    const secondWorker = createQueueWithSources(database, repositories, [secondSource]);
+
+    const firstWake = firstWorker.wake();
+    await vi.waitFor(() => expect(firstSource.executeBatch).toHaveBeenCalledOnce());
+    await database.enrichmentJobs.update(jobId, { status: "queued", nextRunAt: clock() });
+
+    const secondWake = secondWorker.wake();
+    await vi.waitFor(() => expect(secondSource.executeBatch).toHaveBeenCalledOnce());
+    resolveFirst?.([{ jobId, fieldKey: "meaning", status: "ready", value: "stale meaning" }]);
+    await firstWake;
+
+    expect(await database.vocabularyFields.get(`${saved.vocabularyItemId}:meaning`))
+      .toEqual(expect.objectContaining({ status: "pending" }));
+    expect(await database.enrichmentJobs.get(jobId))
+      .toEqual(expect.objectContaining({ status: "running", attempts: 2 }));
+
+    resolveSecond?.([{ jobId, fieldKey: "meaning", status: "ready", value: "current meaning" }]);
+    await secondWake;
+    expect(await database.vocabularyFields.get(`${saved.vocabularyItemId}:meaning`))
+      .toEqual(expect.objectContaining({ status: "ready", value: "current meaning" }));
   });
 
   it("does not create a card when meaning is not ready", async () => {

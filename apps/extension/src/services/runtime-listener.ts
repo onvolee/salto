@@ -19,7 +19,15 @@ export function createRuntimeMessageListener(
         : sender.tab
           ? "content-script"
           : "unknown";
-    void services.handleMessage(message, { source }).then(sendResponse);
+    void services.handleMessage(message, { source }).then(sendResponse).catch(() => {
+      sendResponse({
+        ok: false,
+        error: {
+          code: "request-failed",
+          message: "The extension request could not be completed",
+        },
+      });
+    });
     return true;
   };
 }

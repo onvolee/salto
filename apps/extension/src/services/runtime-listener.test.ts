@@ -59,4 +59,17 @@ describe("runtime message listener", () => {
       { source: "extension-page" },
     );
   });
+
+  it("returns a stable failure response when an async handler rejects", async () => {
+    const handleMessage = vi.fn().mockRejectedValue(new Error("database closed"));
+    const sendResponse = vi.fn();
+    const listener = createRuntimeMessageListener({ handleMessage });
+
+    expect(listener({ type: "list-highlight-terms" }, {}, sendResponse)).toBe(true);
+
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledWith({
+      ok: false,
+      error: { code: "request-failed", message: "The extension request could not be completed" },
+    }));
+  });
 });

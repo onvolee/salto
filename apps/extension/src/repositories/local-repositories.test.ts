@@ -33,7 +33,7 @@ function userTemplateInput(name = "Reading notes") {
   };
 }
 
-function defineLegacySchema(database: Dexie, targetVersion: 3 | 4 | 5 | 6): void {
+function defineLegacySchema(database: Dexie, targetVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7): void {
   database.version(1).stores({
     vocabularyItems: "&id, canonicalKey, language, sync.updatedAt",
     vocabularyFields: "&id, vocabularyItemId, key, status, sync.updatedAt",
@@ -42,13 +42,15 @@ function defineLegacySchema(database: Dexie, targetVersion: 3 | 4 | 5 | 6): void
     learningStates: "&id, learningCardId, dueAt, state, sync.updatedAt",
     reviewLogs: "&id, learningCardId, reviewedAt, sync.updatedAt"
   });
-  database.version(2).stores({
-    vocabularyItems: "&id, &canonicalKey, language, sync.updatedAt",
-    vocabularyFields: "&id, &[vocabularyItemId+key], vocabularyItemId, key, status, sync.updatedAt",
-    vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt",
-    queryTemplates: "&id, updatedAt",
-    settings: "&id, activeQueryTemplateId"
-  });
+  if (targetVersion >= 2) {
+    database.version(2).stores({
+      vocabularyItems: "&id, &canonicalKey, language, sync.updatedAt",
+      vocabularyFields: "&id, &[vocabularyItemId+key], vocabularyItemId, key, status, sync.updatedAt",
+      vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt",
+      queryTemplates: "&id, updatedAt",
+      settings: "&id, activeQueryTemplateId"
+    });
+  }
   if (targetVersion >= 3) {
     database.version(3).stores({ llmConfigs: "&id, provider", llmSecrets: "&id" });
   }
@@ -65,6 +67,18 @@ function defineLegacySchema(database: Dexie, targetVersion: 3 | 4 | 5 | 6): void
   if (targetVersion >= 6) {
     database.version(6).stores({
       vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt, selectionPath"
+    });
+  }
+  if (targetVersion >= 7) {
+    database.version(7).stores({
+      queryTemplates: "&id, updatedAt",
+      settings: "&id, activeQueryTemplateId"
+    }).upgrade(async (transaction) => {
+      await transaction.table("settings").toCollection().modify((record: Record<string, unknown>) => {
+        if (typeof record.activeQueryTemplateId !== "string" && typeof record.activeTemplateId === "string") {
+          record.activeQueryTemplateId = record.activeTemplateId;
+        }
+      });
     });
   }
 }
@@ -462,12 +476,14 @@ describe("local repositories", () => {
       .toEqual({ migrated: true });
   });
 
-  it.each([3, 4, 5, 6] as const)(
+  it.each([1, 2, 3, 4, 5, 6, 7] as const)(
     "upgrades schema v%i without losing persisted template or vocabulary data",
     async (version) => {
       const databaseName = `migration-v${version}-test`;
       const legacy = new Dexie(databaseName);
       defineLegacySchema(legacy, version);
+      await legacy.open();
+      expect(legacy.verno).toBe(version);
       const legacyTemplate = {
         ...createDefaultQueryTemplate(clock()),
         id: `legacy-template-v${version}`,
@@ -505,14 +521,16 @@ describe("local repositories", () => {
         savedAt: clock(),
         sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
       });
-      await legacy.table("queryTemplates").add(legacyTemplate);
-      await legacy.table("settings").add({
-        id: "extension",
-        activeQueryTemplateId: legacyTemplate.id,
-        targetLanguage: "zh-CN",
-        highlightEnabled: true,
-        themeMode: "system"
-      });
+      if (version >= 2) {
+        await legacy.table("queryTemplates").add(legacyTemplate);
+        await legacy.table("settings").add({
+          id: "extension",
+          activeQueryTemplateId: legacyTemplate.id,
+          targetLanguage: "zh-CN",
+          highlightEnabled: true,
+          themeMode: "system"
+        });
+      }
       if (version >= 4) {
         await legacy.table("enrichmentJobs").add({
           id: `legacy-job-v${version}`,
@@ -528,15 +546,21 @@ describe("local repositories", () => {
 
       const upgraded = createTestRepositories(databaseName);
       const active = await upgraded.repositories.settings.getActive();
+      expect(upgraded.database.verno).toBe(7);
       const migratedTemplate = await upgraded.repositories.templates.get(legacyTemplate.id);
 
-      expect(active.settings.activeQueryTemplateId).toBe(legacyTemplate.id);
-      expect(active.template.id).toBe(legacyTemplate.id);
-      expect(migratedTemplate).toEqual(expect.objectContaining({
-        migrationExtension: { version }
-      }));
-      expect((migratedTemplate?.fields[0] as Record<string, unknown>).migrationFieldExtension)
-        .toBe(`v${version}`);
+      if (version >= 2) {
+        expect(active.settings.activeQueryTemplateId).toBe(legacyTemplate.id);
+        expect(active.template.id).toBe(legacyTemplate.id);
+        expect(migratedTemplate).toEqual(expect.objectContaining({
+          migrationExtension: { version }
+        }));
+        expect((migratedTemplate?.fields[0] as Record<string, unknown>).migrationFieldExtension)
+          .toBe(`v${version}`);
+      } else {
+        expect(active.settings.activeQueryTemplateId).toBe("system-default");
+        expect(active.template.id).toBe("system-default");
+      }
       expect(await upgraded.database.vocabularyItems.get(`legacy-item-v${version}`))
         .toEqual(expect.objectContaining({ term: `Legacy ${version}` }));
       expect(await upgraded.database.vocabularyFields.get(`legacy-item-v${version}:term`))
@@ -549,6 +573,55 @@ describe("local repositories", () => {
       }
     }
   );
+
+  it("keeps the original database intact when a forward migration cannot create a unique index", async () => {
+    const databaseName = "migration-failure-preserves-data";
+    const legacy = new Dexie(databaseName);
+    legacy.version(1).stores({
+      vocabularyItems: "&id, canonicalKey, language, sync.updatedAt",
+      vocabularyFields: "&id, vocabularyItemId, key, status, sync.updatedAt",
+      vocabularyContexts: "&id, vocabularyItemId, savedAt, sync.updatedAt",
+      learningCards: "&id, vocabularyItemId, cardType, sync.updatedAt",
+      learningStates: "&id, learningCardId, dueAt, state, sync.updatedAt",
+      reviewLogs: "&id, learningCardId, reviewedAt, sync.updatedAt"
+    });
+    await legacy.table("vocabularyItems").bulkAdd([
+      {
+        id: "duplicate-one",
+        canonicalKey: "en:duplicate",
+        term: "Duplicate one",
+        language: "en",
+        sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
+      },
+      {
+        id: "duplicate-two",
+        canonicalKey: "en:duplicate",
+        term: "Duplicate two",
+        language: "en",
+        sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
+      }
+    ]);
+    legacy.close();
+
+    const upgraded = createTestRepositories(databaseName).database;
+    await expect(upgraded.open()).rejects.toBeDefined();
+    upgraded.close();
+
+    const recoveryReader = new Dexie(databaseName);
+    recoveryReader.version(1).stores({
+      vocabularyItems: "&id, canonicalKey, language, sync.updatedAt",
+      vocabularyFields: "&id, vocabularyItemId, key, status, sync.updatedAt",
+      vocabularyContexts: "&id, vocabularyItemId, savedAt, sync.updatedAt",
+      learningCards: "&id, vocabularyItemId, cardType, sync.updatedAt",
+      learningStates: "&id, learningCardId, dueAt, state, sync.updatedAt",
+      reviewLogs: "&id, learningCardId, reviewedAt, sync.updatedAt"
+    });
+    expect(await recoveryReader.table("vocabularyItems").toArray()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "duplicate-one", term: "Duplicate one" }),
+      expect.objectContaining({ id: "duplicate-two", term: "Duplicate two" })
+    ]));
+    recoveryReader.close();
+  });
 
   it("stores public LLM configuration separately from its write-only secret", async () => {
     const { database, repositories } = createTestRepositories("llm-settings-test");
