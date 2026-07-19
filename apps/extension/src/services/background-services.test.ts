@@ -671,11 +671,12 @@ describe("background message boundary", () => {
         themeMode: "system"
       })
     };
+    const queryExecutor = { execute: vi.fn() };
     const services = createBackgroundServices({
       repositories: { templates, settings } as never,
       saveVocabulary: { save: vi.fn() } as never,
       enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
-      queryExecutor: createFakeQueryExecutor()
+      queryExecutor
     });
     const input = {
       name: "New template",
@@ -698,6 +699,16 @@ describe("background message boundary", () => {
       data: created
     });
     expect(templates.create).toHaveBeenCalledWith(input);
+
+    await expect(services.handleMessage({
+      type: "update-query-template",
+      payload: { template: created }
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: true,
+      type: "update-query-template",
+      data: created
+    });
+    expect(queryExecutor.execute).not.toHaveBeenCalled();
 
     await expect(services.handleMessage({
       type: "update-query-template",

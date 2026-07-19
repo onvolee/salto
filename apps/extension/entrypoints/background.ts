@@ -1,5 +1,6 @@
 import { SaltoDatabase } from "salto-src/db";
 import { createDictionaryEnrichmentSource } from "salto-src/enrichment/dictionary-enrichment-source";
+import { createDictionaryQueryExecutor } from "salto-src/dictionary/dictionary-query-executor";
 import { createYoudaoWebAdapter } from "salto-src/dictionary/youdao-web-adapter";
 import { createEnrichmentQueue } from "salto-src/enrichment/enrichment-queue";
 import { createLlmEnrichmentSource } from "salto-src/enrichment/llm-enrichment-source";
@@ -12,7 +13,7 @@ import {
   migrateLegacySettings,
 } from "salto-src/settings/legacy-settings-migration";
 import { createSettingsNotificationPublisher } from "salto-src/settings/settings-notifications";
-import { normalizeLlmPublicConfig } from "@salto/core";
+import { createDictionaryClient, normalizeLlmPublicConfig } from "@salto/core";
 
 function createId(): string {
   return crypto.randomUUID();
@@ -57,13 +58,17 @@ export default defineBackground(() => {
   const hasOriginPermission = (permissionOrigin: string) => {
     return browser.permissions.contains({ origins: [permissionOrigin] });
   };
-  const queryExecutor = createOpenAiCompatibleQueryExecutor({
+  const llmQueryExecutor = createOpenAiCompatibleQueryExecutor({
     llmSettings: repositories.llmSettings,
     createClient: createOpenAiCompatibleClient,
     hasOriginPermission,
   });
   const dictionaryAdapter = createYoudaoWebAdapter({
     hasOriginPermission,
+  });
+  const queryExecutor = createDictionaryQueryExecutor({
+    dictionaryClient: createDictionaryClient(dictionaryAdapter),
+    llmExecutor: llmQueryExecutor,
   });
   const dictionarySource = createDictionaryEnrichmentSource({
     settings: repositories.settings,
