@@ -1,4 +1,4 @@
-import type { SelectionPath } from "@salto/core";
+import { findSavedTermMatches, type SelectionPath } from "@salto/core";
 
 import { findNodeByPath } from "../selection/selection-path";
 
@@ -20,8 +20,91 @@ const SKIP_SELECTOR = [
   "salto-selection-popup"
 ].join(",");
 
+function hasCssHiddenAncestor(node: Node): boolean {
+  for (let element = node.parentElement; element; element = element.parentElement) {
+    const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+    if (style?.display === "none" || style?.visibility === "hidden") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function isSkippable(node: Node): boolean {
-  return Boolean(node.parentElement?.closest(SKIP_SELECTOR));
+  return !node.isConnected
+    || node.getRootNode() !== node.ownerDocument
+    || hasCssHiddenAncestor(node)
+    || Boolean(node.parentElement?.closest(SKIP_SELECTOR));
+}
+
+function createHighlightWrapper(document: Document, canonicalKey: string): HTMLSpanElement {
+  const mark = document.createElement("span");
+  mark.dataset.saltoHighlight = canonicalKey;
+  mark.className = "salto-saved-term";
+  mark.style.textDecorationLine = "underline";
+  mark.style.textDecorationStyle = "wavy";
+  mark.style.textDecorationThickness = "1px";
+  mark.style.textUnderlineOffset = "2px";
+  return mark;
+}
+
+export function highlightSavedTermsInDocument(
+  document: Document,
+  terms: readonly string[]
+): number {
+  if (!document.body || terms.length === 0) {
+    return 0;
+  }
+
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node instanceof Text && !isSkippable(node)) {
+      nodes.push(node);
+    }
+  }
+
+  let count = 0;
+  for (const node of nodes) {
+    const matches = findSavedTermMatches(node.data, terms);
+    for (const match of [...matches].reverse()) {
+      const range = document.createRange();
+      range.setStart(node, match.start);
+      range.setEnd(node, match.end);
+      range.surroundContents(createHighlightWrapper(document, match.canonicalKey));
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+export function cleanupSavedTermHighlights(document: Document): number {
+  const highlights = Array.from(document.querySelectorAll<HTMLSpanElement>(
+    "span.salto-saved-term[data-salto-highlight]"
+  ));
+  const affectedParents = new Set<ParentNode>();
+
+  for (const highlight of highlights) {
+    const parent = highlight.parentNode;
+    if (!parent) {
+      continue;
+    }
+
+    while (highlight.firstChild) {
+      parent.insertBefore(highlight.firstChild, highlight);
+    }
+    highlight.remove();
+    affectedParents.add(parent);
+  }
+
+  for (const parent of affectedParents) {
+    parent.normalize();
+  }
+
+  return highlights.length;
 }
 
 export function highlightSavedTerms(
