@@ -1,6 +1,6 @@
 # 13 — 字典充实集成
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Blocked by: 05 — 模板持久化和仓库操作, 08 — 扩展设置持久化, 10 — 字典客户端边界和契约, 11 — `youdao-web` 字典适配器
 
@@ -29,15 +29,26 @@ Blocked by: 05 — 模板持久化和仓库操作, 08 — 扩展设置持久化,
 
 ## Acceptance criteria
 
-- [ ] 同一 item 的多个 pending dictionary fields 一次 lookup 即可填充。
-- [ ] 部分成功后 ready fields 保留，失败 fields 独立记录错误和 retry state。
-- [ ] service-worker restart、retry 和 provider missing 行为与 04 一致。
-- [ ] 成功处理不会覆盖已有 ready value，也不会创建重复 field/job/card。
+- [x] 同一 item 的多个 pending dictionary fields 一次 lookup 即可填充。
+- [x] 部分成功后 ready fields 保留，失败 fields 独立记录错误和 retry state。
+- [x] service-worker restart、retry 和 provider missing 行为与 04 一致。
+- [x] 成功处理不会覆盖已有 ready value，也不会创建重复 field/job/card。
 
 ## Verification
 
 - enrichment tests 用 fake adapter 覆盖 batch、partial success、failure retry、restart 和 idempotency。
 - security test 确认请求只在 background-owned adapter path；运行 `pnpm test`、`pnpm typecheck`、`pnpm build`。
+
+验证记录（2026-07-20）：
+
+- production background 复用固定 `youdao-web` adapter 的 core `DictionaryClient`，query execution 与 enrichment 共用同一 normalized boundary；content/options message 未新增 provider、URL 或独立 enrichment term 参数。
+- dictionary source tests 使用 fake adapter 覆盖单 item 多字段一次 lookup、text/list/missing mapping、provider failure 的逐字段脱敏错误，以及 permission/provider missing 保持 pending。
+- queue integration tests 使用 fake adapter 覆盖 partial success 后仅重试未完成 jobs、timeout 的 attempts/backoff retry 与成功后清除 error、service-worker restart、stale recovery、并发 wake 和 card idempotency。
+- queue 在 claim/source batch 前通过原子 field/job transaction 删除 ready field 的冗余 queued job，并保留 result-time 并发二次保护；provider missing 时 source 只收到 pending sibling，普通 retry 不覆盖既有 ready value。
+- `pnpm --filter @salto/extension exec vitest run src/enrichment`：3 files、20 tests 通过；dictionary/enrichment/background 聚焦组合：6 files、68 tests 通过。
+- `pnpm typecheck`：通过。
+- `pnpm build`：通过；Chrome MV3 production bundle 生成成功。bundle audit 确认 Youdao request path 只存在于 `background.js`。
+- `pnpm test` 在本票测试全部通过后仍被并行 Ticket 16 的未完成 highlighting 断言阻断；主代理将在 Ticket 16 checkpoint 后统一重跑 workspace test，本票未修改 highlighting 文件。
 
 ## Exit criteria
 

@@ -72,6 +72,25 @@ export function createEnrichmentQueue(dependencies: EnrichmentQueueDependencies)
     );
   }
 
+  async function deleteJobIfFieldReady(job: EnrichmentJob): Promise<boolean> {
+    const fieldId = `${job.vocabularyItemId}:${job.fieldKey}`;
+    return dependencies.database.transaction(
+      "rw",
+      [dependencies.database.vocabularyFields, dependencies.database.enrichmentJobs],
+      async () => {
+        const [field, currentJob] = await Promise.all([
+          dependencies.database.vocabularyFields.get(fieldId),
+          dependencies.database.enrichmentJobs.get(job.id),
+        ]);
+        if (field?.status !== "ready" || currentJob?.status !== "queued") {
+          return false;
+        }
+        await dependencies.database.enrichmentJobs.delete(job.id);
+        return true;
+      },
+    );
+  }
+
   async function updateFieldAndJob(
     job: EnrichmentJob,
     result: EnrichmentFieldResult,
@@ -91,6 +110,10 @@ export function createEnrichmentQueue(dependencies: EnrichmentQueueDependencies)
         const currentField = await dependencies.database.vocabularyFields.get(fieldId);
         const currentJob = await dependencies.database.enrichmentJobs.get(job.id);
         if (!currentField || !currentJob) {
+          return;
+        }
+        if (currentField.status === "ready") {
+          await dependencies.database.enrichmentJobs.delete(job.id);
           return;
         }
 
@@ -194,6 +217,9 @@ export function createEnrichmentQueue(dependencies: EnrichmentQueueDependencies)
     const claimedJobs: EnrichmentJob[] = [];
 
     for (const job of jobs) {
+      if (await deleteJobIfFieldReady(job)) {
+        continue;
+      }
       const claimed = await claimJob(job);
       if (claimed) {
         claimedJobs.push(claimed);

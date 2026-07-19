@@ -66,12 +66,14 @@ export default defineBackground(() => {
   const dictionaryAdapter = createYoudaoWebAdapter({
     hasOriginPermission,
   });
+  const dictionaryClient = createDictionaryClient(dictionaryAdapter);
   const queryExecutor = createDictionaryQueryExecutor({
-    dictionaryClient: createDictionaryClient(dictionaryAdapter),
+    dictionaryClient,
     llmExecutor: llmQueryExecutor,
   });
   const dictionarySource = createDictionaryEnrichmentSource({
     settings: repositories.settings,
+    dictionaryClient,
     useDeterministicFake: process.env.NODE_ENV === "development",
   });
   const llmSource = createLlmEnrichmentSource({
