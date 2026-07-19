@@ -20,21 +20,38 @@ const SKIP_SELECTOR = [
   "salto-selection-popup"
 ].join(",");
 
-function hasCssHiddenAncestor(node: Node): boolean {
+function hasCssHiddenAncestor(node: Node, hiddenAncestors: WeakMap<Element, boolean>): boolean {
+  const visited: Element[] = [];
   for (let element = node.parentElement; element; element = element.parentElement) {
+    const knownHidden = hiddenAncestors.get(element);
+    if (knownHidden !== undefined) {
+      for (const visitedElement of visited) {
+        hiddenAncestors.set(visitedElement, knownHidden);
+      }
+      return knownHidden;
+    }
+
+    visited.push(element);
     const style = element.ownerDocument.defaultView?.getComputedStyle(element);
-    if (style?.display === "none" || style?.visibility === "hidden") {
+    const isHidden = style?.display === "none" || style?.visibility === "hidden";
+    if (isHidden) {
+      for (const visitedElement of visited) {
+        hiddenAncestors.set(visitedElement, true);
+      }
       return true;
     }
   }
 
+  for (const visitedElement of visited) {
+    hiddenAncestors.set(visitedElement, false);
+  }
   return false;
 }
 
-function isSkippable(node: Node): boolean {
+function isSkippable(node: Node, hiddenAncestors = new WeakMap<Element, boolean>()): boolean {
   return !node.isConnected
     || node.getRootNode() !== node.ownerDocument
-    || hasCssHiddenAncestor(node)
+    || hasCssHiddenAncestor(node, hiddenAncestors)
     || Boolean(node.parentElement?.closest(SKIP_SELECTOR));
 }
 
@@ -66,19 +83,40 @@ export function highlightSavedTermsInDocument(
     }
   }
 
-  let count = 0;
-  for (const node of nodes) {
-    const matches = findSavedTermMatches(node.data, terms);
-    for (const match of [...matches].reverse()) {
-      const range = document.createRange();
-      range.setStart(node, match.start);
-      range.setEnd(node, match.end);
-      range.surroundContents(createHighlightWrapper(document, match.canonicalKey));
-      count += 1;
-    }
-  }
+  return createSavedTermTextNodeHighlighter(document, terms).highlight(nodes);
+}
 
-  return count;
+export type SavedTermTextNodeHighlighter = {
+  highlight(nodes: readonly Text[]): number;
+};
+
+export function createSavedTermTextNodeHighlighter(
+  document: Document,
+  terms: readonly string[]
+): SavedTermTextNodeHighlighter {
+  return {
+    highlight(nodes) {
+      let count = 0;
+      const hiddenAncestors = new WeakMap<Element, boolean>();
+
+      for (const node of nodes) {
+        if (isSkippable(node, hiddenAncestors)) {
+          continue;
+        }
+
+        const matches = findSavedTermMatches(node.data, terms);
+        for (const match of [...matches].reverse()) {
+          const range = document.createRange();
+          range.setStart(node, match.start);
+          range.setEnd(node, match.end);
+          range.surroundContents(createHighlightWrapper(document, match.canonicalKey));
+          count += 1;
+        }
+      }
+
+      return count;
+    },
+  };
 }
 
 export function cleanupSavedTermHighlights(document: Document): number {

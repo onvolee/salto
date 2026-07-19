@@ -135,6 +135,26 @@ describe("single-pass highlighter", () => {
     expect(clicked).toHaveBeenCalledOnce();
   });
 
+  it("skips sibling text nodes when their shared visible parent has a hidden ancestor", () => {
+    const hiddenAncestor = document.createElement("section");
+    hiddenAncestor.style.display = "none";
+    const visibleParent = document.createElement("div");
+    const first = document.createElement("p");
+    first.textContent = "saved";
+    const second = document.createElement("p");
+    second.textContent = "saved";
+    visibleParent.append(first, second);
+    hiddenAncestor.append(visibleParent);
+    document.body.replaceChildren(hiddenAncestor);
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => ({
+      display: element === hiddenAncestor ? "none" : "block",
+      visibility: "visible",
+    }) as CSSStyleDeclaration);
+
+    expect(highlightSavedTermsInDocument(document, ["saved"])).toBe(0);
+    expect(document.querySelectorAll("[data-salto-highlight]")).toHaveLength(0);
+  });
+
   it("is idempotent and cleans up only Salto wrappers while preserving host text and listeners", () => {
     const root = document.createElement("main");
     const paragraph = document.createElement("p");
