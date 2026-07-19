@@ -486,7 +486,7 @@ describe("background message boundary", () => {
     await expect(services.handleMessage({ type: "list-highlight-terms" })).resolves.toEqual({
       ok: true,
       type: "list-highlight-terms",
-      data: { terms: ["unfamiliar"], paths: [] }
+      data: { enabled: true, terms: ["unfamiliar"], paths: [] }
     });
     expect(saveVocabulary.save).toHaveBeenCalledWith(savePayload);
   });
@@ -506,7 +506,7 @@ describe("background message boundary", () => {
     await expect(services.handleMessage({ type: "list-highlight-terms" })).resolves.toEqual({
       ok: true,
       type: "list-highlight-terms",
-      data: { terms: [], paths: [] }
+      data: { enabled: false, terms: [], paths: [] }
     });
   });
 

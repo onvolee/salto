@@ -4,7 +4,7 @@ import { createRuntimeMessageListener } from "./runtime-listener";
 
 describe("runtime message listener", () => {
   it("keeps the response channel alive for async handlers", async () => {
-    const handleMessage = vi.fn().mockResolvedValue({ ok: true, type: "list-highlight-terms", data: { terms: [] } });
+    const handleMessage = vi.fn().mockResolvedValue({ ok: true, type: "list-highlight-terms", data: { enabled: true, terms: [] } });
     const sendResponse = vi.fn();
     const listener = createRuntimeMessageListener(
       { handleMessage },
@@ -23,7 +23,7 @@ describe("runtime message listener", () => {
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledWith({
       ok: true,
       type: "list-highlight-terms",
-      data: { terms: [] }
+      data: { enabled: true, terms: [] }
     }));
   });
 

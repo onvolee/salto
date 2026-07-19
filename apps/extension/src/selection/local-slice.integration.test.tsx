@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionRequest } from "@salto/core";
 
 import { SaltoDatabase } from "../db";
+import { createHighlightSession } from "../highlighting/highlight-session";
+import { createIncrementalHighlightScanner } from "../highlighting/incremental-highlighter";
 import { highlightSavedTerms } from "../highlighting/single-pass-highlighter";
 import { createLocalRepositories } from "../repositories";
 import { createBackgroundServices } from "../services/background-services";
@@ -19,6 +21,33 @@ import { SelectionPopupApp } from "./SelectionPopupApp";
 const databaseName = "local-slice-integration";
 const databases: SaltoDatabase[] = [];
 let nextId = 0;
+
+function createHighlightScheduler() {
+  const idle: (() => void)[] = [];
+  const frames: (() => void)[] = [];
+  return {
+    scheduleIdle(callback: () => void) {
+      idle.push(callback);
+      return idle.length - 1;
+    },
+    cancelIdle(handle: number) {
+      idle[handle] = () => undefined;
+    },
+    scheduleFrame(callback: () => void) {
+      frames.push(callback);
+      return frames.length - 1;
+    },
+    cancelFrame(handle: number) {
+      frames[handle] = () => undefined;
+    },
+    flush() {
+      idle.shift()?.();
+      while (frames.length > 0) {
+        frames.shift()?.();
+      }
+    },
+  };
+}
 
 function createInstance() {
   const database = new SaltoDatabase(databaseName);
@@ -79,7 +108,35 @@ describe("local vertical slice", () => {
   it("selects, explicitly translates, saves, reopens, and highlights", async () => {
     const first = createInstance();
     const send = vi.fn((request: ExtensionRequest) => first.services.handleMessage(request));
-    render(<SelectionPopupApp messageClient={{ send }} />);
+    const scheduler = createHighlightScheduler();
+    const highlightSession = createHighlightSession({
+      document,
+      async loadSnapshot() {
+        const response = await first.services.handleMessage({ type: "list-highlight-terms" });
+        if (!response.ok || response.type !== "list-highlight-terms") {
+          throw new Error("Highlight snapshot unavailable");
+        }
+        return { enabled: response.data.enabled, terms: response.data.terms };
+      },
+      subscribeSettings: () => () => undefined,
+      createScanner(options) {
+        return createIncrementalHighlightScanner({
+          ...options,
+          scheduleIdle: scheduler.scheduleIdle,
+          cancelIdle: scheduler.cancelIdle,
+          scheduleFrame: scheduler.scheduleFrame,
+          cancelFrame: scheduler.cancelFrame,
+        });
+      },
+    });
+    highlightSession.start();
+    await act(async () => undefined);
+    render(
+      <SelectionPopupApp
+        messageClient={{ send }}
+        onSaveSuccess={(term) => highlightSession.addSavedTerm(term)}
+      />,
+    );
 
     selectFixtureTerm();
     expect(send).not.toHaveBeenCalled();
@@ -90,6 +147,9 @@ describe("local vertical slice", () => {
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Save selection" }));
     expect(await screen.findByRole("button", { name: "Selection saved" })).toBeDisabled();
+    scheduler.flush();
+    expect(document.querySelector("[data-salto-highlight]")?.textContent).toBe("unfamiliar");
+    highlightSession.teardown();
     first.database.close();
     cleanup();
 

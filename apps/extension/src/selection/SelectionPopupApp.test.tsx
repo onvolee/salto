@@ -281,6 +281,7 @@ describe("SelectionPopupApp", () => {
   });
 
   it("renders partial field failures and saves idempotently", async () => {
+    const onSaveSuccess = vi.fn();
     const send = vi.fn<ExtensionMessageClient["send"]>()
       .mockResolvedValueOnce({
         ok: true,
@@ -300,7 +301,7 @@ describe("SelectionPopupApp", () => {
         type: "save-vocabulary",
         data: { status: "saved", vocabularyItemId: "item-1" }
       });
-    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} onSaveSuccess={onSaveSuccess} />);
     await openPanel();
 
     expect(await screen.findByText("Field unavailable")).toBeInTheDocument();
@@ -310,6 +311,8 @@ describe("SelectionPopupApp", () => {
 
     expect(await screen.findByRole("button", { name: "Selection saved" })).toBeDisabled();
     expect(send).toHaveBeenCalledTimes(2);
+    expect(onSaveSuccess).toHaveBeenCalledOnce();
+    expect(onSaveSuccess).toHaveBeenCalledWith("unfamiliar");
   });
 
   it("renders a request-level error without changing panel geometry", async () => {
@@ -325,6 +328,7 @@ describe("SelectionPopupApp", () => {
   });
 
   it("allows retrying a failed save", async () => {
+    const onSaveSuccess = vi.fn();
     const send = vi.fn<ExtensionMessageClient["send"]>()
       .mockResolvedValueOnce({
         ok: true,
@@ -340,16 +344,18 @@ describe("SelectionPopupApp", () => {
         type: "save-vocabulary",
         data: { status: "saved", vocabularyItemId: "item-1" }
       });
-    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} onSaveSuccess={onSaveSuccess} />);
     await openPanel();
     const save = screen.getByRole("button", { name: "Save selection" });
 
     await userEvent.setup().click(save);
     expect(await screen.findByText("Could not save selection")).toBeInTheDocument();
+    expect(onSaveSuccess).not.toHaveBeenCalled();
     await userEvent.setup().click(save);
 
     expect(await screen.findByRole("button", { name: "Selection saved" })).toBeDisabled();
     expect(send).toHaveBeenCalledTimes(3);
+    expect(onSaveSuccess).toHaveBeenCalledOnce();
   });
 
   it("announces a save while the request is pending", async () => {
@@ -530,6 +536,7 @@ describe("SelectionPopupApp", () => {
   });
 
   it("ignores a save response after close and a new selection", async () => {
+    const onSaveSuccess = vi.fn();
     let resolveSave!: (response: Awaited<ReturnType<ExtensionMessageClient["send"]>>) => void;
     const send = vi.fn<ExtensionMessageClient["send"]>()
       .mockResolvedValueOnce({
@@ -545,7 +552,7 @@ describe("SelectionPopupApp", () => {
         type: "translate-selection",
         data: { templateId: "system-default", templateName: "Default", schema: [], fields: [] }
       });
-    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} onSaveSuccess={onSaveSuccess} />);
     await openPanel();
     await userEvent.setup().click(screen.getByRole("button", { name: "Save selection" }));
     await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));
@@ -562,6 +569,8 @@ describe("SelectionPopupApp", () => {
 
     expect(screen.getByRole("button", { name: "Save selection" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Selection saved" })).not.toBeInTheDocument();
+    expect(onSaveSuccess).toHaveBeenCalledOnce();
+    expect(onSaveSuccess).toHaveBeenCalledWith("unfamiliar");
   });
 
   it.each([

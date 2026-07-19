@@ -1,6 +1,6 @@
 # 17 — 保存后高亮集成
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Blocked by: 08 — 扩展设置持久化, 16 — 增量扫描和观察
 
@@ -44,3 +44,9 @@ Blocked by: 08 — 扩展设置持久化, 16 — 增量扫描和观察
 ## Rollback boundary
 
 回滚 save integration 不得删除 vocabulary；停止 highlight 时仅 cleanup Salto-owned wrappers。
+
+## Comments
+
+- 2026-07-20: Implemented a content-context-local highlight session. It consumes the content-safe highlight snapshot, uses the Ticket 16 scanner unchanged for bounded scans, and retains only local save-success terms across an in-flight snapshot. A successful save restarts the bounded scanner with the current term set; failed saves emit no highlight event and duplicate saves do not restart it.
+- 2026-07-20: Settings notifications immediately stop the scanner and clean up Salto-owned wrappers when disabled. Re-enabling requests a new background snapshot before scanning again; dynamic page content remains handled by the restarted observer. The content context removes its runtime listener and stops the scanner on invalidation. `list-highlight-terms` now reports its enabled state with terms so content scripts do not need the extension-page-only settings endpoint.
+- 2026-07-20: Review follow-up: save-success notification is independent from the popup's UI request-generation guard, so a committed save still highlights its captured term after close/reselection while stale UI state stays ignored. Term changes clean up existing wrappers before bounded rescans, preserving longest-overlap matching such as `new york` replacing `new`. Session deduplication reuses the core matcher's canonical identity for case, NFKC, and whitespace-equivalent terms. The local-slice integration now verifies popup save success reaches the session and writes the current-page wrapper without reload.

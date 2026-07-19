@@ -2,20 +2,35 @@ import "salto-src/selection/selection-popup.css";
 
 import { createRoot, type Root } from "react-dom/client";
 
-import {
-  createIncrementalHighlightScanner,
-  type IncrementalHighlightScanner,
-} from "salto-src/highlighting/incremental-highlighter";
+import { createHighlightSession } from "salto-src/highlighting/highlight-session";
 import { browserMessageClient } from "salto-src/selection/message-client";
 import { SelectionPopupApp } from "salto-src/selection/SelectionPopupApp";
+import { isExtensionNotification } from "@salto/core";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_idle",
   cssInjectionMode: "ui",
   async main(ctx) {
-    let highlightScanner: IncrementalHighlightScanner | undefined;
-    let invalidated = false;
+    const highlightSession = createHighlightSession({
+      document,
+      async loadSnapshot() {
+        const response = await browserMessageClient.send({ type: "list-highlight-terms" });
+        if (!response.ok || response.type !== "list-highlight-terms") {
+          throw new Error("Highlight snapshot unavailable");
+        }
+        return { enabled: response.data.enabled, terms: response.data.terms };
+      },
+      subscribeSettings(listener) {
+        const handleMessage = (message: unknown) => {
+          if (isExtensionNotification(message)) {
+            listener(message.payload);
+          }
+        };
+        browser.runtime.onMessage.addListener(handleMessage);
+        return () => browser.runtime.onMessage.removeListener(handleMessage);
+      },
+    });
     const ui = await createShadowRootUi<Root>(ctx, {
       name: "salto-selection-popup",
       position: "overlay",
@@ -27,7 +42,7 @@ export default defineContentScript({
         container.append(app);
 
         const root = createRoot(app);
-        root.render(<SelectionPopupApp />);
+        root.render(<SelectionPopupApp onSaveSuccess={(term) => highlightSession.addSavedTerm(term)} />);
         return root;
       },
       onRemove(root) {
@@ -36,20 +51,9 @@ export default defineContentScript({
     });
 
     ui.mount();
-    void browserMessageClient.send({ type: "list-highlight-terms" }).then((highlightResponse) => {
-      if (!invalidated && highlightResponse.ok && highlightResponse.type === "list-highlight-terms") {
-        highlightScanner?.teardown();
-        highlightScanner = createIncrementalHighlightScanner({
-          document,
-          terms: highlightResponse.data.terms,
-        });
-      }
-    }).catch(() => {
-      // The selection UI remains available if persisted highlights cannot be read.
-    });
+    highlightSession.start();
     ctx.onInvalidated(() => {
-      invalidated = true;
-      highlightScanner?.teardown();
+      highlightSession.teardown();
       ui.remove();
     });
   },

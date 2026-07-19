@@ -499,7 +499,7 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
           return {
             ok: true,
             type: request.type,
-            data: result,
+            data: { enabled: settings.highlightEnabled, ...result },
           };
         }
 

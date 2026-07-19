@@ -58,9 +58,11 @@ function eventIncludesElement(event: Event, element: Element | null): boolean {
 export function SelectionPopupApp({
   createRequestId = () => crypto.randomUUID(),
   messageClient = browserMessageClient,
+  onSaveSuccess,
 }: {
   readonly createRequestId?: () => string;
   readonly messageClient?: ExtensionMessageClient;
+  readonly onSaveSuccess?: (term: string) => void;
 }) {
   const [mode, setMode] = useState<SurfaceMode>("hidden");
   const themeMode = useThemeMode();
@@ -207,6 +209,7 @@ export function SelectionPopupApp({
     }
     setSaveState("saving");
     const requestId = ++saveRequestRef.current;
+    const savedTerm = session.text;
     const selectionPath = extractSelectionPath(session.range);
     void messageClient.send({
       type: "save-vocabulary",
@@ -222,15 +225,19 @@ export function SelectionPopupApp({
         }
       }
     }).then((response) => {
+      const saved = response.ok && response.type === "save-vocabulary";
+      if (saved) {
+        onSaveSuccess?.(savedTerm);
+      }
       if (saveRequestRef.current === requestId) {
-        setSaveState(response.ok && response.type === "save-vocabulary" ? "saved" : "error");
+        setSaveState(saved ? "saved" : "error");
       }
     }).catch(() => {
       if (saveRequestRef.current === requestId) {
         setSaveState("error");
       }
     });
-  }, [messageClient, promptContext, saveState, session]);
+  }, [messageClient, onSaveSuccess, promptContext, saveState, session]);
 
   useEffect(() => {
     refreshTrigger();

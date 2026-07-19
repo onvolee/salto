@@ -185,6 +185,7 @@ export type ExtensionSuccessResponse =
       readonly ok: true;
       readonly type: "list-highlight-terms";
       readonly data: {
+        readonly enabled: boolean;
         readonly terms: readonly string[];
         readonly paths: readonly {
           readonly term: string;
