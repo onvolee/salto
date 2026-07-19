@@ -5,8 +5,10 @@ import {
   DICTIONARY_FIELD_TYPES,
   createDefaultQueryTemplate,
   canonicalizeEnglishTerm,
+  findSavedTermMatches,
   isValidQueryTemplate,
   MEANING_RECALL_CARD_TYPE,
+  normalizeSavedTerms,
   VOCABULARY_FIELD_KEYS,
   type DictionaryAdapter,
   type DictionaryFieldKey,
@@ -156,5 +158,14 @@ describe("@salto/core public contract", () => {
     expect(canonicalizeEnglishTerm("don't").canonicalKey).toBe("en:don't");
     expect(() => canonicalizeEnglishTerm(" ")).toThrowError("invalid-term");
     expect(() => canonicalizeEnglishTerm("x".repeat(501))).toThrowError("selection-too-long");
+  });
+
+  it("exposes the storage-neutral saved-term matching seam", () => {
+    expect(normalizeSavedTerms([" Running "])).toEqual([
+      { canonicalKey: "en:running", term: "Running" }
+    ]);
+    expect(findSavedTermMatches("RUNNING", ["running"])).toEqual([
+      { canonicalKey: "en:running", start: 0, end: 7 }
+    ]);
   });
 });

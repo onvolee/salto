@@ -8,6 +8,7 @@ export * from "./llm/types";
 export * from "./messages";
 export * from "./query-template/types";
 export * from "./shared/sync";
+export * from "./highlighting/saved-term-matcher";
 export * from "./vocabulary/ports";
 export * from "./vocabulary/canonicalization";
 export * from "./vocabulary/save-service";
