@@ -56,14 +56,15 @@ function parserFailure(): never {
 function normalizeTextField(
   fields: Record<string, unknown>,
   field: "phonetic" | "partOfSpeech" | "meaning",
-  supported: ReadonlySet<DictionaryFieldKey>
+  supported: ReadonlySet<DictionaryFieldKey>,
+  missingReason: "missing" | "not-found"
 ) {
   if (!supported.has(field)) {
     return { status: "unavailable", type: "text", reason: "unsupported" } as const;
   }
   const value = fields[field];
   if (value === undefined) {
-    return { status: "unavailable", type: "text", reason: "missing" } as const;
+    return { status: "unavailable", type: "text", reason: missingReason } as const;
   }
   if (typeof value !== "string") {
     return parserFailure();
@@ -74,14 +75,15 @@ function normalizeTextField(
 function normalizeListField(
   fields: Record<string, unknown>,
   field: "synonyms" | "wordForms",
-  supported: ReadonlySet<DictionaryFieldKey>
+  supported: ReadonlySet<DictionaryFieldKey>,
+  missingReason: "missing" | "not-found"
 ) {
   if (!supported.has(field)) {
     return { status: "unavailable", type: "list", reason: "unsupported" } as const;
   }
   const value = fields[field];
   if (value === undefined) {
-    return { status: "unavailable", type: "list", reason: "missing" } as const;
+    return { status: "unavailable", type: "list", reason: missingReason } as const;
   }
   if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
     return parserFailure();
@@ -91,19 +93,21 @@ function normalizeListField(
 
 export function normalizeDictionaryFields(
   value: unknown,
-  supportedFields: readonly DictionaryFieldKey[]
+  supportedFields: readonly DictionaryFieldKey[],
+  options: { readonly missingReason?: "missing" | "not-found" } = {}
 ): DictionaryFieldResults {
   if (!isRecord(value) || Object.keys(value).some((key) => !isDictionaryFieldKey(key))) {
     return parserFailure();
   }
   const supported = new Set(supportedFields);
+  const missingReason = options.missingReason ?? "missing";
 
   return {
-    phonetic: normalizeTextField(value, "phonetic", supported),
-    partOfSpeech: normalizeTextField(value, "partOfSpeech", supported),
-    meaning: normalizeTextField(value, "meaning", supported),
-    synonyms: normalizeListField(value, "synonyms", supported),
-    wordForms: normalizeListField(value, "wordForms", supported)
+    phonetic: normalizeTextField(value, "phonetic", supported, missingReason),
+    partOfSpeech: normalizeTextField(value, "partOfSpeech", supported, missingReason),
+    meaning: normalizeTextField(value, "meaning", supported, missingReason),
+    synonyms: normalizeListField(value, "synonyms", supported, missingReason),
+    wordForms: normalizeListField(value, "wordForms", supported, missingReason)
   };
 }
 

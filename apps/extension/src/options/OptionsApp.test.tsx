@@ -256,16 +256,19 @@ describe("OptionsApp", () => {
     expect(screen.getByText(/畸形变量 \{\{ \}\}/)).toBeInTheDocument();
   });
 
-  it("shows provider availability without prototype-only controls", async () => {
+  it("shows only the fixed Youdao source without a provider selector", async () => {
     render(<OptionsApp />);
     const user = userEvent.setup();
     await screen.findByRole("heading", { name: "通用" });
 
     await user.click(screen.getByRole("button", { name: "翻译源" }));
 
-    expect(screen.getByText("未配置")).toBeInTheDocument();
-    expect(screen.getAllByText("后续阶段")).toHaveLength(2);
-    expect(screen.queryByRole("button", { name: /测试/ })).not.toBeInTheDocument();
+    expect(screen.getByText("有道词典")).toBeInTheDocument();
+    expect(screen.getByText("当前词典")).toBeInTheDocument();
+    expect(screen.queryByText("剑桥词典")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI 翻译")).not.toBeInTheDocument();
+    expect(screen.queryByText("后续阶段")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "启用并测试" })).toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 

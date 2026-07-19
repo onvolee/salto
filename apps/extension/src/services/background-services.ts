@@ -1,5 +1,6 @@
 import {
   analyzeLlmPromptFields,
+  DictionaryLookupError,
   isValidExtensionSettings,
   isValidQueryTemplate,
   isValidQueryTemplateInput,
@@ -9,6 +10,7 @@ import {
   type ExtensionRequest,
   type ExtensionResponse,
   type ExtensionSettings,
+  type DictionaryAdapter,
   type LlmPublicConfig,
   type LlmQuerySchemaField,
   type PromptContext,
@@ -30,7 +32,11 @@ export interface QueryExecutor {
 }
 
 export type BackgroundMessageContext = {
-  readonly source: "content-script" | "extension-page" | "unknown";
+  readonly source:
+    | "content-script"
+    | "extension-page"
+    | "options-page"
+    | "unknown";
 };
 
 export type BackgroundServiceDependencies = {
@@ -38,6 +44,7 @@ export type BackgroundServiceDependencies = {
   readonly saveVocabulary: SaveVocabularyService;
   readonly enrichmentQueue: EnrichmentQueue;
   readonly queryExecutor: QueryExecutor;
+  readonly dictionaryAdapter?: DictionaryAdapter;
   readonly hasOriginPermission?: (permissionOrigin: string) => Promise<boolean>;
   readonly testLlmConnection?: () => Promise<void>;
   readonly prepareSettings?: () => Promise<void>;
@@ -217,6 +224,9 @@ export function parseExtensionRequest(
   ) {
     return { type: value.type };
   }
+  if (value.type === "test-dictionary-connection") {
+    return Object.keys(value).length === 1 ? { type: value.type } : null;
+  }
   if (value.type === "save-llm-config") {
     return isRecord(value.payload)
       && isLlmPublicConfig(value.payload.config)
@@ -276,7 +286,13 @@ function failedField(fieldId: string, code: string, message: string): QueryField
 }
 
 function assertExtensionPage(context: BackgroundMessageContext) {
-  if (context.source !== "extension-page") {
+  if (context.source !== "extension-page" && context.source !== "options-page") {
+    throw new ServiceError("forbidden", "This request is available only from extension settings");
+  }
+}
+
+function assertOptionsPage(context: BackgroundMessageContext) {
+  if (context.source !== "options-page") {
     throw new ServiceError("forbidden", "This request is available only from extension settings");
   }
 }
@@ -290,6 +306,18 @@ function mapUnknownError(error: unknown): ExtensionResponse {
   }
   if (error instanceof QueryTemplateRepositoryError) {
     return errorResponse(error.code, error.message);
+  }
+  if (error instanceof DictionaryLookupError) {
+    if (error.code === "permission-denied") {
+      return errorResponse("permission-denied", error.message);
+    }
+    if (error.code === "network" || error.code === "timeout") {
+      return errorResponse(error.code, error.message);
+    }
+    if (error.code === "provider-error") {
+      return errorResponse("provider", error.message);
+    }
+    return errorResponse("invalid-response", error.message);
   }
   if (isRecord(error) && typeof error.code === "string") {
     const code = error.code.replace(/^llm-/, "") as ExtensionErrorCode;
@@ -573,6 +601,28 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
             ok: true,
             type: request.type,
             data: settings
+          };
+        }
+
+        if (request.type === "test-dictionary-connection") {
+          assertOptionsPage(context);
+          if (dependencies.dictionaryAdapter?.capabilities.providerId !== "youdao-web") {
+            throw new ServiceError(
+              "not-configured",
+              "The Youdao dictionary adapter is not registered",
+            );
+          }
+          await dependencies.dictionaryAdapter.lookup(
+            { term: "example", language: "en" },
+            new AbortController().signal,
+          );
+          return {
+            ok: true,
+            type: request.type,
+            data: {
+              connected: true,
+              providerId: dependencies.dictionaryAdapter.capabilities.providerId,
+            },
           };
         }
 

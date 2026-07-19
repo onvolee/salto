@@ -15,6 +15,8 @@ export interface DictionaryHttpClientOptions {
   readonly timeoutMs?: number;
   readonly maxResponseBytes?: number;
   readonly acceptedContentTypes?: readonly string[];
+  readonly retry?: number;
+  readonly retryDelayMs?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -23,6 +25,14 @@ const DEFAULT_ACCEPTED_CONTENT_TYPES = ["text/html", "application/xhtml+xml"] as
 
 function responseContentType(response: Response): string {
   return response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+async function cancelStream(stream: ReadableStream<Uint8Array> | undefined): Promise<void> {
+  try {
+    await stream?.cancel();
+  } catch {
+    // Response cleanup must not replace the stable request outcome.
+  }
 }
 
 async function readTextStream(
@@ -57,6 +67,8 @@ export function createDictionaryHttpClient(
   const request = createFetch(options.fetch ? { fetch: options.fetch } : undefined);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
+  const retry = options.retry ?? 0;
+  const retryDelay = options.retryDelayMs ?? 0;
   const acceptedContentTypes = new Set(
     (options.acceptedContentTypes ?? DEFAULT_ACCEPTED_CONTENT_TYPES)
       .map((contentType) => contentType.toLowerCase())
@@ -81,16 +93,20 @@ export function createDictionaryHttpClient(
         const response = await request.raw(url, {
           credentials: "omit",
           responseType: "stream",
-          retry: 0,
-          signal: controller.signal
+          retry,
+          retryDelay,
+          signal: controller.signal,
+          async onResponseError({ response }) {
+            await cancelStream(response._data);
+          }
         });
         if (!acceptedContentTypes.has(responseContentType(response))) {
-          await response._data?.cancel();
+          await cancelStream(response._data);
           throw new DictionaryLookupError("invalid-content-type");
         }
         const declaredLength = Number(response.headers.get("content-length"));
         if (Number.isFinite(declaredLength) && declaredLength > maxResponseBytes) {
-          await response._data?.cancel();
+          await cancelStream(response._data);
           throw new DictionaryLookupError("response-too-large");
         }
         return await readTextStream(response._data, maxResponseBytes);
@@ -105,11 +121,7 @@ export function createDictionaryHttpClient(
           throw new DictionaryLookupError("timeout");
         }
         if (error instanceof FetchError && error.response) {
-          try {
-            await error.response._data?.cancel();
-          } catch {
-            // Preserve the stable provider error even if stream cleanup fails.
-          }
+          await cancelStream(error.response._data);
           throw new DictionaryLookupError("provider-error");
         }
         throw new DictionaryLookupError("network");

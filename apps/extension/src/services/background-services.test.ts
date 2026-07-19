@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { PromptContext, QueryTemplate } from "@salto/core";
+import {
+  DictionaryLookupError,
+  type PromptContext,
+  type QueryTemplate,
+} from "@salto/core";
 
 import { QueryTemplateRepositoryError } from "../repositories";
 import { createOpenAiCompatibleQueryExecutor } from "../llm/openai-compatible-query-executor";
@@ -68,6 +72,163 @@ function createServices() {
 }
 
 describe("background message boundary", () => {
+  it("runs the fixed Youdao connection test only for the extension settings page", async () => {
+    const { settings } = createServices();
+    const dictionaryAdapter = {
+      capabilities: {
+        providerId: "youdao-web" as const,
+        supportedLanguages: ["en"],
+        supportedFields: ["meaning" as const],
+      },
+      lookup: vi.fn().mockResolvedValue({
+        providerId: "youdao-web",
+        term: "example",
+        language: "en",
+        fields: {},
+      }),
+    };
+    const services = createBackgroundServices({
+      repositories: { settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor(),
+      dictionaryAdapter,
+    });
+
+    await expect(services.handleMessage(
+      { type: "test-dictionary-connection" },
+      { source: "content-script" },
+    )).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "forbidden",
+        message: "This request is available only from extension settings",
+      },
+    });
+    expect(dictionaryAdapter.lookup).not.toHaveBeenCalled();
+
+    await expect(services.handleMessage(
+      { type: "test-dictionary-connection" },
+      { source: "extension-page" },
+    )).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "forbidden",
+        message: "This request is available only from extension settings",
+      },
+    });
+    expect(dictionaryAdapter.lookup).not.toHaveBeenCalled();
+
+    const response = await services.handleMessage(
+      { type: "test-dictionary-connection" },
+      { source: "options-page" },
+    );
+
+    expect(dictionaryAdapter.lookup).toHaveBeenCalledOnce();
+    expect(dictionaryAdapter.lookup).toHaveBeenCalledWith(
+      { term: "example", language: "en" },
+      expect.any(AbortSignal),
+    );
+    expect(response).toEqual({
+      ok: true,
+      type: "test-dictionary-connection",
+      data: { connected: true, providerId: "youdao-web" },
+    });
+    expect(JSON.stringify(response)).not.toContain("fields");
+    expect(JSON.stringify(response)).not.toContain("example");
+  });
+
+  it("rejects dictionary test payloads so the UI cannot choose a URL or term", async () => {
+    const { services } = createServices();
+
+    for (const request of [{
+      type: "test-dictionary-connection",
+      payload: {
+        term: "private-term",
+        url: "https://attacker.example/proxy",
+      },
+    }, {
+      type: "test-dictionary-connection",
+      term: "private-term",
+      url: "https://attacker.example/proxy",
+    }]) {
+      await expect(services.handleMessage(
+        request,
+        { source: "options-page" },
+      )).resolves.toEqual({
+        ok: false,
+        error: {
+          code: "invalid-payload",
+          message: "Invalid extension message payload",
+        },
+      });
+    }
+  });
+
+  it("maps dictionary failures without returning provider content", async () => {
+    const { settings } = createServices();
+    const dictionaryAdapter = {
+      capabilities: {
+        providerId: "youdao-web" as const,
+        supportedLanguages: ["en"],
+        supportedFields: ["meaning" as const],
+      },
+      lookup: vi.fn().mockRejectedValue(new DictionaryLookupError("provider-error")),
+    };
+    const services = createBackgroundServices({
+      repositories: { settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor(),
+      dictionaryAdapter,
+    });
+
+    const response = await services.handleMessage(
+      { type: "test-dictionary-connection" },
+      { source: "options-page" },
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      error: {
+        code: "provider",
+        message: "The dictionary provider request failed",
+      },
+    });
+    expect(JSON.stringify(response)).not.toContain("html");
+  });
+
+  it("refuses a connection test when the registered adapter is not Youdao", async () => {
+    const { settings } = createServices();
+    const dictionaryAdapter = {
+      capabilities: {
+        providerId: "cambridge-web" as const,
+        supportedLanguages: ["en"],
+        supportedFields: ["meaning" as const],
+      },
+      lookup: vi.fn(),
+    };
+    const services = createBackgroundServices({
+      repositories: { settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor(),
+      dictionaryAdapter,
+    });
+
+    await expect(services.handleMessage(
+      { type: "test-dictionary-connection" },
+      { source: "options-page" },
+    )).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "not-configured",
+        message: "The Youdao dictionary adapter is not registered",
+      },
+    });
+    expect(dictionaryAdapter.lookup).not.toHaveBeenCalled();
+  });
+
   it("returns one active-template snapshot with a non-secret recovery diagnostic", async () => {
     const storedTemplate = {
       ...template,

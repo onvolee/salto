@@ -19,6 +19,7 @@ Blocked by: 08 — 扩展设置持久化, 10 — 字典客户端边界和契约,
 ## Scope
 
 - message payload validation、origin allowlist、permission handling、secret redaction、page-content bounds 和 adapter request guards。
+- 核对 `<all_urls>` content script 对 optional host permission 的实际覆盖范围；验证 LLM/Youdao 显式手势是否产生真实权限提示，并决定保留现状或收窄注入/host permission 模型。
 - source scan/packaged artifact 检查，日志/error fixture 检查，异常和拒绝路径测试。
 - 记录 manifest permissions 的最小性、provider brittleness 和已知隐私限制。
 
@@ -33,6 +34,7 @@ Blocked by: 08 — 扩展设置持久化, 10 — 字典客户端边界和契约,
 - [ ] 不能通过 background message 访问任意 URL；LLM/Youdao origin 检查覆盖配置、授权和替换后的状态。
 - [ ] API key 和完整 page content 的 source/artifact/log scan 无命中；错误路径也无泄露。
 - [ ] permission denied、timeout、provider failure、worker restart 和 stale response 不泄露敏感输入。
+- [ ] 记录 `<all_urls>` content script 与 optional host permissions 的实际 Chrome 行为；若显式手势不会产生权限提示，收窄权限模型或明确记录可接受的产品限制。
 - [ ] 审计结果记录命令、日期、构建版本和已知限制。
 
 ## Verification

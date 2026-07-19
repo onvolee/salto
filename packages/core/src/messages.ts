@@ -77,6 +77,10 @@ export type TestLlmConnectionRequest = {
   readonly type: "test-llm-connection";
 };
 
+export type TestDictionaryConnectionRequest = {
+  readonly type: "test-dictionary-connection";
+};
+
 export type ListQueryTemplatesRequest = {
   readonly type: "list-query-templates";
 };
@@ -136,6 +140,7 @@ export type ExtensionRequest =
   | GetLlmConfigRequest
   | SaveLlmConfigRequest
   | TestLlmConnectionRequest
+  | TestDictionaryConnectionRequest
   | ListQueryTemplatesRequest
   | CreateQueryTemplateRequest
   | CopyQueryTemplateRequest
@@ -206,6 +211,14 @@ export type ExtensionSuccessResponse =
       readonly ok: true;
       readonly type: "test-llm-connection";
       readonly data: { readonly connected: true };
+    }
+  | {
+      readonly ok: true;
+      readonly type: "test-dictionary-connection";
+      readonly data: {
+        readonly connected: true;
+        readonly providerId: "youdao-web";
+      };
     }
   | {
       readonly ok: true;

@@ -1,5 +1,6 @@
 export type DictionaryLookupErrorCode =
   | "unsupported-language"
+  | "permission-denied"
   | "cancelled"
   | "timeout"
   | "response-too-large"
@@ -10,6 +11,7 @@ export type DictionaryLookupErrorCode =
 
 const DICTIONARY_LOOKUP_ERROR_MESSAGES: Record<DictionaryLookupErrorCode, string> = {
   "unsupported-language": "The dictionary provider does not support this language",
+  "permission-denied": "Dictionary provider permission is not granted",
   cancelled: "The dictionary lookup was cancelled",
   timeout: "The dictionary lookup timed out",
   "response-too-large": "The dictionary response exceeded the size limit",

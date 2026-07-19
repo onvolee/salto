@@ -159,7 +159,7 @@ export function OptionsApp() {
                   />
                 ) : null}
                 {activeSection === "sources" ? (
-                  <SourcesSection aiConfigured={llm.hasApiKey} />
+                  <SourcesSection />
                 ) : null}
                 {activeSection === "vocabulary" ? <VocabularySection /> : null}
                 {activeSection === "ai-provider" ? (

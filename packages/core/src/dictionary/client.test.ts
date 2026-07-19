@@ -99,6 +99,29 @@ describe("dictionary client contract", () => {
     }));
   });
 
+  it("distinguishes an absent entry from fields missing on a found entry", () => {
+    const supported = [
+      "phonetic",
+      "partOfSpeech",
+      "meaning",
+      "synonyms",
+      "wordForms"
+    ] as const;
+
+    expect(normalizeDictionaryFields({}, supported).meaning).toEqual({
+      status: "unavailable",
+      type: "text",
+      reason: "missing"
+    });
+    expect(normalizeDictionaryFields({}, supported, {
+      missingReason: "not-found"
+    }).meaning).toEqual({
+      status: "unavailable",
+      type: "text",
+      reason: "not-found"
+    });
+  });
+
   it("distinguishes missing fields from unsupported adapter capabilities", async () => {
     const adapter = createFakeDictionaryAdapter({
       providerId: "youdao-web",

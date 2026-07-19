@@ -27,7 +27,7 @@ export type DictionaryFieldResultFor<K extends DictionaryFieldKey> =
   | {
       readonly status: "unavailable";
       readonly type: (typeof DICTIONARY_FIELD_TYPES)[K];
-      readonly reason: "missing" | "unsupported";
+      readonly reason: "missing" | "not-found" | "unsupported";
     };
 
 export type DictionaryFieldResults = {

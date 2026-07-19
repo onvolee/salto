@@ -1,5 +1,6 @@
 import { SaltoDatabase } from "salto-src/db";
 import { createDictionaryEnrichmentSource } from "salto-src/enrichment/dictionary-enrichment-source";
+import { createYoudaoWebAdapter } from "salto-src/dictionary/youdao-web-adapter";
 import { createEnrichmentQueue } from "salto-src/enrichment/enrichment-queue";
 import { createLlmEnrichmentSource } from "salto-src/enrichment/llm-enrichment-source";
 import { createOpenAiCompatibleClient } from "salto-src/llm/openai-compatible-client";
@@ -61,6 +62,9 @@ export default defineBackground(() => {
     createClient: createOpenAiCompatibleClient,
     hasOriginPermission,
   });
+  const dictionaryAdapter = createYoudaoWebAdapter({
+    hasOriginPermission,
+  });
   const dictionarySource = createDictionaryEnrichmentSource({
     settings: repositories.settings,
     useDeterministicFake: process.env.NODE_ENV === "development",
@@ -93,6 +97,7 @@ export default defineBackground(() => {
     saveVocabulary: repositories.saveVocabulary,
     enrichmentQueue,
     queryExecutor,
+    dictionaryAdapter,
     hasOriginPermission,
     prepareSettings,
     notifySettingsChanged,
@@ -118,6 +123,7 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener(createRuntimeMessageListener(
     services,
     browser.runtime.getURL(""),
+    browser.runtime.getURL("/setting.html"),
   ));
   browser.runtime.onInstalled.addListener(() => {
     void prepareSettings().catch(() => {});

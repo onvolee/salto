@@ -27,7 +27,7 @@ describe("runtime message listener", () => {
     }));
   });
 
-  it("marks extension pages as trusted settings senders", () => {
+  it("distinguishes the options page from other trusted extension pages", () => {
     const handleMessage = vi.fn().mockResolvedValue({
       ok: true,
       type: "test-llm-connection",
@@ -45,6 +45,16 @@ describe("runtime message listener", () => {
     );
 
     expect(handleMessage).toHaveBeenCalledWith(
+      { type: "test-llm-connection" },
+      { source: "options-page" },
+    );
+
+    listener(
+      { type: "test-llm-connection" },
+      { url: "chrome-extension://salto/popup.html" },
+      vi.fn(),
+    );
+    expect(handleMessage).toHaveBeenLastCalledWith(
       { type: "test-llm-connection" },
       { source: "extension-page" },
     );

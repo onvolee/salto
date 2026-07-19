@@ -141,4 +141,22 @@ describe("dictionary HTTP boundary", () => {
       message: "The dictionary provider could not be reached"
     }));
   });
+
+  it("retries a transient provider response only when configured", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(new Response("temporary", {
+        status: 503,
+        headers: { "Content-Type": "text/html" }
+      }))
+      .mockResolvedValueOnce(new Response("<main>bank</main>", {
+        headers: { "Content-Type": "text/html" }
+      }));
+    const client = createDictionaryHttpClient({ fetch, retry: 1 });
+
+    await expect(client.getText({
+      url: "https://dictionary.example/bank",
+      signal: new AbortController().signal
+    })).resolves.toBe("<main>bank</main>");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });
