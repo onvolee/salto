@@ -65,6 +65,8 @@ const PROMPT_CONTEXT_LABELS: Record<PromptContextVariable, string> = {
   webContent: "页面正文（最多 2000 字符）",
 };
 
+const AI_CONFIG_ERROR_ID = "ai-provider-config-error";
+
 export function AiProviderSection({
   connectionStatus,
   llm,
@@ -109,6 +111,7 @@ export function AiProviderSection({
         >
           <InputGroup>
             <InputGroupInput
+              aria-describedby={llmError ? AI_CONFIG_ERROR_ID : undefined}
               aria-invalid={Boolean(llmError)}
               autoComplete="url"
               id="api-base-url"
@@ -132,6 +135,9 @@ export function AiProviderSection({
         >
           <InputGroup>
             <InputGroupInput
+              aria-describedby={llmError && !llm.hasApiKey && !llm.apiKey
+                ? AI_CONFIG_ERROR_ID
+                : undefined}
               aria-invalid={Boolean(llmError && !llm.hasApiKey && !llm.apiKey)}
               autoComplete="new-password"
               id="api-key"
@@ -176,6 +182,9 @@ export function AiProviderSection({
         >
           <InputGroup>
             <InputGroupInput
+              aria-describedby={llmError && !llm.model.trim()
+                ? AI_CONFIG_ERROR_ID
+                : undefined}
               aria-invalid={Boolean(llmError && !llm.model.trim())}
               autoComplete="off"
               id="model-name"
@@ -196,6 +205,9 @@ export function AiProviderSection({
         >
           <InputGroup>
             <InputGroupInput
+              aria-describedby={llmError && llm.temperature
+                ? AI_CONFIG_ERROR_ID
+                : undefined}
               aria-invalid={Boolean(llmError && llm.temperature)}
               id="temperature"
               inputMode="decimal"
@@ -213,7 +225,7 @@ export function AiProviderSection({
       </FieldGroup>
 
       {llmError ? (
-        <Alert role="alert" variant="destructive">
+        <Alert id={AI_CONFIG_ERROR_ID} role="alert" variant="destructive">
           <AlertTitle>配置未保存</AlertTitle>
           <AlertDescription>{llmError}</AlertDescription>
         </Alert>

@@ -134,7 +134,9 @@ function TemplateNameEditor({ draft, error, disabled, onChange }: TemplateNameEd
         <Field data-invalid={Boolean(error || field.state.meta.errors.length)}>
           <FieldLabel htmlFor="query-template-name">模板名称</FieldLabel>
           <Input
-            aria-describedby={error ? "query-template-name-error" : undefined}
+            aria-describedby={error || field.state.meta.errors[0]
+              ? "query-template-name-error"
+              : undefined}
             aria-invalid={Boolean(error || field.state.meta.errors.length)}
             disabled={disabled}
             id="query-template-name"
@@ -144,7 +146,9 @@ function TemplateNameEditor({ draft, error, disabled, onChange }: TemplateNameEd
             }}
             value={field.state.value}
           />
-          <FieldError id="query-template-name-error">{error ?? field.state.meta.errors[0]}</FieldError>
+          <FieldError id="query-template-name-error">
+            {error ?? field.state.meta.errors[0]}
+          </FieldError>
         </Field>
       )}
     </form.Field>
@@ -342,7 +346,7 @@ function FieldEditorDialog({
             </Field>
 
             {draft.source === "llm" ? (
-              <Field>
+              <Field data-invalid={Boolean(typeError)}>
                 <FieldLabel htmlFor={`${field.id}-edit-type`}>类型</FieldLabel>
                 <Select
                   items={[{ label: "文本", value: "text" }, { label: "列表", value: "list" }]}
@@ -352,7 +356,11 @@ function FieldEditorDialog({
                   name="type"
                   value={draft.type}
                 >
-                  <SelectTrigger id={`${field.id}-edit-type`}>
+                  <SelectTrigger
+                    aria-describedby={typeError ? `${field.id}-edit-type-error` : undefined}
+                    aria-invalid={Boolean(typeError)}
+                    id={`${field.id}-edit-type`}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -362,6 +370,7 @@ function FieldEditorDialog({
                     </SelectGroup>
                   </SelectContent>
                 </Select>
+                <FieldError id={`${field.id}-edit-type-error`}>{typeError}</FieldError>
               </Field>
             ) : (
               <Field data-invalid={Boolean(dictionaryError || typeError)}>

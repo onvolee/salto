@@ -8,7 +8,7 @@ function Spinner({
   ...props
 }: Omit<ComponentProps<typeof HugeiconsIcon>, "icon">) {
   return (
-    <HugeiconsIcon icon={Loading03Icon} strokeWidth={2} data-slot="spinner" role="status" aria-label="Loading" className={cn("size-4 animate-spin", className)} {...props} />
+    <HugeiconsIcon icon={Loading03Icon} strokeWidth={2} data-slot="spinner" role="status" aria-label="Loading" className={cn("size-4 animate-spin motion-reduce:animate-none", className)} {...props} />
   )
 }
 

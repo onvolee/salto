@@ -113,7 +113,7 @@ export function SourcesSection({
           >
             <HugeiconsIcon
               aria-hidden="true"
-              className={status === "testing" ? "animate-spin" : undefined}
+              className={status === "testing" ? "animate-spin motion-reduce:animate-none" : undefined}
               data-icon="inline-start"
               icon={status === "testing" ? Loading03Icon : TestTubeIcon}
               strokeWidth={2}

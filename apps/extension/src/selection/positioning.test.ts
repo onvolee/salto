@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampToViewport,
   getInitialPanelPosition,
+  getPanelSize,
   getTriggerPosition,
 } from "./positioning";
 
@@ -54,5 +55,18 @@ describe("selection popup positioning", () => {
       x: 8,
       y: 512,
     });
+  });
+
+  it("fits and positions the panel inside a narrow effective viewport", () => {
+    const narrowViewport = { width: 200, height: 160 };
+    const panel = getPanelSize(narrowViewport);
+
+    expect(panel).toEqual({ width: 184, height: 144 });
+    expect(getInitialPanelPosition(
+      { x: 160, y: 120 },
+      { width: 32, height: 32 },
+      panel,
+      narrowViewport,
+    )).toEqual({ x: 8, y: 8 });
   });
 });

@@ -320,4 +320,25 @@ describe("OptionsApp", () => {
     expect(alert).toHaveTextContent("认证失败，请检查 API Key");
     expect(alert).toHaveClass("text-destructive");
   });
+
+  it("associates AI configuration errors with each invalid field", async () => {
+    render(<OptionsApp />);
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { name: "通用" });
+
+    await user.click(screen.getByRole("button", { name: "AI 服务" }));
+    await user.click(screen.getByRole("button", { name: "保存并测试连接" }));
+
+    const errorTitle = await screen.findByText("配置未保存");
+    const alert = errorTitle.closest("[role='alert']");
+    expect(alert).toHaveAttribute("id", "ai-provider-config-error");
+    expect(screen.getByLabelText("模型名称")).toHaveAttribute(
+      "aria-describedby",
+      "ai-provider-config-error",
+    );
+    expect(screen.getByLabelText("API Key")).toHaveAttribute(
+      "aria-describedby",
+      "ai-provider-config-error",
+    );
+  });
 });

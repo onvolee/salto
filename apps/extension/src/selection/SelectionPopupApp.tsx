@@ -16,6 +16,7 @@ import { useThemeMode } from "salto-src/theme/use-theme-mode";
 
 import { FloatingTrigger } from "./FloatingTrigger";
 import { browserMessageClient, type ExtensionMessageClient } from "./message-client";
+import { isOpenSelectionPanelMessage } from "./panel-command";
 import {
   clampToViewport,
   getInitialPanelPosition,
@@ -42,6 +43,16 @@ const TRIGGER_SIZE: Size = { width: 32, height: 32 };
 
 type SurfaceMode = "hidden" | "trigger-visible" | "panel-open";
 type SaveState = SelectionPanelProps["saveState"];
+type PanelOpenSubscription = (listener: () => void) => () => void;
+
+function subscribeToBrowserPanelOpen(listener: () => void): () => void {
+  if (typeof browser === "undefined") return () => undefined;
+  const handleMessage = (message: unknown) => {
+    if (isOpenSelectionPanelMessage(message)) listener();
+  };
+  browser.runtime.onMessage.addListener(handleMessage);
+  return () => browser.runtime.onMessage.removeListener(handleMessage);
+}
 
 function getViewportSize(): Size {
   return { width: window.innerWidth, height: window.innerHeight };
@@ -59,10 +70,12 @@ export function SelectionPopupApp({
   createRequestId = () => crypto.randomUUID(),
   messageClient = browserMessageClient,
   onSaveSuccess,
+  subscribePanelOpen = subscribeToBrowserPanelOpen,
 }: {
   readonly createRequestId?: () => string;
   readonly messageClient?: ExtensionMessageClient;
   readonly onSaveSuccess?: (term: string) => void;
+  readonly subscribePanelOpen?: PanelOpenSubscription;
 }) {
   const [mode, setMode] = useState<SurfaceMode>("hidden");
   const themeMode = useThemeMode();
@@ -70,6 +83,8 @@ export function SelectionPopupApp({
   const [triggerPosition, setTriggerPosition] = useState<Point>({ x: 0, y: 0 });
   const [panelPosition, setPanelPosition] = useState<Point>({ x: 0, y: 0 });
   const panelRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const restoreTriggerFocusRef = useRef(false);
   const translationRequestRef = useRef<string | null>(null);
   const panelGenerationRef = useRef(0);
   const templateSnapshotRef = useRef<QueryTemplate | null>(null);
@@ -92,7 +107,7 @@ export function SelectionPopupApp({
     setMode("trigger-visible");
   }, []);
 
-  const closePanel = useCallback(() => {
+  const closePanel = useCallback((restoreTriggerFocus = true) => {
     panelGenerationRef.current += 1;
     const requestId = translationRequestRef.current;
     translationRequestRef.current = null;
@@ -101,10 +116,15 @@ export function SelectionPopupApp({
       void messageClient.cancelTranslation?.(requestId).catch(() => undefined);
     }
     saveRequestRef.current += 1;
-    window.getSelection()?.removeAllRanges();
-    setSession(null);
-    setMode("hidden");
-  }, [messageClient]);
+    if (restoreTriggerFocus && session) {
+      restoreTriggerFocusRef.current = true;
+      setMode("trigger-visible");
+    } else {
+      window.getSelection()?.removeAllRanges();
+      setSession(null);
+      setMode("hidden");
+    }
+  }, [messageClient, session]);
 
   const requestTranslation = useCallback((
     context: PromptContext,
@@ -146,8 +166,9 @@ export function SelectionPopupApp({
     });
   }, [createRequestId, messageClient]);
 
-  const openPanel = useCallback(() => {
-    if (!session) {
+  const openPanel = useCallback((requestedSession?: SelectionSnapshot) => {
+    const nextSession = requestedSession ?? session;
+    if (!nextSession) {
       return;
     }
 
@@ -155,10 +176,15 @@ export function SelectionPopupApp({
     panelGenerationRef.current = generation;
     templateSnapshotRef.current = null;
     const viewport = getViewportSize();
+    const nextTriggerPosition = requestedSession
+      ? getTriggerPosition(nextSession.anchorRect, TRIGGER_SIZE, viewport)
+      : triggerPosition;
+    setSession(nextSession);
+    setTriggerPosition(nextTriggerPosition);
     setPanelPosition(
-      getInitialPanelPosition(triggerPosition, TRIGGER_SIZE, getPanelSize(viewport), viewport),
+      getInitialPanelPosition(nextTriggerPosition, TRIGGER_SIZE, getPanelSize(viewport), viewport),
     );
-    const context = extractPromptContext(session.range, "");
+    const context = extractPromptContext(nextSession.range, "");
     saveRequestRef.current += 1;
     setPromptContext(context);
     setSaveState("idle");
@@ -193,6 +219,18 @@ export function SelectionPopupApp({
       }
     });
   }, [messageClient, requestTranslation, session, triggerPosition]);
+
+  useEffect(() => subscribePanelOpen(() => {
+    if (mode === "panel-open") return;
+    const snapshot = readSelectionSnapshot(window.getSelection());
+    if (snapshot) openPanel(snapshot);
+  }), [mode, openPanel, subscribePanelOpen]);
+
+  useEffect(() => {
+    if (mode !== "trigger-visible" || !restoreTriggerFocusRef.current) return;
+    restoreTriggerFocusRef.current = false;
+    triggerRef.current?.focus({ preventScroll: true });
+  }, [mode]);
 
   const regenerateTranslation = useCallback(() => {
     const template = templateSnapshotRef.current;
@@ -308,14 +346,14 @@ export function SelectionPopupApp({
         return;
       }
 
-      closePanel();
+      closePanel(false);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (mode === "panel-open" && event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        closePanel();
+        closePanel(true);
       }
     };
 
@@ -377,9 +415,10 @@ export function SelectionPopupApp({
   if (mode === "trigger-visible") {
     return wrapSurface(
       <FloatingTrigger
-        onOpen={openPanel}
+        onOpen={() => openPanel()}
         onPointerDown={preserveSelection}
         position={triggerPosition}
+        triggerRef={triggerRef}
       />,
       themeMode,
     );
@@ -389,7 +428,7 @@ export function SelectionPopupApp({
     return wrapSurface(
       <SelectionPanel
         activeTemplate={activeTemplate}
-        onClose={closePanel}
+        onClose={() => closePanel(true)}
         onPositionChange={setPanelPosition}
         onRegenerate={regenerateTranslation}
         onSave={saveSelection}

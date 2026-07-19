@@ -6,6 +6,7 @@ import { createEnrichmentQueue } from "salto-src/enrichment/enrichment-queue";
 import { createLlmEnrichmentSource } from "salto-src/enrichment/llm-enrichment-source";
 import { createOpenAiCompatibleClient } from "salto-src/llm/openai-compatible-client";
 import { createOpenAiCompatibleQueryExecutor } from "salto-src/llm/openai-compatible-query-executor";
+import { registerSelectionPanelCommand } from "salto-src/selection/panel-command";
 import { createLocalRepositories } from "salto-src/repositories";
 import { createBackgroundServices } from "salto-src/services/background-services";
 import { createRuntimeMessageListener } from "salto-src/services/runtime-listener";
@@ -30,6 +31,12 @@ class ProviderSetupError extends Error {
 }
 
 export default defineBackground(() => {
+  registerSelectionPanelCommand({
+    onCommand: browser.commands.onCommand,
+    queryActiveTab: () => browser.tabs.query({ active: true, currentWindow: true }),
+    sendToTab: (tabId, message) => browser.tabs.sendMessage(tabId, message),
+  });
+
   const database = new SaltoDatabase();
   const repositories = createLocalRepositories(database, {
     clock: () => new Date().toISOString(),

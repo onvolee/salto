@@ -1,6 +1,6 @@
 # 19 — 迁移安全和恢复
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Blocked by: 05 — 模板持久化和仓库操作, 08 — 扩展设置持久化, 13 — 字典充实集成, 18 — keyboard/accessibility
 
@@ -34,7 +34,7 @@ Blocked by: 05 — 模板持久化和仓库操作, 08 — 扩展设置持久化,
 - [x] 缺失、旧的、畸形 settings 恢复安全默认值并可重复执行。
 - [x] 各 job status 在 restart 后按 frozen policy 处理，completed 不重复、running 不永久卡住。
 - [x] provider removal 不丢 ready data、不消耗无意义 attempts，重新启用后可恢复执行。
-- [ ] install/update 重复触发不会重复 alarms、commands、system template 或 listener。
+- [x] install/update 重复触发不会重复 alarms、commands、system template 或 listener。
 
 ## Verification
 
@@ -56,3 +56,4 @@ migration 失败只能停止升级并保留原库；不得 reset/delete IndexedD
 - Verification: Ticket-scoped tests pass (44 tests) and `pnpm build` passes. Full `pnpm test` and `pnpm typecheck` are currently blocked by concurrent Ticket 17 highlighting-contract changes: `background-services` returns `enabled` while its tests and one return branch have not yet been updated.
 - Follow-up (2026-07-20): migration and recovery implementation is complete, but this ticket remains open until Ticket 18 lands. Verify its declarative command together with repeated install/startup/alarm/listener registration idempotency before closing acceptance criterion 5.
 - Correction (2026-07-20): legacy schema fixtures now conditionally declare every version, including a true v1 fixture. Each case opens and asserts its target `Dexie.verno` before seeding, then asserts the upgraded database is v7.
+- Closure (2026-07-20): Ticket 18 registers one declarative manifest command and one background listener per service-worker context. Repeated lifecycle events reuse the named `salto-enrichment-queue` alarm, while the existing repository test proves repeated default preparation retains one system template and one settings record. The production manifest, focused command tests, extension typecheck, and build all pass.

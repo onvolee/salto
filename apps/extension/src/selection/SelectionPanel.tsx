@@ -7,6 +7,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   useEffect,
   useRef,
+  type KeyboardEvent,
   type PointerEvent,
   type ReactNode,
   type RefObject,
@@ -127,12 +128,35 @@ export function SelectionPanel({
     event.preventDefault();
   };
 
+  const containKeyboardFocus = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Tab") return;
+    const controls = [...event.currentTarget.querySelectorAll<HTMLElement>(
+      "button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])",
+    )];
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (!first || !last) return;
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !controls.includes(target)) return;
+
+    if (event.shiftKey && target === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && target === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const announcement = getPanelAnnouncement(activeTemplate, translation, saveState);
+
   return (
     <section
       aria-label={`Selection panel for ${selectionText}`}
       className="salto-selection-panel"
       ref={panelRef}
       role="dialog"
+      onKeyDown={containKeyboardFocus}
       style={{ left: position.x, top: position.y }}
     >
       <header
@@ -164,7 +188,7 @@ export function SelectionPanel({
             type="button"
             variant="ghost"
           >
-            <HugeiconsIcon icon={RefreshIcon} size={16} strokeWidth={1.8} />
+            <HugeiconsIcon aria-hidden="true" icon={RefreshIcon} size={16} strokeWidth={1.8} />
           </Button>
           <Button
             aria-label={saveLabel}
@@ -176,7 +200,7 @@ export function SelectionPanel({
             type="button"
             variant="ghost"
           >
-            <HugeiconsIcon icon={Bookmark01Icon} size={16} strokeWidth={1.8} />
+            <HugeiconsIcon aria-hidden="true" icon={Bookmark01Icon} size={16} strokeWidth={1.8} />
           </Button>
           <Button
             aria-label="Close panel"
@@ -187,11 +211,14 @@ export function SelectionPanel({
             title="Close panel"
             variant="ghost"
           >
-            <HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.8} />
+            <HugeiconsIcon aria-hidden="true" icon={Cancel01Icon} size={16} strokeWidth={1.8} />
           </Button>
         </div>
       </header>
-      <div aria-live="polite" className="salto-selection-panel__content">
+      <p aria-atomic="true" aria-live="polite" className="salto-visually-hidden">
+        {announcement}
+      </p>
+      <div className="salto-selection-panel__content">
         {activeTemplate.status === "loading" ? (
           <p className="salto-selection-panel__status">Loading active template...</p>
         ) : activeTemplate.status === "error" ? (
@@ -222,6 +249,19 @@ export function SelectionPanel({
       </div>
     </section>
   );
+}
+
+function getPanelAnnouncement(
+  activeTemplate: ActiveTemplateState,
+  translation: TranslationState,
+  saveState: SelectionPanelProps["saveState"],
+): string {
+  if (saveState === "error") return "Could not save selection";
+  if (saveState === "saved") return "Selection saved";
+  if (activeTemplate.status === "error") return `Template unavailable: ${activeTemplate.message}`;
+  if (translation.status === "request-error") return `Translation unavailable: ${translation.message}`;
+  if (translation.status === "complete") return "Translation ready";
+  return "";
 }
 
 function TranslationResults({

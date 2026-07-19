@@ -15,6 +15,15 @@ export default defineConfig({
     name: "Salto",
     description: "Reading-time translation and vocabulary learning.",
     permissions: ["storage"],
+    commands: {
+      "open-selection-panel": {
+        description: "Open the selection translation panel",
+        suggested_key: {
+          default: "Alt+Shift+S",
+          mac: "MacCtrl+Shift+S",
+        },
+      },
+    },
     optional_host_permissions: [
       "https://*/*",
       "http://*/*",

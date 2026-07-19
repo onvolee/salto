@@ -118,6 +118,56 @@ describe("SelectionPopupApp", () => {
     expect(screen.getByRole("button", { name: "Close panel" })).toHaveFocus();
   });
 
+  it("opens from the browser command only for a valid selection", async () => {
+    let openFromCommand: (() => void) | undefined;
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockResolvedValue({
+      ok: true,
+      type: "translate-selection",
+      data: { templateId: "system-default", templateName: "Default", schema: [], fields: [] },
+    });
+    render(
+      <SelectionPopupApp
+        messageClient={withActiveTemplate(send)}
+        subscribePanelOpen={(listener) => {
+          openFromCommand = listener;
+          return () => undefined;
+        }}
+      />,
+    );
+
+    window.getSelection()?.removeAllRanges();
+    act(() => openFromCommand?.());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    selectText(0, 10);
+    act(() => openFromCommand?.());
+
+    expect(screen.getByRole("dialog", { name: "Selection panel for unfamiliar" }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close panel" })).toHaveFocus();
+  });
+
+  it("contains Tab focus inside the open panel", async () => {
+    const send = vi.fn<ExtensionMessageClient["send"]>().mockResolvedValue({
+      ok: true,
+      type: "translate-selection",
+      data: { templateId: "system-default", templateName: "Default", schema: [], fields: [] },
+    });
+    render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
+    await openPanel();
+    await screen.findByRole("heading", { name: "Default" });
+
+    const user = userEvent.setup();
+    const close = screen.getByRole("button", { name: "Close panel" });
+    const regenerate = screen.getByRole("button", { name: "Regenerate translation" });
+    expect(close).toHaveFocus();
+
+    await user.tab();
+    expect(regenerate).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(close).toHaveFocus();
+  });
+
   it("does not query on selection and renders ordered fields after explicit open", async () => {
     const send = vi.fn<ExtensionMessageClient["send"]>().mockResolvedValue({
       ok: true,
@@ -348,10 +398,14 @@ describe("SelectionPopupApp", () => {
     await openPanel();
     const save = screen.getByRole("button", { name: "Save selection" });
 
-    await userEvent.setup().click(save);
-    expect(await screen.findByText("Could not save selection")).toBeInTheDocument();
+    const user = userEvent.setup();
+    save.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("Could not save selection", {
+      selector: ".salto-selection-panel__save-error",
+    })).toBeInTheDocument();
     expect(onSaveSuccess).not.toHaveBeenCalled();
-    await userEvent.setup().click(save);
+    await user.keyboard("{Enter}");
 
     expect(await screen.findByRole("button", { name: "Selection saved" })).toBeDisabled();
     expect(send).toHaveBeenCalledTimes(3);
@@ -476,9 +530,9 @@ describe("SelectionPopupApp", () => {
     );
     await openPanel();
 
-    await userEvent.setup().click(screen.getByRole("button", {
-      name: "Regenerate translation",
-    }));
+    const regenerate = screen.getByRole("button", { name: "Regenerate translation" });
+    regenerate.focus();
+    await userEvent.setup().keyboard("{Enter}");
 
     expect(cancelTranslation).toHaveBeenCalledWith("request-a");
     expect(send).toHaveBeenNthCalledWith(2, expect.objectContaining({
@@ -576,12 +630,22 @@ describe("SelectionPopupApp", () => {
   it.each([
     ["close button", async () => userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }))],
     ["Escape", async () => userEvent.setup().keyboard("{Escape}")],
-    ["ordinary outside click", async () => userEvent.setup().click(document.querySelector("[data-selection-source]")!)],
-  ])("closes with %s and clears the browser selection", async (_name, closePanel) => {
+  ])("closes with %s, preserves selection, and restores trigger focus", async (_name, closePanel) => {
     render(<SelectionPopupApp />);
     await openPanel();
 
     await closePanel();
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(window.getSelection()?.rangeCount).toBe(1);
+    expect(screen.getByRole("button", { name: "Open selection panel" })).toHaveFocus();
+  });
+
+  it("keeps ordinary outside dismissal silent and clears the temporary selection UI", async () => {
+    render(<SelectionPopupApp />);
+    await openPanel();
+
+    await userEvent.setup().click(document.querySelector("[data-selection-source]")!);
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(window.getSelection()?.rangeCount).toBe(0);

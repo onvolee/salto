@@ -11,7 +11,7 @@
   --linear-color-text-secondary: lch(19.788% 1.25 282 / 1);
   --linear-color-text-tertiary: lch(39.576% 1.25 282 / 1);
   --linear-color-text-quaternary: lch(65.3% 1.25 282 / 1);
-  --linear-focus-color: lch(53% 52.26 286.91);
+  --linear-focus-color: lch(49% 52.26 286.91);
   --linear-focus-ring-color: #6d78d5;
   --linear-selection-bg: lch(39.576% 1.25 282 / 0.2);
 
@@ -59,6 +59,7 @@
   --linear-focus-ring-color: #5e69d1;
   --linear-selection-bg: lch(61.399% 1.15 272 / 0.2);
   --salto-success: #22c55e;
+  --salto-destructive: #f87171;
 
   color-scheme: dark;
 }
@@ -80,6 +81,7 @@
     --linear-focus-ring-color: #5e69d1;
     --linear-selection-bg: lch(61.399% 1.15 272 / 0.2);
     --salto-success: #22c55e;
+    --salto-destructive: #f87171;
 
     color-scheme: dark;
   }
