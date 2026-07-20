@@ -52,7 +52,7 @@ export function createDictionaryQueryExecutor(
   dependencies: DictionaryQueryExecutorDependencies,
 ): QueryExecutor {
   return {
-    async execute(template, context, signal): Promise<readonly QueryFieldResult[]> {
+    async execute(template, context, signal, onFieldReady): Promise<readonly QueryFieldResult[]> {
       const activeFields = template.fields
         .filter((field) => field.enabled)
         .toSorted((left, right) => left.order - right.order);
@@ -61,52 +61,70 @@ export function createDictionaryQueryExecutor(
       );
       const llmFields = activeFields.filter((field) => field.source === "llm");
       const activeSignal = signal ?? new AbortController().signal;
-      const [llmOutcome, dictionaryOutcome] = await Promise.all([
-        llmFields.length > 0
-          ? dependencies.llmExecutor.execute(template, context, activeSignal).then(
-            (results) => ({ results } as const),
-            () => ({ error: true } as const),
+      
+      const allResults: QueryFieldResult[] = [];
+      const llmFieldIds = new Set(llmFields.map((field) => field.id));
+      
+      const llmPromise = llmFields.length > 0
+        ? dependencies.llmExecutor.execute(template, context, activeSignal).then(
+            (results) => {
+              if (Array.isArray(results)) {
+                const llmResults = results.filter(hasFieldId).filter((result) => llmFieldIds.has(result.fieldId));
+                llmResults.forEach((result) => {
+                  const fieldResult = result as QueryFieldResult;
+                  allResults.push(fieldResult);
+                  onFieldReady?.(fieldResult);
+                });
+              }
+              return { results } as const;
+            },
+            () => {
+              llmFields.forEach((field) => {
+                const result = {
+                  fieldId: field.id,
+                  status: "failed" as const,
+                  error: {
+                    code: "llm-query",
+                    message: "The LLM query could not be completed",
+                  },
+                };
+                allResults.push(result);
+                onFieldReady?.(result);
+              });
+              return { error: true } as const;
+            },
           )
-          : undefined,
-        dictionaryFields.length > 0
-          ? dependencies.dictionaryClient.lookup(
+        : Promise.resolve(undefined);
+      
+      const dictionaryPromise = dictionaryFields.length > 0
+        ? dependencies.dictionaryClient.lookup(
             { term: context.selection, language: "en" },
             activeSignal,
           ).then(
-            (lookup) => ({ lookup } as const),
-            (error: unknown) => ({ error } as const),
-          )
-          : undefined,
-      ]);
-      const llmResults = llmOutcome && "results" in llmOutcome && Array.isArray(llmOutcome.results)
-        ? llmOutcome.results.filter(hasFieldId)
-        : [];
-      const llmFailed = Boolean(llmOutcome && "error" in llmOutcome);
-
-      const results = activeFields.flatMap((field) => {
-        if (field.source === "dictionary") {
-          if (!dictionaryOutcome) {
-            return [];
-          }
-          return "lookup" in dictionaryOutcome
-            ? [mapDictionaryField(field, dictionaryOutcome.lookup)]
-            : [dictionaryFailure(field.id, dictionaryOutcome.error)];
-        }
-        if (llmFailed) {
-          return [{
-            fieldId: field.id,
-            status: "failed" as const,
-            error: {
-              code: "llm-query",
-              message: "The LLM query could not be completed",
+            (lookup) => {
+              dictionaryFields.forEach((field) => {
+                const result = mapDictionaryField(field, lookup);
+                allResults.push(result);
+                onFieldReady?.(result);
+              });
+              return { lookup } as const;
             },
-          }];
-        }
-        return llmResults.filter((result) => result.fieldId === field.id) as QueryFieldResult[];
-      });
+            (error: unknown) => {
+              dictionaryFields.forEach((field) => {
+                const result = dictionaryFailure(field.id, error);
+                allResults.push(result);
+                onFieldReady?.(result);
+              });
+              return { error } as const;
+            },
+          )
+        : Promise.resolve(undefined);
+      
+      await Promise.all([llmPromise, dictionaryPromise]);
+      
       const activeFieldIds = new Set(activeFields.map((field) => field.id));
-      const unexpectedLlmResults = llmResults.filter((result) => !activeFieldIds.has(result.fieldId));
-      return [...results, ...unexpectedLlmResults] as QueryFieldResult[];
+      const unexpectedResults = allResults.filter((result) => !activeFieldIds.has(result.fieldId));
+      return [...allResults, ...unexpectedResults];
     },
   };
 }

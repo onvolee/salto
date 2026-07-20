@@ -1,6 +1,8 @@
 import {
   analyzeLlmPromptFields,
   DictionaryLookupError,
+  isPromptContextWithinLimits,
+  PROMPT_CONTEXT_LIMITS,
   isValidExtensionSettings,
   isValidQueryTemplate,
   isValidQueryTemplateInput,
@@ -28,6 +30,7 @@ export interface QueryExecutor {
     template: QueryTemplate,
     context: PromptContext,
     signal?: AbortSignal,
+    onFieldReady?: (result: QueryFieldResult) => void,
   ): Promise<unknown>;
 }
 
@@ -49,6 +52,11 @@ export type BackgroundServiceDependencies = {
   readonly testLlmConnection?: () => Promise<void>;
   readonly prepareSettings?: () => Promise<void>;
   readonly notifySettingsChanged?: (settings: ExtensionSettings) => Promise<void>;
+  readonly notifyTranslationFieldReady?: (
+    requestId: string,
+    fieldId: string,
+    result: QueryFieldResult,
+  ) => Promise<void>;
 };
 
 const PROMPT_CONTEXT_KEYS = [
@@ -85,9 +93,8 @@ function isPromptContext(value: unknown): value is PromptContext {
   if (!isRecord(value) || !PROMPT_CONTEXT_KEYS.every((key) => typeof value[key] === "string")) {
     return false;
   }
-  const selection = value.selection as string;
-  const webContent = value.webContent as string;
-  return selection.trim().length > 0 && selection.length <= 500 && webContent.length <= 2000;
+  const context = value as unknown as PromptContext;
+  return context.selection.trim().length > 0 && isPromptContextWithinLimits(context);
 }
 
 function isSavePayload(
@@ -106,7 +113,11 @@ function isSavePayload(
   return isRecord(context)
     && ["sentence", "paragraphs", "pageTitle", "pageUrl"].every(
       (key) => typeof context[key] === "string",
-    );
+    )
+    && (context.sentence as string).length <= PROMPT_CONTEXT_LIMITS.sentence
+    && (context.paragraphs as string).length <= PROMPT_CONTEXT_LIMITS.paragraphs
+    && (context.pageTitle as string).length <= PROMPT_CONTEXT_LIMITS.webTitle
+    && (context.pageUrl as string).length <= PROMPT_CONTEXT_LIMITS.webUrl;
 }
 
 function isLlmPublicConfig(value: unknown): value is LlmPublicConfig {
@@ -393,6 +404,13 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
               template,
               promptContext,
               controller.signal,
+              (result) => {
+                void dependencies.notifyTranslationFieldReady?.(
+                  request.payload.requestId,
+                  result.fieldId,
+                  result,
+                );
+              },
             );
             const activeFields = template.fields
               .filter((field) => field.enabled)
@@ -636,6 +654,7 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
           await dependencies.repositories.llmSettings.save(
             normalized.config,
             apiKey ? { apiKey } : undefined,
+            normalized.permissionOrigin,
           );
           return {
             ok: true,

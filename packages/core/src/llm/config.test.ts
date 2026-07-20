@@ -35,6 +35,24 @@ describe("normalizeLlmPublicConfig", () => {
     });
   });
 
+  it("preserves the thinking-mode flag when provided", () => {
+    expect(normalizeLlmPublicConfig({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "qwen3.7-plus",
+      enableThinking: true,
+    })).toEqual({
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://api.example.com/v1",
+        model: "qwen3.7-plus",
+        enableThinking: true,
+      },
+      origin: "https://api.example.com",
+      permissionOrigin: "https://api.example.com/*",
+    });
+  });
+
   it.each([
     ["http://api.example.com:8000/v1", "http://api.example.com:8000/*"],
     ["http://localhost:11434/v1", "http://localhost:11434/*"],

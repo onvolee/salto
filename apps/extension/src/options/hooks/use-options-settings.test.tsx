@@ -44,7 +44,7 @@ function createClients(configured = true) {
       promptAnalysis: { referencedVariables: [], warnings: [] },
     }),
     saveConfig: vi.fn().mockImplementation(async (config) => ({
-      config,
+      config: { ...config, enableThinking: config.enableThinking ?? false },
       hasApiKey: true,
     })),
     testConnection: vi.fn().mockResolvedValue(undefined),
@@ -78,6 +78,7 @@ describe("useOptionsSettings", () => {
       temperature: "",
       apiKey: "",
       hasApiKey: true,
+      enableThinking: false,
     });
     expect(clients.permissionClient.request).not.toHaveBeenCalled();
   });
@@ -120,6 +121,7 @@ describe("useOptionsSettings", () => {
       provider: "openai-compatible",
       baseUrl: "https://new.example/v1",
       model: "model-b",
+      enableThinking: false,
     }, "replacement-secret");
     expect(result.current.llm.apiKey).toBe("");
     expect(result.current.llm.hasApiKey).toBe(true);

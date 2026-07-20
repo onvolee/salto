@@ -60,6 +60,8 @@ export interface SettingsRepository {
   save(settings: ExtensionSettings): Promise<ExtensionSettings>;
   saveLegacySettingsMigration(settings: ExtensionSettings): Promise<ExtensionSettings>;
   update(settings: ExtensionSettings): Promise<ExtensionSettings>;
+  hasDictionaryConsent(permissionOrigin: string): Promise<boolean>;
+  recordDictionaryConsent(permissionOrigin: string): Promise<void>;
 }
 
 export type QueryTemplateRepositoryErrorCode =
@@ -105,12 +107,24 @@ export interface HighlightTermRepository {
 
 export interface LlmSettingsRepository {
   getPublicState(): Promise<LlmConfigState>;
+  getCredentialState(): Promise<LlmCredentialState>;
   getCredentials(): Promise<{
     readonly config: LlmPublicConfig;
     readonly secret: LlmSecret;
   } | null>;
-  save(config: LlmPublicConfig, secret?: LlmSecret): Promise<void>;
+  save(config: LlmPublicConfig, secret?: LlmSecret, consentedOrigin?: string): Promise<void>;
+  recordConsent(permissionOrigin: string): Promise<void>;
 }
+
+export type LlmCredentialState =
+  | { readonly status: "not-configured" }
+  | { readonly status: "consent-required"; readonly config: LlmPublicConfig }
+  | {
+      readonly status: "ready";
+      readonly config: LlmPublicConfig;
+      readonly secret: LlmSecret;
+      readonly permissionOrigin: string;
+    };
 
 export type LocalRepositories = {
   readonly vocabulary: VocabularyRepository;
@@ -474,6 +488,9 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
           highlightEnabled: settings.highlightEnabled,
           themeMode: settings.themeMode,
           activeDictionaryProvider: "youdao-web",
+          ...(current?.dictionaryConsentedOrigin
+            ? { dictionaryConsentedOrigin: current.dictionaryConsentedOrigin }
+            : {}),
           ...(completeLegacySettingsMigration
             || current?.legacySettingsMigrationCompleted === true
             ? { legacySettingsMigrationCompleted: true }
@@ -489,6 +506,19 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
   update(template: QueryTemplate): Promise<QueryTemplate>;
   update(value: ExtensionSettings | QueryTemplate): Promise<ExtensionSettings | QueryTemplate> {
     return "fields" in value ? this.updateTemplate(value) : this.save(value);
+  }
+
+  async hasDictionaryConsent(permissionOrigin: string): Promise<boolean> {
+    await this.ensureDefaults();
+    return (await this.database.settings.get("extension"))?.dictionaryConsentedOrigin === permissionOrigin;
+  }
+
+  async recordDictionaryConsent(permissionOrigin: string): Promise<void> {
+    if (!isNonEmptyString(permissionOrigin)) {
+      throw new QueryTemplateRepositoryError("settings-invalid", "Invalid dictionary consent origin");
+    }
+    await this.ensureDefaults();
+    await this.database.settings.update("extension", { dictionaryConsentedOrigin: permissionOrigin });
   }
 
   async list(): Promise<readonly QueryTemplate[]> {
@@ -691,35 +721,79 @@ class DexieLlmSettingsRepository implements LlmSettingsRepository {
   }
 
   async getCredentials() {
+    const state = await this.getCredentialState();
+    return state.status === "ready"
+      ? { config: state.config, secret: state.secret }
+      : null;
+  }
+
+  async getCredentialState(): Promise<LlmCredentialState> {
     const [storedConfig, storedSecret] = await Promise.all([
       this.database.llmConfigs.get("active"),
       this.database.llmSecrets.get("active")
     ]);
     const config = normalizeStoredLlmConfig(storedConfig);
     if (!config || !isValidApiKey(storedSecret?.apiKey)) {
-      return null;
+      return { status: "not-configured" };
+    }
+    const permissionOrigin = normalizeLlmPublicConfig(config).permissionOrigin;
+    if (storedConfig?.consentedOrigin !== permissionOrigin) {
+      return { status: "consent-required", config };
     }
     const { id: _secretId, ...secret } = storedSecret;
-    return { config, secret };
+    return { status: "ready", config, secret, permissionOrigin };
   }
 
-  async save(config: LlmPublicConfig, secret?: LlmSecret): Promise<void> {
-    const normalizedConfig = normalizeLlmPublicConfig(config).config;
+  async save(config: LlmPublicConfig, secret?: LlmSecret, consentedOrigin?: string): Promise<void> {
+    const normalized = normalizeLlmPublicConfig(config);
+    const normalizedConfig = normalized.config;
+    if (consentedOrigin !== undefined && consentedOrigin !== normalized.permissionOrigin) {
+      throw new Error("LLM consent origin does not match the configured origin");
+    }
     const nextApiKey = typeof secret?.apiKey === "string" ? secret.apiKey.trim() : "";
     await this.database.transaction(
       "rw",
       [this.database.llmConfigs, this.database.llmSecrets],
       async () => {
         const existingSecret = await this.database.llmSecrets.get("active");
+        const existingConfig = await this.database.llmConfigs.get("active");
         if (!nextApiKey && !isValidApiKey(existingSecret?.apiKey)) {
           throw new Error("An API key is required for the first LLM configuration");
         }
-        await this.database.llmConfigs.put({ id: "active", ...normalizedConfig });
+        const existingOrigin = existingConfig
+          ? normalizeStoredLlmConfig(existingConfig)
+          : undefined;
+        const preservedConsent = existingOrigin
+          && normalizeLlmPublicConfig(existingOrigin).permissionOrigin === normalized.permissionOrigin
+          ? existingConfig?.consentedOrigin
+          : undefined;
+        const nextConsent = consentedOrigin ?? preservedConsent;
+        await this.database.llmConfigs.put({
+          id: "active",
+          ...normalizedConfig,
+          ...(nextConsent ? { consentedOrigin: nextConsent } : {}),
+        });
         if (nextApiKey) {
           await this.database.llmSecrets.put({ id: "active", apiKey: nextApiKey });
         }
       }
     );
+  }
+
+  async recordConsent(permissionOrigin: string): Promise<void> {
+    const [storedConfig, storedSecret] = await Promise.all([
+      this.database.llmConfigs.get("active"),
+      this.database.llmSecrets.get("active"),
+    ]);
+    const config = normalizeStoredLlmConfig(storedConfig);
+    if (
+      !config
+      || !isValidApiKey(storedSecret?.apiKey)
+      || normalizeLlmPublicConfig(config).permissionOrigin !== permissionOrigin
+    ) {
+      throw new Error("LLM configuration is not ready for origin consent");
+    }
+    await this.database.llmConfigs.update("active", { consentedOrigin: permissionOrigin });
   }
 }
 
@@ -733,7 +807,7 @@ function normalizeStoredLlmConfig(
   if (!stored) {
     return undefined;
   }
-  const { id: _id, ...config } = stored;
+  const { id: _id, consentedOrigin: _consentedOrigin, ...config } = stored;
   try {
     return normalizeLlmPublicConfig(config).config;
   } catch {
@@ -758,6 +832,9 @@ function normalizeStoredSettings(value: StoredExtensionSettings | undefined): St
       ? raw.themeMode
       : DEFAULT_EXTENSION_SETTINGS.themeMode,
     activeDictionaryProvider: "youdao-web",
+    ...(isNonEmptyString(raw.dictionaryConsentedOrigin)
+      ? { dictionaryConsentedOrigin: raw.dictionaryConsentedOrigin }
+      : {}),
     ...(raw.legacySettingsMigrationCompleted === true
       ? { legacySettingsMigrationCompleted: true }
       : {}),

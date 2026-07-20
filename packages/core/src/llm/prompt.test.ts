@@ -30,6 +30,32 @@ function field(id: string, instruction: string): LlmQuerySchemaField {
 }
 
 describe("renderLlmQueryFields", () => {
+  it("bounds every page-derived context value before rendering provider instructions", () => {
+    const fields = [{
+      id: "bounded",
+      label: "Bounded",
+      source: "llm" as const,
+      type: "text" as const,
+      instruction: "{{selection}}|{{sentence}}|{{paragraphs}}|{{webTitle}}|{{webUrl}}|{{webContent}}",
+      order: 0,
+      enabled: true,
+    }];
+    const context = {
+      selection: "s".repeat(501),
+      sentence: "e".repeat(1001),
+      paragraphs: "p".repeat(2001),
+      targetLanguage: "zh-CN",
+      webTitle: "t".repeat(301),
+      webUrl: "u".repeat(2049),
+      webContent: "c".repeat(2001),
+    };
+
+    const [selection, sentence, paragraphs, title, url, content] =
+      renderLlmQueryFields(fields, context).fields[0]!.instruction.split("|");
+
+    expect([selection.length, sentence.length, paragraphs.length, title.length, url.length, content.length])
+      .toEqual([500, 1000, 2000, 300, 2048, 2000]);
+  });
   it("parses compatible whitespace, repeated, and adjacent known variables", () => {
     expect(parsePromptTemplate("Before {{ selection }}{{selection}} after")).toEqual({
       tokens: [

@@ -623,7 +623,7 @@ describe("local repositories", () => {
     recoveryReader.close();
   });
 
-  it("stores public LLM configuration separately from its write-only secret", async () => {
+  it("stores public LLM configuration separately from its write-only secret and origin consent", async () => {
     const { database, repositories } = createTestRepositories("llm-settings-test");
     const config = {
       provider: "openai-compatible" as const,
@@ -632,18 +632,90 @@ describe("local repositories", () => {
       temperature: 0.3,
     };
 
-    await repositories.llmSettings.save(config, { apiKey: "secret-a" });
+    await repositories.llmSettings.save(config, { apiKey: "secret-a" }, "https://api.example.com/*");
 
     expect(await repositories.llmSettings.getPublicState()).toEqual({
       config,
       hasApiKey: true,
     });
     expect(await database.llmConfigs.toArray()).toEqual([
-      { id: "active", ...config },
+      { id: "active", ...config, consentedOrigin: "https://api.example.com/*" },
     ]);
     expect(await database.llmSecrets.toArray()).toEqual([
       { id: "active", apiKey: "secret-a" },
     ]);
+    expect(await repositories.llmSettings.getCredentialState()).toEqual({
+      status: "ready",
+      config,
+      secret: { apiKey: "secret-a" },
+      permissionOrigin: "https://api.example.com/*",
+    });
+    expect(JSON.stringify(await repositories.llmSettings.getPublicState())).not.toContain("consentedOrigin");
+  });
+
+  it("requires fresh exact-origin consent for legacy and changed-origin LLM configurations", async () => {
+    const { database, repositories } = createTestRepositories("llm-consent-state-test");
+    await database.llmConfigs.put({
+      id: "active",
+      provider: "openai-compatible",
+      baseUrl: "https://legacy.example/v1",
+      model: "model-a",
+    });
+    await database.llmSecrets.put({ id: "active", apiKey: "secret-a" });
+
+    await expect(repositories.llmSettings.getCredentialState()).resolves.toEqual({
+      status: "consent-required",
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://legacy.example/v1",
+        model: "model-a",
+      },
+    });
+
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://new.example/v1",
+      model: "model-b",
+    }, undefined, "https://new.example/*");
+    await expect(repositories.llmSettings.getCredentialState()).resolves.toMatchObject({
+      status: "ready",
+      permissionOrigin: "https://new.example/*",
+      config: { model: "model-b" },
+    });
+  });
+
+  it("preserves exact LLM consent when only the model changes", async () => {
+    const { database, repositories } = createTestRepositories("llm-model-consent-test");
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "model-a",
+    }, { apiKey: "secret-a" }, "https://api.example.com/*");
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "model-b",
+    });
+
+    expect(await database.llmConfigs.get("active")).toMatchObject({
+      model: "model-b",
+      consentedOrigin: "https://api.example.com/*",
+    });
+    await expect(repositories.llmSettings.getCredentialState()).resolves.toMatchObject({ status: "ready" });
+  });
+
+  it("preserves hidden dictionary consent across public settings saves", async () => {
+    const { database, repositories } = createTestRepositories("dictionary-consent-test");
+    await repositories.settings.ensureDefaults();
+    await repositories.settings.recordDictionaryConsent("https://dict.youdao.com/*");
+    const current = await repositories.settings.get();
+    await repositories.settings.save({ ...current, themeMode: "dark" });
+
+    expect(await repositories.settings.hasDictionaryConsent("https://dict.youdao.com/*")).toBe(true);
+    expect(await database.settings.get("extension")).toMatchObject({
+      dictionaryConsentedOrigin: "https://dict.youdao.com/*",
+    });
+    expect(JSON.stringify(await repositories.settings.get())).not.toContain("dictionaryConsentedOrigin");
   });
 
   it("keeps the existing LLM secret when public configuration changes", async () => {
@@ -653,7 +725,7 @@ describe("local repositories", () => {
       provider: "openai-compatible",
       baseUrl: "https://api.example.com/v1",
       model: "model-a",
-    }, { apiKey: "secret-a" });
+    }, { apiKey: "secret-a" }, "https://api.example.com/*");
     await first.repositories.llmSettings.save({
       provider: "openai-compatible",
       baseUrl: "https://api.example.com/v1",
@@ -701,13 +773,13 @@ describe("local repositories", () => {
       baseUrl: "https://replacement.example/v1",
       model: "model-b",
     });
-    await expect(repositories.llmSettings.getCredentials()).resolves.toEqual({
+    await expect(repositories.llmSettings.getCredentialState()).resolves.toEqual({
+      status: "consent-required",
       config: {
         provider: "openai-compatible",
         baseUrl: "https://replacement.example/v1",
         model: "model-b",
       },
-      secret: { apiKey: "secret-a" },
     });
   });
 

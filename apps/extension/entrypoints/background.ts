@@ -62,6 +62,31 @@ export default defineBackground(() => {
     sendRuntime: (notification) => browser.runtime.sendMessage(notification),
     sendTab: (tabId, notification) => browser.tabs.sendMessage(tabId, notification),
   });
+  const notifyTranslationFieldReady = async (
+    requestId: string,
+    fieldId: string,
+    result: import("@salto/core").QueryFieldResult,
+  ) => {
+    const notification = {
+      type: "translation-field-ready" as const,
+      payload: { requestId, fieldId, result },
+    };
+    const tabs = await browser.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id) {
+        try {
+          await browser.tabs.sendMessage(tab.id, notification);
+        } catch {
+          // Tab might not have a content script, ignore
+        }
+      }
+    }
+    try {
+      await browser.runtime.sendMessage(notification);
+    } catch {
+      // No listeners, ignore
+    }
+  };
   const hasOriginPermission = (permissionOrigin: string) => {
     return browser.permissions.contains({ origins: [permissionOrigin] });
   };
@@ -115,6 +140,7 @@ export default defineBackground(() => {
     hasOriginPermission,
     prepareSettings,
     notifySettingsChanged,
+    notifyTranslationFieldReady,
     async testLlmConnection() {
       const credentials = await repositories.llmSettings.getCredentials();
       if (!credentials) {

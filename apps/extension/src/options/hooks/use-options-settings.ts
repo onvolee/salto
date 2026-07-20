@@ -30,6 +30,7 @@ export type LlmDraft = {
   readonly temperature: string;
   readonly apiKey: string;
   readonly hasApiKey: boolean;
+  readonly enableThinking: boolean;
 };
 
 export type ConnectionStatus =
@@ -50,6 +51,7 @@ const EMPTY_LLM_DRAFT: LlmDraft = {
   temperature: "",
   apiKey: "",
   hasApiKey: false,
+  enableThinking: false,
 };
 
 const EMPTY_PROMPT_ANALYSIS: PromptTemplateAnalysis = {
@@ -75,6 +77,7 @@ function draftFromConfig(
     temperature: config?.temperature?.toString() ?? "",
     apiKey: "",
     hasApiKey,
+    enableThinking: config?.enableThinking ?? false,
   };
 }
 
@@ -161,7 +164,7 @@ export function useOptionsSettings(dependencies: Dependencies = {}) {
     setSaveStatus("dirty");
   };
 
-  const updateLlm = <K extends keyof Pick<LlmDraft, "baseUrl" | "model" | "temperature" | "apiKey">>(
+  const updateLlm = <K extends keyof Pick<LlmDraft, "baseUrl" | "model" | "temperature" | "apiKey" | "enableThinking">>(
     key: K,
     value: LlmDraft[K],
   ) => {
@@ -194,6 +197,7 @@ export function useOptionsSettings(dependencies: Dependencies = {}) {
         baseUrl: llm.baseUrl,
         model: llm.model,
         ...(temperature === undefined ? {} : { temperature }),
+        enableThinking: llm.enableThinking,
       });
       if (!llm.hasApiKey && !llm.apiKey.trim()) {
         throw new OptionsLlmError("missing-api-key", "首次配置需要填写 API Key");
@@ -260,12 +264,7 @@ export function useOptionsSettings(dependencies: Dependencies = {}) {
   const testConnection = async () => {
     setConnectionStatus({ status: "testing", message: "正在测试连接..." });
     try {
-      if (llmDirtyRef.current || !storedConfigRef.current) {
-        await persistLlm();
-      } else {
-        const normalized = normalizeLlmPublicConfig(storedConfigRef.current);
-        await requireOriginPermission(normalized.permissionOrigin);
-      }
+      await persistLlm();
       await llmClient.testConnection();
       setConnectionStatus({ status: "success", message: "连接成功" });
     } catch (error) {

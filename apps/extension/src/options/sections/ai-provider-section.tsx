@@ -28,6 +28,7 @@ import {
 } from "salto-src/components/ui/input-group";
 import { Separator } from "salto-src/components/ui/separator";
 import { Spinner } from "salto-src/components/ui/spinner";
+import { Switch } from "salto-src/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -43,7 +44,7 @@ import type {
 
 type LlmDraftKey = keyof Pick<
   LlmDraft,
-  "apiKey" | "baseUrl" | "model" | "temperature"
+  "apiKey" | "baseUrl" | "model" | "temperature" | "enableThinking"
 >;
 
 type AiProviderSectionProps = {
@@ -221,6 +222,21 @@ export function AiProviderSection({
               value={llm.temperature}
             />
           </InputGroup>
+        </SettingsField>
+        <Separator />
+        <SettingsField
+          description="关闭可减少 Qwen3 / DeepSeek 等模型的响应延迟。非思考模型会忽略此参数。"
+          htmlFor="enable-thinking"
+          id="enable-thinking"
+          title="启用思考模式"
+        >
+          <Switch
+            aria-describedby={llmError ? AI_CONFIG_ERROR_ID : undefined}
+            checked={llm.enableThinking}
+            id="enable-thinking"
+            name="enable-thinking"
+            onCheckedChange={(checked) => updateLlm("enableThinking", checked)}
+          />
         </SettingsField>
       </FieldGroup>
 

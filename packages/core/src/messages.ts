@@ -119,14 +119,37 @@ export type ExtensionSettingsChangedNotification = {
   readonly payload: ExtensionSettings;
 };
 
-export type ExtensionNotification = ExtensionSettingsChangedNotification;
+export type TranslationFieldReadyNotification = {
+  readonly type: "translation-field-ready";
+  readonly payload: {
+    readonly requestId: string;
+    readonly fieldId: string;
+    readonly result: QueryFieldResult;
+  };
+};
+
+export type ExtensionNotification =
+  | ExtensionSettingsChangedNotification
+  | TranslationFieldReadyNotification;
 
 export function isExtensionNotification(value: unknown): value is ExtensionNotification {
-  return typeof value === "object"
-    && value !== null
-    && !Array.isArray(value)
-    && (value as { readonly type?: unknown }).type === "extension-settings-changed"
-    && isValidExtensionSettings((value as { readonly payload?: unknown }).payload);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const type = (value as { readonly type?: unknown }).type;
+  if (type === "extension-settings-changed") {
+    return isValidExtensionSettings((value as { readonly payload?: unknown }).payload);
+  }
+  if (type === "translation-field-ready") {
+    const payload = (value as { readonly payload?: unknown }).payload;
+    return typeof payload === "object"
+      && payload !== null
+      && typeof (payload as { readonly requestId?: unknown }).requestId === "string"
+      && typeof (payload as { readonly fieldId?: unknown }).fieldId === "string"
+      && typeof (payload as { readonly result?: unknown }).result === "object"
+      && (payload as { readonly result?: unknown }).result !== null;
+  }
+  return false;
 }
 
 export type ExtensionRequest =

@@ -3,6 +3,7 @@ export interface LlmPublicConfig {
   readonly baseUrl: string;
   readonly model: string;
   readonly temperature?: number;
+  readonly enableThinking?: boolean;
 }
 
 export interface LlmSecret {

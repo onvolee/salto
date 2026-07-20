@@ -149,7 +149,25 @@ export function SelectionPopupApp({
         return;
       }
       if (response.ok && response.type === "translate-selection") {
-        setTranslation({ status: "complete", data: response.data });
+        setTranslation((prev) => {
+          if (prev.status === "streaming") {
+            const streamingFieldIds = new Set(prev.fields.map((f) => f.fieldId));
+            const mergedFields = [
+              ...prev.fields,
+              ...response.data.fields.filter((f) => !streamingFieldIds.has(f.fieldId)),
+            ];
+            return {
+              status: "complete",
+              data: {
+                templateId: response.data.templateId,
+                templateName: response.data.templateName,
+                schema: response.data.schema,
+                fields: mergedFields,
+              },
+            };
+          }
+          return { status: "complete", data: response.data };
+        });
       } else {
         setTranslation({
           status: "request-error",
@@ -240,6 +258,61 @@ export function SelectionPopupApp({
       requestTranslation(promptContext, template, generation);
     }
   }, [promptContext, requestTranslation]);
+
+  useEffect(() => {
+    if (typeof browser === "undefined" || !browser?.runtime?.onMessage) return;
+    const handleMessage = (message: unknown) => {
+      if (
+        typeof message === "object"
+        && message !== null
+        && (message as { type?: string }).type === "translation-field-ready"
+      ) {
+        const payload = (message as { payload?: {
+          requestId?: string;
+          fieldId?: string;
+          result?: import("@salto/core").QueryFieldResult;
+        } }).payload;
+        if (
+          !payload
+          || typeof payload.requestId !== "string"
+          || typeof payload.fieldId !== "string"
+          || !payload.result
+        ) {
+          return;
+        }
+        if (translationRequestRef.current !== payload.requestId) {
+          return;
+        }
+        setTranslation((prev) => {
+          if (prev.status === "streaming") {
+            const existingFields = prev.fields.filter((f) => f.fieldId !== payload.fieldId);
+            return {
+              ...prev,
+              fields: [...existingFields, payload.result!],
+            };
+          }
+          if (prev.status === "loading") {
+            const template = templateSnapshotRef.current;
+            if (!template) return prev;
+            const schema = template.fields
+              .filter((field) => field.enabled)
+              .toSorted((left, right) => left.order - right.order)
+              .map(({ id, label }) => ({ id, label }));
+            return {
+              status: "streaming" as const,
+              templateId: template.id,
+              templateName: template.name,
+              schema,
+              fields: [payload.result!],
+            };
+          }
+          return prev;
+        });
+      }
+    };
+    browser.runtime.onMessage.addListener(handleMessage);
+    return () => browser.runtime.onMessage.removeListener(handleMessage);
+  }, []);
 
   const saveSelection = useCallback(() => {
     if (!session || !promptContext || saveState === "saving" || saveState === "saved") {

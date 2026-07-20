@@ -282,6 +282,15 @@ describe("OptionsApp", () => {
       hasApiKey: true,
       promptAnalysis: { referencedVariables: [], warnings: [] },
     });
+    vi.mocked(browserOptionsLlmClient.saveConfig).mockResolvedValueOnce({
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://api.example.com/v1",
+        model: "model-a",
+        enableThinking: false,
+      },
+      hasApiKey: true,
+    });
     vi.mocked(browserOptionsLlmClient.testConnection).mockResolvedValueOnce(
       undefined,
     );
@@ -305,6 +314,15 @@ describe("OptionsApp", () => {
       },
       hasApiKey: true,
       promptAnalysis: { referencedVariables: [], warnings: [] },
+    });
+    vi.mocked(browserOptionsLlmClient.saveConfig).mockResolvedValueOnce({
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://api.example.com/v1",
+        model: "model-a",
+        enableThinking: false,
+      },
+      hasApiKey: true,
     });
     vi.mocked(browserOptionsLlmClient.testConnection).mockRejectedValueOnce(
       new OptionsLlmError("authentication", "Authentication failed"),

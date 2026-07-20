@@ -1,4 +1,5 @@
 export * from "./dictionary/client";
+export * from "./context-boundaries";
 export * from "./dictionary/errors";
 export * from "./dictionary/types";
 export * from "./learning/types";

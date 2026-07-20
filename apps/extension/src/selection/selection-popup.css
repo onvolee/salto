@@ -167,7 +167,7 @@
 
 .salto-selection-panel__loading-field {
   display: block;
-  width: min(180px, 70%);
+  width: min(220px, 90%);
   min-height: 1.125rem;
   color: var(--salto-muted-foreground);
   background: var(--salto-muted);

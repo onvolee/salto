@@ -1,6 +1,9 @@
-import type { PromptContext } from "@salto/core";
+import {
+  PROMPT_CONTEXT_LIMITS,
+  normalizePromptContext,
+  type PromptContext,
+} from "@salto/core";
 
-const MAX_WEB_CONTENT_LENGTH = 2000;
 const BLOCK_SELECTOR = "p, li, blockquote";
 const EXCLUDED_SELECTOR = [
   "nav",
@@ -157,12 +160,12 @@ function getReadableBodyContent(document: Document, range: Range, selectedBlock:
 }
 
 function cropAround(text: string, selectionOffset: number): string {
-  if (text.length <= MAX_WEB_CONTENT_LENGTH) {
+  if (text.length <= PROMPT_CONTEXT_LIMITS.webContent) {
     return text;
   }
-  const idealStart = selectionOffset - Math.floor(MAX_WEB_CONTENT_LENGTH / 2);
-  const start = Math.min(Math.max(0, idealStart), text.length - MAX_WEB_CONTENT_LENGTH);
-  return text.slice(start, start + MAX_WEB_CONTENT_LENGTH);
+  const idealStart = selectionOffset - Math.floor(PROMPT_CONTEXT_LIMITS.webContent / 2);
+  const start = Math.min(Math.max(0, idealStart), text.length - PROMPT_CONTEXT_LIMITS.webContent);
+  return text.slice(start, start + PROMPT_CONTEXT_LIMITS.webContent);
 }
 
 function getPageUrl(location: Location): string {
@@ -185,7 +188,7 @@ export function extractPromptContext(range: Range, targetLanguage: string): Prom
   const bodyContent = getReadableBodyContent(ownerDocument, range, block);
   const webContent = cropAround(bodyContent.text, bodyContent.selectionOffset);
 
-  return {
+  return normalizePromptContext({
     selection,
     sentence: getSentence(block, range),
     paragraphs: getNearbyParagraphs(block, blocks),
@@ -193,5 +196,5 @@ export function extractPromptContext(range: Range, targetLanguage: string): Prom
     webTitle: normalizeText(ownerDocument.title),
     webUrl: getPageUrl(ownerDocument.location),
     webContent
-  };
+  });
 }

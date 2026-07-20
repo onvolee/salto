@@ -23,7 +23,7 @@ export default defineContentScript({
       },
       subscribeSettings(listener) {
         const handleMessage = (message: unknown) => {
-          if (isExtensionNotification(message)) {
+          if (isExtensionNotification(message) && message.type === "extension-settings-changed") {
             listener(message.payload);
           }
         };

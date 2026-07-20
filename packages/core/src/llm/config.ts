@@ -84,6 +84,7 @@ export function normalizeLlmPublicConfig(
     baseUrl,
     model,
     ...(value.temperature === undefined ? {} : { temperature: value.temperature }),
+    ...(value.enableThinking === undefined ? {} : { enableThinking: value.enableThinking }),
   };
 
   return {

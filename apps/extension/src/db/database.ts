@@ -14,10 +14,14 @@ import type {
 
 export type StoredExtensionSettings = ExtensionSettings & {
   readonly id: "extension";
+  readonly dictionaryConsentedOrigin?: string;
   readonly legacySettingsMigrationCompleted?: true;
   readonly activeQueryTemplateRecovery?: "active-template-unavailable";
 };
-export type StoredLlmConfig = LlmPublicConfig & { readonly id: "active" };
+export type StoredLlmConfig = LlmPublicConfig & {
+  readonly id: "active";
+  readonly consentedOrigin?: string;
+};
 export type StoredLlmSecret = LlmSecret & { readonly id: "active" };
 
 export class SaltoDatabase extends Dexie {

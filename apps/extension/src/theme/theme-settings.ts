@@ -58,7 +58,7 @@ export function subscribeToSettings(onChange: (settings: SaltoSettings) => void)
   }
 
   const listener = (message: unknown) => {
-    if (isExtensionNotification(message)) {
+    if (isExtensionNotification(message) && message.type === "extension-settings-changed") {
       onChange(message.payload);
     }
   };

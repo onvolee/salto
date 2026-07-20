@@ -116,11 +116,17 @@ type TemplateNameEditorProps = {
   readonly onChange: (name: string) => void;
 };
 
-function TemplateNameEditor({ draft, error, disabled, onChange }: TemplateNameEditorProps) {
+function TemplateNameEditor({
+  draft,
+  error,
+  disabled,
+  onChange,
+}: TemplateNameEditorProps) {
   const form = useForm({
     defaultValues: { name: draft.name },
     validators: {
-      onChange: ({ value }) => value.name.trim() ? undefined : "模板名称不能为空",
+      onChange: ({ value }) =>
+        value.name.trim() ? undefined : "模板名称不能为空",
     },
   });
 
@@ -134,9 +140,11 @@ function TemplateNameEditor({ draft, error, disabled, onChange }: TemplateNameEd
         <Field data-invalid={Boolean(error || field.state.meta.errors.length)}>
           <FieldLabel htmlFor="query-template-name">模板名称</FieldLabel>
           <Input
-            aria-describedby={error || field.state.meta.errors[0]
-              ? "query-template-name-error"
-              : undefined}
+            aria-describedby={
+              error || field.state.meta.errors[0]
+                ? "query-template-name-error"
+                : undefined
+            }
             aria-invalid={Boolean(error || field.state.meta.errors.length)}
             disabled={disabled}
             id="query-template-name"
@@ -155,8 +163,12 @@ function TemplateNameEditor({ draft, error, disabled, onChange }: TemplateNameEd
   );
 }
 
-function transformStyle(transform: { readonly x: number; readonly y: number } | null): string | undefined {
-  return transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined;
+function transformStyle(
+  transform: { readonly x: number; readonly y: number } | null,
+): string | undefined {
+  return transform
+    ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+    : undefined;
 }
 
 const DICTIONARY_FIELDS = [
@@ -200,7 +212,9 @@ function FieldEditorDialog({
 }: FieldEditorDialogProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(field);
-  const [localErrors, setLocalErrors] = useState<Readonly<Record<string, string>>>({});
+  const [localErrors, setLocalErrors] = useState<
+    Readonly<Record<string, string>>
+  >({});
   const [editedKeys, setEditedKeys] = useState<readonly string[]>([]);
   const instructionRef = useRef<HTMLTextAreaElement>(null);
   const pendingSelectionRef = useRef<number | null>(null);
@@ -225,9 +239,11 @@ function FieldEditorDialog({
   const updateDraft = (update: Partial<TemplateFieldDraft>) => {
     const keys = Object.keys(update);
     setDraft((current) => ({ ...current, ...update }));
-    setLocalErrors((current) => Object.fromEntries(
-      Object.entries(current).filter(([key]) => !keys.includes(key)),
-    ));
+    setLocalErrors((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([key]) => !keys.includes(key)),
+      ),
+    );
     setEditedKeys((current) => [...new Set([...current, ...keys])]);
   };
 
@@ -240,33 +256,44 @@ function FieldEditorDialog({
     if (!validation.success) {
       const nextErrors = validation.errors.field[field.id] ?? {};
       setLocalErrors(nextErrors);
-      const firstError = ["label", "dictionaryField", "type", "instruction"]
-        .find((key) => nextErrors[key]);
-      const control = firstError === "dictionaryField" || firstError === "type"
-        ? "dictionary"
-        : firstError;
-      if (control) document.getElementById(`${field.id}-edit-${control}`)?.focus();
+      const firstError = [
+        "label",
+        "dictionaryField",
+        "type",
+        "instruction",
+      ].find((key) => nextErrors[key]);
+      const control =
+        firstError === "dictionaryField" || firstError === "type"
+          ? "dictionary"
+          : firstError;
+      if (control)
+        document.getElementById(`${field.id}-edit-${control}`)?.focus();
       return;
     }
-    if (draft.source !== field.source && !onChangeSource(field.id, draft.source)) return;
+    if (
+      draft.source !== field.source &&
+      !onChangeSource(field.id, draft.source)
+    )
+      return;
     onUpdate(field.id, draft);
     setOpen(false);
   };
 
-  const error = (key: string) => localErrors[key]
-    ?? (editedKeys.includes(key) ? undefined : fieldError(errors, field.id, key));
+  const error = (key: string) =>
+    localErrors[key] ??
+    (editedKeys.includes(key) ? undefined : fieldError(errors, field.id, key));
   const labelError = error("label");
   const instructionError = error("instruction");
   const dictionaryError = error("dictionaryField");
   const typeError = error("type");
-  const variableWarnings = draft.source === "llm"
-    ? promptWarnings(draft.instruction)
-    : [];
+  const variableWarnings =
+    draft.source === "llm" ? promptWarnings(draft.instruction) : [];
   const instructionErrorId = `${field.id}-edit-instruction-error`;
   const instructionWarningId = `${field.id}-edit-instruction-warning`;
 
   const insertVariable = (variable: string) => {
-    if (!PROMPT_CONTEXT_VARIABLES.some((candidate) => candidate === variable)) return;
+    if (!PROMPT_CONTEXT_VARIABLES.some((candidate) => candidate === variable))
+      return;
     const textarea = instructionRef.current;
     const instruction = textarea?.value ?? draft.instruction;
     const start = textarea?.selectionStart ?? instruction.length;
@@ -281,16 +308,20 @@ function FieldEditorDialog({
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogTrigger
-        render={(
+        render={
           <Button
             aria-label={`编辑${field.label || "字段"}`}
             size="icon-sm"
             type="button"
             variant="ghost"
           />
-        )}
+        }
       >
-        <HugeiconsIcon aria-hidden="true" icon={PencilEdit02Icon} strokeWidth={2} />
+        <HugeiconsIcon
+          aria-hidden="true"
+          icon={PencilEdit02Icon}
+          strokeWidth={2}
+        />
       </DialogTrigger>
       <DialogContent>
         <form onSubmit={handleSubmit}>
@@ -303,7 +334,9 @@ function FieldEditorDialog({
             <Field data-invalid={Boolean(labelError)}>
               <FieldLabel htmlFor={`${field.id}-edit-label`}>Label</FieldLabel>
               <Input
-                aria-describedby={labelError ? `${field.id}-edit-label-error` : undefined}
+                aria-describedby={
+                  labelError ? `${field.id}-edit-label-error` : undefined
+                }
                 aria-invalid={Boolean(labelError)}
                 autoComplete="off"
                 id={`${field.id}-edit-label`}
@@ -311,7 +344,9 @@ function FieldEditorDialog({
                 onChange={(event) => updateDraft({ label: event.target.value })}
                 value={draft.label}
               />
-              <FieldError id={`${field.id}-edit-label-error`}>{labelError}</FieldError>
+              <FieldError id={`${field.id}-edit-label-error`}>
+                {labelError}
+              </FieldError>
             </Field>
 
             <Field>
@@ -326,7 +361,13 @@ function FieldEditorDialog({
                     setDraft((current) => switchDraftSource(current, value));
                     setLocalErrors({});
                     setEditedKeys((current) => [
-                      ...new Set([...current, "source", "type", "instruction", "dictionaryField"]),
+                      ...new Set([
+                        ...current,
+                        "source",
+                        "type",
+                        "instruction",
+                        "dictionaryField",
+                      ]),
                     ]);
                   }
                 }}
@@ -349,15 +390,21 @@ function FieldEditorDialog({
               <Field data-invalid={Boolean(typeError)}>
                 <FieldLabel htmlFor={`${field.id}-edit-type`}>类型</FieldLabel>
                 <Select
-                  items={[{ label: "文本", value: "text" }, { label: "列表", value: "list" }]}
+                  items={[
+                    { label: "文本", value: "text" },
+                    { label: "列表", value: "list" },
+                  ]}
                   onValueChange={(value) => {
-                    if (value === "text" || value === "list") updateDraft({ type: value });
+                    if (value === "text" || value === "list")
+                      updateDraft({ type: value });
                   }}
                   name="type"
                   value={draft.type}
                 >
                   <SelectTrigger
-                    aria-describedby={typeError ? `${field.id}-edit-type-error` : undefined}
+                    aria-describedby={
+                      typeError ? `${field.id}-edit-type-error` : undefined
+                    }
                     aria-invalid={Boolean(typeError)}
                     id={`${field.id}-edit-type`}
                   >
@@ -370,22 +417,39 @@ function FieldEditorDialog({
                     </SelectGroup>
                   </SelectContent>
                 </Select>
-                <FieldError id={`${field.id}-edit-type-error`}>{typeError}</FieldError>
+                <FieldError id={`${field.id}-edit-type-error`}>
+                  {typeError}
+                </FieldError>
               </Field>
             ) : (
               <Field data-invalid={Boolean(dictionaryError || typeError)}>
-                <FieldLabel htmlFor={`${field.id}-edit-dictionary`}>词典字段</FieldLabel>
+                <FieldLabel htmlFor={`${field.id}-edit-dictionary`}>
+                  词典字段
+                </FieldLabel>
                 <Select
-                  items={DICTIONARY_FIELDS.map(({ label, value }) => ({ label, value }))}
+                  items={DICTIONARY_FIELDS.map(({ label, value }) => ({
+                    label,
+                    value,
+                  }))}
                   onValueChange={(value) => {
-                    const option = DICTIONARY_FIELDS.find((candidate) => candidate.value === value);
-                    if (option) updateDraft({ dictionaryField: option.value, type: option.type });
+                    const option = DICTIONARY_FIELDS.find(
+                      (candidate) => candidate.value === value,
+                    );
+                    if (option)
+                      updateDraft({
+                        dictionaryField: option.value,
+                        type: option.type,
+                      });
                   }}
                   name="dictionaryField"
                   value={draft.dictionaryField}
                 >
                   <SelectTrigger
-                    aria-describedby={dictionaryError || typeError ? `${field.id}-edit-dictionary-error` : undefined}
+                    aria-describedby={
+                      dictionaryError || typeError
+                        ? `${field.id}-edit-dictionary-error`
+                        : undefined
+                    }
                     aria-invalid={Boolean(dictionaryError || typeError)}
                     id={`${field.id}-edit-dictionary`}
                   >
@@ -394,21 +458,32 @@ function FieldEditorDialog({
                   <SelectContent>
                     <SelectGroup>
                       {DICTIONARY_FIELDS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
                       ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
-                <FieldDescription>类型：{draft.type === "list" ? "列表" : "文本"}</FieldDescription>
-                <FieldError id={`${field.id}-edit-dictionary-error`}>{dictionaryError ?? typeError}</FieldError>
+                <FieldDescription>
+                  类型：{draft.type === "list" ? "列表" : "文本"}
+                </FieldDescription>
+                <FieldError id={`${field.id}-edit-dictionary-error`}>
+                  {dictionaryError ?? typeError}
+                </FieldError>
               </Field>
             )}
 
             {draft.source === "llm" ? (
               <Field data-invalid={Boolean(instructionError)}>
-                <FieldLabel htmlFor={`${field.id}-edit-instruction`}>Instruction</FieldLabel>
+                <FieldLabel htmlFor={`${field.id}-edit-instruction`}>
+                  Instruction
+                </FieldLabel>
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="text-xs font-medium" htmlFor={`${field.id}-edit-variable`}>
+                  <label
+                    className="text-xs font-medium"
+                    htmlFor={`${field.id}-edit-variable`}
+                  >
                     插入变量
                   </label>
                   <select
@@ -427,20 +502,28 @@ function FieldEditorDialog({
                   </select>
                 </div>
                 <Textarea
-                  aria-describedby={[
-                    instructionError ? instructionErrorId : null,
-                    variableWarnings.length > 0 ? instructionWarningId : null,
-                  ].filter(Boolean).join(" ") || undefined}
+                  aria-describedby={
+                    [
+                      instructionError ? instructionErrorId : null,
+                      variableWarnings.length > 0 ? instructionWarningId : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
                   aria-invalid={Boolean(instructionError)}
                   autoComplete="off"
                   id={`${field.id}-edit-instruction`}
                   name="instruction"
-                  onChange={(event) => updateDraft({ instruction: event.target.value })}
+                  onChange={(event) =>
+                    updateDraft({ instruction: event.target.value })
+                  }
                   ref={instructionRef}
                   rows={5}
                   value={draft.instruction}
                 />
-                <FieldError id={instructionErrorId}>{instructionError}</FieldError>
+                <FieldError id={instructionErrorId}>
+                  {instructionError}
+                </FieldError>
                 {variableWarnings.length > 0 ? (
                   <Alert id={instructionWarningId} role="note">
                     <HugeiconsIcon
@@ -451,7 +534,10 @@ function FieldEditorDialog({
                     <AlertTitle>变量警告（仍可保存）</AlertTitle>
                     <AlertDescription>
                       {variableWarnings.map((warning) => (
-                        <span className="block" key={`${warning.start}:${warning.end}`}>
+                        <span
+                          className="block"
+                          key={`${warning.start}:${warning.end}`}
+                        >
                           {warning.kind === "unknown"
                             ? `未知变量：{{${warning.variable}}}`
                             : `畸形变量：${warning.raw}（${MALFORMED_REASON_LABELS[warning.reason]}）`}
@@ -465,7 +551,9 @@ function FieldEditorDialog({
           </FieldGroup>
 
           <DialogFooter>
-            <DialogClose render={<Button type="button" variant="outline" />}>取消</DialogClose>
+            <DialogClose render={<Button type="button" variant="outline" />}>
+              取消
+            </DialogClose>
             <Button type="submit">应用</Button>
           </DialogFooter>
         </form>
@@ -491,9 +579,8 @@ function SortableFieldRow({
     transition: sortable.transition,
   };
   const hasErrors = Boolean(errors.field[field.id]);
-  const variableWarningCount = field.source === "llm"
-    ? promptWarnings(field.instruction).length
-    : 0;
+  const variableWarningCount =
+    field.source === "llm" ? promptWarnings(field.instruction).length : 0;
 
   return (
     <li
@@ -510,20 +597,36 @@ function SortableFieldRow({
           aria-label={`拖动字段${field.label}`}
           title="拖动字段"
         >
-          <HugeiconsIcon aria-hidden="true" icon={DragDropVerticalIcon} strokeWidth={2} />
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={DragDropVerticalIcon}
+            strokeWidth={2}
+          />
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="max-w-full truncate text-xs font-medium">{field.label || `字段 ${index + 1}`}</span>
-            <Badge variant="secondary">{field.source === "llm" ? "LLM" : "词典"}</Badge>
-            <Badge variant="outline">{field.type === "list" ? "列表" : "文本"}</Badge>
+            <span className="max-w-full truncate text-xs font-medium">
+              {field.label || `字段 ${index + 1}`}
+            </span>
+            <Badge variant="secondary">
+              {field.source === "llm" ? "LLM" : "词典"}
+            </Badge>
+            <Badge variant="outline">
+              {field.type === "list" ? "列表" : "文本"}
+            </Badge>
           </div>
           {hasErrors ? (
-            <p className="mt-1 text-xs text-destructive" data-field-error>字段配置有误</p>
+            <p className="mt-1 text-xs text-destructive" data-field-error>
+              字段配置有误
+            </p>
           ) : null}
           {variableWarningCount > 0 ? (
             <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-              <HugeiconsIcon aria-hidden="true" icon={InformationCircleIcon} strokeWidth={2} />
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={InformationCircleIcon}
+                strokeWidth={2}
+              />
               {variableWarningCount} 个变量警告（仍可保存）
             </p>
           ) : null}
@@ -547,7 +650,11 @@ function SortableFieldRow({
           type="button"
           variant="ghost"
         >
-          <HugeiconsIcon aria-hidden="true" icon={ArrowUp01Icon} strokeWidth={2} />
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={ArrowUp01Icon}
+            strokeWidth={2}
+          />
         </Button>
         <Button
           aria-label={`下移${field.label || "字段"}`}
@@ -557,7 +664,11 @@ function SortableFieldRow({
           type="button"
           variant="ghost"
         >
-          <HugeiconsIcon aria-hidden="true" icon={ArrowDown01Icon} strokeWidth={2} />
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={ArrowDown01Icon}
+            strokeWidth={2}
+          />
         </Button>
         <Button
           aria-label={`删除${field.label || "字段"}`}
@@ -566,7 +677,11 @@ function SortableFieldRow({
           type="button"
           variant="destructive"
         >
-          <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} strokeWidth={2} />
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={Delete02Icon}
+            strokeWidth={2}
+          />
         </Button>
       </div>
     </li>
@@ -586,7 +701,9 @@ export function SelectionSection({
 }: SelectionSectionProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
   const fields = editor.draft?.fields ?? [];
   const isSaving = editor.status === "saving";
@@ -599,15 +716,26 @@ export function SelectionSection({
   };
 
   return (
-    <section aria-label="划词翻译模板" className="flex flex-col gap-5 py-6" data-od-id="selection-section">
+    <section
+      aria-label="划词翻译模板"
+      className="flex flex-col gap-5 py-6"
+      data-od-id="selection-section"
+    >
       <div className="flex flex-wrap items-end gap-2">
         <Field className="min-w-56 flex-1">
           <FieldLabel htmlFor="query-template">当前模板</FieldLabel>
-          <Select items={editor.templates.map((template) => ({ label: template.name, value: template.id }))} onValueChange={(value) => {
-            if (!value) return;
-            editor.selectTemplate(value);
-            onActiveTemplateChange(value);
-          }} value={editor.selectedTemplateId ?? ""}>
+          <Select
+            items={editor.templates.map((template) => ({
+              label: template.name,
+              value: template.id,
+            }))}
+            onValueChange={(value) => {
+              if (!value) return;
+              editor.selectTemplate(value);
+              onActiveTemplateChange(value);
+            }}
+            value={editor.selectedTemplateId ?? ""}
+          >
             <SelectTrigger aria-label="当前翻译模板" id="query-template">
               <SelectValue placeholder="选择模板" />
             </SelectTrigger>
@@ -616,19 +744,43 @@ export function SelectionSection({
                 {editor.templates.map((template) => (
                   <SelectItem key={template.id} value={template.id}>
                     <span>{template.name}</span>
-                    {activeTemplateId === template.id ? <Badge variant="success">当前</Badge> : null}
+                    {activeTemplateId === template.id ? (
+                      <Badge variant="success">当前</Badge>
+                    ) : null}
                   </SelectItem>
                 ))}
               </SelectGroup>
             </SelectContent>
           </Select>
         </Field>
-        <Button onClick={editor.startNewTemplate} type="button" variant="outline">
-          <HugeiconsIcon aria-hidden="true" data-icon="inline-start" icon={Add01Icon} strokeWidth={2} />
+        <Button
+          onClick={editor.startNewTemplate}
+          type="button"
+          variant="outline"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            data-icon="inline-start"
+            icon={Add01Icon}
+            strokeWidth={2}
+          />
           新建模板
         </Button>
-        <Button disabled={!editor.selectedTemplateId || isSaving} onClick={() => { if (editor.selectedTemplateId) void editor.copyTemplate(editor.selectedTemplateId); }} type="button" variant="outline">
-          <HugeiconsIcon aria-hidden="true" data-icon="inline-start" icon={Copy01Icon} strokeWidth={2} />
+        <Button
+          disabled={!editor.selectedTemplateId || isSaving}
+          onClick={() => {
+            if (editor.selectedTemplateId)
+              void editor.copyTemplate(editor.selectedTemplateId);
+          }}
+          type="button"
+          variant="outline"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            data-icon="inline-start"
+            icon={Copy01Icon}
+            strokeWidth={2}
+          />
           复制
         </Button>
       </div>
@@ -639,24 +791,44 @@ export function SelectionSection({
             disabled={editor.isSystemTemplate}
             draft={editor.draft}
             error={editor.errors.name}
-            onChange={(name) => editor.updateDraft((current) => ({ ...current, name }))}
+            onChange={(name) =>
+              editor.updateDraft((current) => ({ ...current, name }))
+            }
           />
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <FieldTitle>模板字段</FieldTitle>
-              <p className="mt-1 text-xs text-muted-foreground">{fields.length} 个字段 · 至少保留一个已启用字段</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {fields.length} 个字段 · 至少保留一个已启用字段
+              </p>
             </div>
-            <Button disabled={editor.isSystemTemplate} onClick={editor.addField} type="button" variant="outline">
-              <HugeiconsIcon aria-hidden="true" data-icon="inline-start" icon={Add01Icon} strokeWidth={2} />
+            <Button
+              disabled={editor.isSystemTemplate}
+              onClick={editor.addField}
+              type="button"
+              variant="outline"
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                data-icon="inline-start"
+                icon={Add01Icon}
+                strokeWidth={2}
+              />
               添加字段
             </Button>
           </div>
           <FieldError>{editor.errors.fields}</FieldError>
 
           <DndContext onDragEnd={handleDragEnd} sensors={sensors}>
-            <SortableContext items={fields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
-              <ol aria-label="翻译模板字段" className="flex list-none flex-col gap-3 p-0">
+            <SortableContext
+              items={fields.map((field) => field.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ol
+                aria-label="翻译模板字段"
+                className="flex list-none flex-col gap-3 p-0"
+              >
                 {fields.map((field, index) => (
                   <SortableFieldRow
                     errors={editor.errors}
@@ -676,27 +848,61 @@ export function SelectionSection({
           </DndContext>
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
-            <div aria-live="polite" className="text-xs text-muted-foreground" role="status">
+            <div
+              aria-live="polite"
+              className="text-xs text-muted-foreground"
+              role="status"
+            >
               {editor.message}
             </div>
             <div className="flex gap-2">
-              <Button disabled={isSaving || editor.isSystemTemplate} onClick={editor.cancelDraft} type="button" variant="ghost">
-                <HugeiconsIcon aria-hidden="true" data-icon="inline-start" icon={Refresh01Icon} strokeWidth={2} />
+              <Button
+                disabled={isSaving || editor.isSystemTemplate}
+                onClick={editor.cancelDraft}
+                type="button"
+                variant="ghost"
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  data-icon="inline-start"
+                  icon={Refresh01Icon}
+                  strokeWidth={2}
+                />
                 取消
               </Button>
-              <Button disabled={isSaving || editor.isSystemTemplate} onClick={() => void editor.saveDraft()} type="button">
-                <HugeiconsIcon aria-hidden="true" data-icon="inline-start" icon={FloppyDiskIcon} strokeWidth={2} />
+              <Button
+                disabled={isSaving || editor.isSystemTemplate}
+                onClick={() => void editor.saveDraft()}
+                type="button"
+              >
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  data-icon="inline-start"
+                  icon={FloppyDiskIcon}
+                  strokeWidth={2}
+                />
                 {isSaving ? "保存中" : "保存模板"}
               </Button>
               <Button
                 aria-label={`删除模板${editor.draft.name}`}
-                disabled={isSaving || editor.isSystemTemplate || !editor.selectedTemplateId}
-                onClick={() => { if (editor.selectedTemplateId) void editor.deleteTemplate(editor.selectedTemplateId); }}
+                disabled={
+                  isSaving ||
+                  editor.isSystemTemplate ||
+                  !editor.selectedTemplateId
+                }
+                onClick={() => {
+                  if (editor.selectedTemplateId)
+                    void editor.deleteTemplate(editor.selectedTemplateId);
+                }}
                 size="icon"
                 type="button"
                 variant="destructive"
               >
-                <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} strokeWidth={2} />
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={Delete02Icon}
+                  strokeWidth={2}
+                />
               </Button>
             </div>
           </div>

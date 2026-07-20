@@ -3,6 +3,7 @@ import type {
   PromptContext,
   QueryFieldResult,
 } from "../query-template/types";
+import { normalizePromptContext } from "../context-boundaries";
 import type { LlmCompletionField } from "./types";
 import type {
   PromptContextVariable,
@@ -168,10 +169,7 @@ export function renderLlmQueryFields(
   fields: readonly LlmQuerySchemaField[],
   context: PromptContext,
 ): RenderedLlmQuery {
-  const boundedContext: PromptContext = {
-    ...context,
-    webContent: context.webContent.slice(0, 2000),
-  };
+  const boundedContext = normalizePromptContext(context);
   const renderedFields: LlmCompletionField[] = [];
   const failures: QueryFieldResult[] = [];
   const referenced = new Set<PromptContextVariable>();

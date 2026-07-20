@@ -313,6 +313,7 @@ describe("background message boundary", () => {
       snapshot,
       { ...context, targetLanguage: "ja-JP" },
       expect.any(AbortSignal),
+      expect.any(Function),
     );
   });
 
@@ -648,6 +649,65 @@ describe("background message boundary", () => {
     expect(JSON.stringify(response)).not.toContain("do-not-echo");
   });
 
+  it.each([
+    ["selection", 501],
+    ["sentence", 1001],
+    ["paragraphs", 2001],
+    ["webTitle", 301],
+    ["webUrl", 2049],
+    ["webContent", 2001],
+  ] as const)("rejects overlong %s before the translation client", async (key, length) => {
+    const { settings } = createServices();
+    const queryExecutor = { execute: vi.fn() };
+    const services = createBackgroundServices({
+      repositories: { settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor,
+    });
+
+    await expect(services.handleMessage({
+      ...translateRequest,
+      payload: {
+        ...translateRequest.payload,
+        context: { ...context, [key]: "x".repeat(length) },
+      },
+    }, { source: "content-script" })).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-payload", message: "Invalid extension message payload" },
+    });
+    expect(queryExecutor.execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["sentence", 1001],
+    ["paragraphs", 2001],
+    ["pageTitle", 301],
+    ["pageUrl", 2049],
+  ] as const)("rejects overlong saved context %s before persistence", async (key, length) => {
+    const { services, saveVocabulary } = createServices();
+    const payload = {
+      term: "bank",
+      language: "en",
+      context: {
+        sentence: "sentence",
+        paragraphs: "paragraphs",
+        pageTitle: "title",
+        pageUrl: "https://example.com",
+        [key]: "x".repeat(length),
+      },
+    };
+
+    await expect(services.handleMessage(
+      { type: "save-vocabulary", payload },
+      { source: "content-script" },
+    )).resolves.toEqual({
+      ok: false,
+      error: { code: "invalid-payload", message: "Invalid extension message payload" },
+    });
+    expect(saveVocabulary.save).not.toHaveBeenCalled();
+  });
+
   it("keeps template management behind the extension-page boundary and validates payloads", async () => {
     const created = { ...template, id: "user-1", name: "User template" };
     const templates = {
@@ -963,7 +1023,7 @@ describe("background message boundary", () => {
       provider: "openai-compatible",
       baseUrl: "https://api.example.com/v1",
       model: "model-a",
-    }, { apiKey: "secret-a" });
+    }, { apiKey: "secret-a" }, "https://api.example.com/*");
   });
 
   it("cancels the matching in-flight translation", async () => {
