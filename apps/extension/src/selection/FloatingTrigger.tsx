@@ -1,4 +1,4 @@
-import { TranslateIcon } from "@hugeicons/core-free-icons";
+import { BubbleChatTranslateFreeIcons } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { PointerEventHandler, Ref } from "react";
 
@@ -24,9 +24,11 @@ export function FloatingTrigger({ position, triggerRef, onOpen, onPointerDown }:
       size="icon-lg"
       style={{ left: position.x, top: position.y }}
       title="Open selection panel"
-      type="button"
+      variant="outline"
+      // type="button"
     >
-      <HugeiconsIcon aria-hidden="true" icon={TranslateIcon} size={16} strokeWidth={1.8} />
+      {/*<HugeiconsIcon aria-hidden="true" icon={TranslateIcon} size={16} strokeWidth={1.8} />*/}
+      <HugeiconsIcon icon={BubbleChatTranslateFreeIcons} size={16} strokeWidth={1.8}/>
     </Button>
   );
 }

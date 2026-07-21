@@ -195,6 +195,12 @@ const REMOTE_FIELD_SOURCES = {
 class DexieVocabularyRepository implements VocabularyRepository {
   constructor(private readonly database: SaltoDatabase) {}
 
+  async exists(term: string, language: string): Promise<boolean> {
+    const canonicalKey = `${language}:${term.toLocaleLowerCase("en-US")}`;
+    const count = await this.database.vocabularyItems.where("canonicalKey").equals(canonicalKey).count();
+    return count > 0;
+  }
+
   findItemByCanonicalKey(canonicalKey: string): Promise<VocabularyItem | undefined> {
     return this.database.vocabularyItems.where("canonicalKey").equals(canonicalKey).first();
   }

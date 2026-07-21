@@ -17,6 +17,7 @@ export type SaveVocabularyResult = {
 };
 
 export interface VocabularyRepository {
+  exists(term: string, language: string): Promise<boolean>;
   findItemByCanonicalKey(canonicalKey: string): Promise<VocabularyItem | undefined>;
   getItem(id: ClientGeneratedId): Promise<VocabularyItem | undefined>;
   listFields(vocabularyItemId: ClientGeneratedId): Promise<readonly VocabularyField[]>;

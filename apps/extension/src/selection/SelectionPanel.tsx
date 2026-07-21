@@ -177,6 +177,10 @@ export function SelectionPanel({
       ref={panelRef}
       role="dialog"
       onKeyDown={containKeyboardFocus}
+      onWheel={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+      }}
       style={{ left: position.x, top: position.y }}
     >
       <header
@@ -406,9 +410,7 @@ function renderFieldResult(
 ) {
   if (!result) {
     return isStreaming ? (
-      <span className="salto-selection-panel__loading-field">
-        Loading field...
-      </span>
+      <Skeleton className="salto-selection-panel__loading-field"></Skeleton>
     ) : (
       <span className="salto-selection-panel__error">Missing field result</span>
     );

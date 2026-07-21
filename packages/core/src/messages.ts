@@ -46,6 +46,14 @@ export type SaveVocabularyRequest = {
   readonly payload: SaveVocabularyInput;
 };
 
+export type CheckVocabularyExistsRequest = {
+  readonly type: "check-vocabulary-exists";
+  readonly payload: {
+    readonly term: string;
+    readonly language: string;
+  };
+};
+
 export type RetryEnrichmentRequest = {
   readonly type: "retry-enrichment";
   readonly payload?: {
@@ -157,6 +165,7 @@ export type ExtensionRequest =
   | GetActiveQueryTemplateRequest
   | CancelTranslationRequest
   | SaveVocabularyRequest
+  | CheckVocabularyExistsRequest
   | RetryEnrichmentRequest
   | ListFailedEnrichmentRequest
   | ListHighlightTermsRequest
@@ -192,6 +201,7 @@ export type ExtensionSuccessResponse =
       };
     }
   | { readonly ok: true; readonly type: "save-vocabulary"; readonly data: SaveVocabularyResult }
+  | { readonly ok: true; readonly type: "check-vocabulary-exists"; readonly data: { readonly exists: boolean } }
   | { readonly ok: true; readonly type: "retry-enrichment"; readonly data: { readonly reset: number } }
   | {
       readonly ok: true;

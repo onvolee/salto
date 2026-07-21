@@ -51,6 +51,13 @@ function withActiveTemplate(
           data: { template, resolution: { status: "active" } },
         });
       }
+      if (request.type === "check-vocabulary-exists") {
+        return Promise.resolve({
+          ok: true,
+          type: "check-vocabulary-exists",
+          data: { exists: false },
+        });
+      }
       return send(request);
     },
   };

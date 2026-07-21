@@ -48,11 +48,11 @@
 .salto-selection-trigger:hover {
   background: var(--salto-primary-hover);
   box-shadow: var(--salto-trigger-shadow-hover);
-  transform: translateY(-1px);
+  /*transform: translateY(-1px);*/
 }
 
 .salto-selection-trigger:active {
-  transform: translateY(0);
+  /*transform: translateY(0);*/
 }
 
 .salto-selection-trigger:focus-visible,
@@ -73,6 +73,7 @@
   color: var(--salto-foreground);
   box-shadow: var(--salto-panel-shadow);
   font-family: var(--font-sans);
+  overscroll-behavior: contain;
 }
 
 .salto-selection-panel__header {
@@ -130,11 +131,11 @@
   cursor: pointer;
 }
 
-.salto-selection-panel__actions button:hover {
+.salto-selection-panel__actions button:not(:disabled):hover {
   color: var(--salto-foreground);
 }
 
-.salto-selection-panel__actions button[aria-disabled="true"] {
+.salto-selection-panel__actions button:disabled {
   color: var(--salto-muted-foreground);
   cursor: not-allowed;
   opacity: 0.48;
@@ -204,10 +205,6 @@
   margin: 0;
   font-size: 0.75rem;
   line-height: 1.5;
-}
-
-.salto-selection-panel__field ul {
-  padding-left: 18px;
 }
 
 .salto-selection-panel__save-error {

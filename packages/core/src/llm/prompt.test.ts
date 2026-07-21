@@ -53,7 +53,7 @@ describe("renderLlmQueryFields", () => {
     const [selection, sentence, paragraphs, title, url, content] =
       renderLlmQueryFields(fields, context).fields[0]!.instruction.split("|");
 
-    expect([selection.length, sentence.length, paragraphs.length, title.length, url.length, content.length])
+    expect([selection!.length, sentence!.length, paragraphs!.length, title!.length, url!.length, content!.length])
       .toEqual([500, 1000, 2000, 300, 2048, 2000]);
   });
   it("parses compatible whitespace, repeated, and adjacent known variables", () => {

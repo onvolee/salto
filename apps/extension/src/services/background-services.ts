@@ -193,6 +193,14 @@ export function parseExtensionRequest(
   if (value.type === "save-vocabulary") {
     return isSavePayload(value.payload) ? { type: value.type, payload: value.payload } : null;
   }
+  if (value.type === "check-vocabulary-exists") {
+    return isRecord(value.payload)
+      && typeof value.payload.term === "string"
+      && value.payload.term.length > 0
+      && typeof value.payload.language === "string"
+      ? { type: value.type, payload: { term: value.payload.term, language: value.payload.language } }
+      : null;
+  }
   if (value.type === "list-query-templates" || value.type === "get-extension-settings") {
     return { type: value.type };
   }
@@ -474,6 +482,18 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
             ok: true,
             type: request.type,
             data: result,
+          };
+        }
+
+        if (request.type === "check-vocabulary-exists") {
+          const exists = await dependencies.repositories.vocabulary.exists(
+            request.payload.term,
+            request.payload.language
+          );
+          return {
+            ok: true,
+            type: request.type,
+            data: { exists },
           };
         }
 

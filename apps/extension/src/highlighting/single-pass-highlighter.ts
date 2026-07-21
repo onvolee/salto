@@ -60,8 +60,9 @@ function createHighlightWrapper(document: Document, canonicalKey: string): HTMLS
   mark.dataset.saltoHighlight = canonicalKey;
   mark.className = "salto-saved-term";
   mark.style.textDecorationLine = "underline";
+  mark.style.textDecorationColor = "#d97757";
   mark.style.textDecorationStyle = "wavy";
-  mark.style.textDecorationThickness = "1px";
+  mark.style.textDecorationThickness = "2px";
   mark.style.textUnderlineOffset = "2px";
   return mark;
 }
@@ -182,6 +183,7 @@ export function highlightSavedTerms(
     mark.dataset.saltoHighlight = term.toLocaleLowerCase("en-US");
     mark.className = "salto-saved-term";
     mark.style.textDecorationLine = "underline";
+    mark.style.textDecorationColor = "#8d75e6";
     mark.style.textDecorationStyle = "wavy";
     mark.style.textDecorationThickness = "1px";
     mark.style.textUnderlineOffset = "2px";

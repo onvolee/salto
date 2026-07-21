@@ -205,10 +205,28 @@ export function SelectionPopupApp({
     const context = extractPromptContext(nextSession.range, "");
     saveRequestRef.current += 1;
     setPromptContext(context);
-    setSaveState("idle");
     setActiveTemplate({ status: "loading" });
     setTranslation({ status: "loading" });
     setMode("panel-open");
+
+    void messageClient.send({
+      type: "check-vocabulary-exists",
+      payload: { term: nextSession.text, language: "en" },
+    }).then((response) => {
+      if (panelGenerationRef.current !== generation) {
+        return;
+      }
+      if (response.ok && response.type === "check-vocabulary-exists" && response.data.exists) {
+        setSaveState("saved");
+      } else {
+        setSaveState("idle");
+      }
+    }).catch(() => {
+      if (panelGenerationRef.current === generation) {
+        setSaveState("idle");
+      }
+    });
+
     void messageClient.send({ type: "get-active-query-template" }).then((response) => {
       if (panelGenerationRef.current !== generation) {
         return;
