@@ -2,17 +2,16 @@ import {
   createDefaultQueryTemplate,
   type ExtensionRequest,
   type ExtensionResponse,
-  type QuerySchemaFieldSource,
   type QueryTemplate,
+  type TemplateFieldDefinition,
 } from "@salto/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { browserMessageClient, type ExtensionMessageClient } from "../../selection/message-client";
 import {
   createNewTemplateDraft,
+  createFieldDraftFromDefinition,
   normalizeFieldOrders,
-  queryFieldFromDraft,
-  switchDraftSource,
   templateDraftFromQueryTemplate,
   validateTemplateDraft,
   type TemplateDraft,
@@ -26,17 +25,13 @@ type DeleteTemplateData = Extract<SuccessResponse, { readonly type: "delete-quer
 
 type UseQueryTemplatesDependencies = {
   readonly client?: ExtensionMessageClient;
-  readonly confirm?: (message: string) => boolean;
+  readonly createId?: () => string;
   readonly now?: () => string;
   readonly onActiveTemplateChange?: (templateId: string) => void;
   readonly onTemplateDeleted?: (deletedTemplateId: string, fallbackTemplateId: string) => void;
 };
 
 export type TemplateEditorStatus = "idle" | "loading" | "saving" | "error";
-
-function defaultConfirm(message: string): boolean {
-  return typeof window === "undefined" ? true : window.confirm(message);
-}
 
 function fallbackTemplateClient(): ExtensionMessageClient {
   const template = createDefaultQueryTemplate("2026-07-18T00:00:00.000Z");
@@ -78,15 +73,14 @@ function successData(
   return response.data;
 }
 
-function fieldId(prefix: string, counter: number): string {
-  return `${prefix}-field-${counter}`;
+function defaultCreateId(): string {
+  return crypto.randomUUID();
 }
 
 export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = {}) {
   const client = dependencies.client ?? getDefaultClient();
-  const confirm = dependencies.confirm ?? defaultConfirm;
+  const createId = dependencies.createId ?? defaultCreateId;
   const now = dependencies.now ?? (() => new Date().toISOString());
-  const idCounter = useRef(1);
   const [templates, setTemplates] = useState<readonly QueryTemplate[]>([]);
   const [activeTemplateId, setActiveTemplateId] = useState("system-default");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -143,10 +137,8 @@ export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = 
   };
 
   const startNewTemplate = () => {
-    const prefix = `new-${idCounter.current}`;
-    idCounter.current += 1;
     setSelectedTemplateId(null);
-    setDraft(createNewTemplateDraft(now(), fieldId(prefix, 0)));
+    setDraft(createNewTemplateDraft(now()));
     setErrors({ field: {} });
     setMessage(null);
   };
@@ -209,43 +201,25 @@ export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = 
     setStatus("idle");
   };
 
-  const addField = () => updateDraft((current) => {
+  const addField = (definition: TemplateFieldDefinition) => updateDraft((current) => {
     const index = current.fields.length;
-    const id = fieldId(current.id === "new" ? "new" : current.id, idCounter.current);
-    idCounter.current += 1;
+    const existingIds = new Set(current.fields.map(({ id }) => id));
+    let id = createId();
+    while (!id.trim() || existingIds.has(id)) id = createId();
     return {
       ...current,
-      fields: [...current.fields, {
-        id,
-        label: "新字段",
-        source: "llm",
-        type: "text",
-        instruction: "",
-        dictionaryField: "",
-        order: index,
-        enabled: true,
-      }],
+      fields: [...current.fields, createFieldDraftFromDefinition(definition, id, index)],
     };
   });
 
-  const updateField = (id: string, update: Partial<TemplateFieldDraft>) => {
+  const updateField = (
+    id: string,
+    update: Partial<Pick<TemplateFieldDraft, "enabled" | "keyCss" | "valueCss">>,
+  ) => {
     updateDraft((current) => ({
       ...current,
       fields: current.fields.map((field) => field.id === id ? { ...field, ...update } : field),
     }));
-  };
-
-  const changeFieldSource = (id: string, source: QuerySchemaFieldSource): boolean => {
-    const field = draft?.fields.find((candidate) => candidate.id === id);
-    if (!field || field.source === source) return true;
-    if (!confirm("切换字段来源会清除当前来源专属内容，是否继续？")) return false;
-    updateDraft((current) => ({
-      ...current,
-      fields: current.fields.map((candidate) => candidate.id === id
-        ? switchDraftSource(candidate, source)
-        : candidate),
-    }));
-    return true;
   };
 
   const removeField = (id: string) => updateDraft((current) => ({
@@ -253,9 +227,12 @@ export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = 
     fields: normalizeFieldOrders(current.fields.filter((field) => field.id !== id)),
   }));
 
-  const toggleField = (id: string) => updateField(id, {
-    enabled: !draft?.fields.find((field) => field.id === id)?.enabled,
-  });
+  const toggleField = (id: string) => updateDraft((current) => ({
+    ...current,
+    fields: current.fields.map((field) => field.id === id
+      ? { ...field, enabled: !field.enabled }
+      : field),
+  }));
 
   const moveField = (from: number, to: number) => updateDraft((current) => {
     if (from < 0 || to < 0 || from >= current.fields.length || to >= current.fields.length) return current;
@@ -285,7 +262,7 @@ export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = 
   };
 
   const deleteTemplate = async (id: string) => {
-    if (id === "system-default" || !confirm("删除模板后无法恢复，是否继续？")) return;
+    if (id === "system-default") return;
     setStatus("saving");
     try {
       const data = successData(await client.send({
@@ -312,7 +289,6 @@ export function useQueryTemplates(dependencies: UseQueryTemplatesDependencies = 
     activeTemplateId,
     addField,
     cancelDraft,
-    changeFieldSource,
     copyTemplate,
     deleteTemplate,
     draft,

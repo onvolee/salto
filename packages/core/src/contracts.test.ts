@@ -3,7 +3,9 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   DEFAULT_EXTENSION_SETTINGS,
   DICTIONARY_FIELD_TYPES,
+  createTemplateFieldSnapshot,
   createDefaultQueryTemplate,
+  createDefaultTemplateFieldDefinitions,
   canonicalizeEnglishTerm,
   findSavedTermMatches,
   isValidQueryTemplate,
@@ -20,6 +22,7 @@ import {
   type PromptContext,
   type QueryFieldResult,
   type QuerySchemaFieldType,
+  type TemplateFieldDefinition,
   type VocabularyField,
   type VocabularyItem
 } from "./index";
@@ -98,6 +101,31 @@ describe("@salto/core public contract", () => {
       themeMode: "system",
       activeDictionaryProvider: "youdao-web"
     });
+    expect(createDefaultTemplateFieldDefinitions("2026-07-16T00:00:00.000Z")).toEqual([
+      {
+        id: "system-field:translation",
+        label: "Translation",
+        source: "llm",
+        type: "text",
+        instruction:
+          "Translate {{selection}} into {{targetLanguage}}. " +
+          "Use {{sentence}} only when needed for disambiguation. " +
+          "Return only the translation.",
+        createdAt: "2026-07-16T00:00:00.000Z",
+        updatedAt: "2026-07-16T00:00:00.000Z",
+      },
+      {
+        id: "system-field:key-points",
+        label: "Key points",
+        source: "llm",
+        type: "list",
+        instruction:
+          "List the key meanings or usage notes for {{selection}} in " +
+          "{{sentence}}. Write each item in {{targetLanguage}}.",
+        createdAt: "2026-07-16T00:00:00.000Z",
+        updatedAt: "2026-07-16T00:00:00.000Z",
+      },
+    ]);
     expect(createDefaultQueryTemplate("2026-07-16T00:00:00.000Z")).toEqual({
       id: "system-default",
       name: "Default",
@@ -106,24 +134,30 @@ describe("@salto/core public contract", () => {
       fields: [
         {
           id: "system-default:translation",
-          label: "Translation",
-          source: "llm",
-          type: "text",
-          instruction:
-            "Translate {{selection}} into {{targetLanguage}}. " +
-            "Use {{sentence}} only when needed for disambiguation. " +
-            "Return only the translation.",
+          definitionId: "system-field:translation",
+          content: {
+            label: "Translation",
+            source: "llm",
+            type: "text",
+            instruction:
+              "Translate {{selection}} into {{targetLanguage}}. " +
+              "Use {{sentence}} only when needed for disambiguation. " +
+              "Return only the translation.",
+          },
           order: 0,
           enabled: true
         },
         {
           id: "system-default:key-points",
-          label: "Key points",
-          source: "llm",
-          type: "list",
-          instruction:
-            "List the key meanings or usage notes for {{selection}} in " +
-            "{{sentence}}. Write each item in {{targetLanguage}}.",
+          definitionId: "system-field:key-points",
+          content: {
+            label: "Key points",
+            source: "llm",
+            type: "list",
+            instruction:
+              "List the key meanings or usage notes for {{selection}} in " +
+              "{{sentence}}. Write each item in {{targetLanguage}}.",
+          },
           order: 1,
           enabled: true
         }
@@ -140,16 +174,57 @@ describe("@salto/core public contract", () => {
     })).toBe(false);
     expect(isValidQueryTemplate({
       ...template,
-      fields: [{ ...template.fields[0], label: "   " }, template.fields[1]]
+      fields: [{
+        ...template.fields[0],
+        content: { ...template.fields[0]!.content, label: "   " },
+      }, template.fields[1]]
     })).toBe(false);
     expect(isValidQueryTemplate({
       ...template,
-      fields: [{ ...template.fields[0], instruction: "  " }, template.fields[1]]
+      fields: [{
+        ...template.fields[0],
+        content: { ...template.fields[0]!.content, instruction: "  " },
+      }, template.fields[1]]
     })).toBe(false);
     expect(isValidQueryTemplate({
       ...template,
       fields: template.fields.map((field) => ({ ...field, enabled: false }))
     })).toBe(false);
+  });
+
+  it("creates independent field snapshots from one reusable definition", () => {
+    const definition: TemplateFieldDefinition = {
+      id: "definition-1",
+      label: "Meaning",
+      description: "A concise meaning",
+      source: "dictionary",
+      dictionaryField: "meaning",
+      type: "text",
+      createdAt: "2026-07-16T00:00:00.000Z",
+      updatedAt: "2026-07-16T00:00:00.000Z",
+    };
+
+    const first = createTemplateFieldSnapshot(definition, "result-1", 0);
+    const second = createTemplateFieldSnapshot(definition, "result-2", 1);
+    const editedDefinition = { ...definition, label: "Edited later" };
+
+    expect(first).toEqual({
+      id: "result-1",
+      definitionId: "definition-1",
+      content: {
+        label: "Meaning",
+        description: "A concise meaning",
+        source: "dictionary",
+        dictionaryField: "meaning",
+        type: "text",
+      },
+      order: 0,
+      enabled: true,
+    });
+    expect(second.id).toBe("result-2");
+    expect(second.content).not.toBe(first.content);
+    expect(first.content.label).toBe("Meaning");
+    expect(editedDefinition.label).toBe("Edited later");
   });
 
   it("canonicalizes English terms without rewriting punctuation", () => {

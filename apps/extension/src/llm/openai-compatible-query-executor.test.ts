@@ -190,9 +190,9 @@ describe("OpenAI-compatible query executor", () => {
       ...createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"),
       id: "prompt-diagnostics",
       fields: [
-        { id: "valid", label: "Valid", source: "llm" as const, type: "text" as const, instruction: "Use {{selection}}.", order: 0, enabled: true },
-        { id: "unknown", label: "Unknown", source: "llm" as const, type: "text" as const, instruction: "Use {{pageText}}.", order: 1, enabled: true },
-        { id: "malformed", label: "Malformed", source: "llm" as const, type: "text" as const, instruction: "Use {{ }}.", order: 2, enabled: true },
+        { id: "valid", definitionId: "definition-valid", content: { label: "Valid", source: "llm" as const, type: "text" as const, instruction: "Use {{selection}}." }, order: 0, enabled: true },
+        { id: "unknown", definitionId: "definition-unknown", content: { label: "Unknown", source: "llm" as const, type: "text" as const, instruction: "Use {{pageText}}." }, order: 1, enabled: true },
+        { id: "malformed", definitionId: "definition-malformed", content: { label: "Malformed", source: "llm" as const, type: "text" as const, instruction: "Use {{ }}." }, order: 2, enabled: true },
       ],
     };
 

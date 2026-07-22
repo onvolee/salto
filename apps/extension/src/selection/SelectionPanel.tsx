@@ -5,9 +5,11 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  useMemo,
   useRef,
   type KeyboardEvent,
   type PointerEvent,
+  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -15,6 +17,7 @@ import {
 import { Button } from "salto-src/components/ui/button";
 import { ScrollArea } from "salto-src/components/ui/scroll-area";
 import { Skeleton } from "salto-src/components/ui/skeleton";
+import { parseCssDeclarations } from "salto-src/query-template/css-declarations";
 
 import { clampToViewport, getPanelSize, type Point } from "./positioning";
 import type {
@@ -328,13 +331,21 @@ function TranslationResults({
   readonly template: QueryTemplate;
   readonly translation: TranslationState;
 }) {
+  const fieldStyles = useMemo(() => new Map(template.fields.map((field) => [
+    field.id,
+    {
+      key: parseCssDeclarations(field.keyCss ?? ""),
+      value: parseCssDeclarations(field.valueCss ?? ""),
+    },
+  ])), [template.fields]);
   const schema = template.fields
     .filter((field) => field.enabled)
     .toSorted((left, right) => left.order - right.order)
-    .map(({ id, label }) => ({ id, label }));
+    .map(({ id, content }) => ({ id, label: content.label }));
   if (translation.status === "loading") {
     return (
       <TranslationFields
+        fieldStyles={fieldStyles}
         schema={schema}
         renderResult={() => (
           <Skeleton className="salto-selection-panel__loading-field"></Skeleton>
@@ -349,6 +360,7 @@ function TranslationResults({
           {translation.message}
         </p>
         <TranslationFields
+          fieldStyles={fieldStyles}
           schema={schema}
           renderResult={() => (
             <span className="salto-selection-panel__error">
@@ -372,6 +384,7 @@ function TranslationResults({
   }
   return (
     <TranslationFields
+      fieldStyles={fieldStyles}
       schema={data.schema}
       renderResult={(fieldId) =>
         renderFieldResult(
@@ -384,21 +397,29 @@ function TranslationResults({
 }
 
 function TranslationFields({
+  fieldStyles,
   schema,
   renderResult,
 }: {
+  readonly fieldStyles: ReadonlyMap<string, {
+    readonly key: CSSProperties;
+    readonly value: CSSProperties;
+  }>;
   readonly schema: readonly { readonly id: string; readonly label: string }[];
   readonly renderResult: (fieldId: string) => ReactNode;
 }) {
   return (
     <div className="salto-selection-panel__results">
       <dl>
-        {schema.map((field) => (
-          <div className="salto-selection-panel__field" key={field.id}>
-            <dt>{field.label}</dt>
-            <dd>{renderResult(field.id)}</dd>
-          </div>
-        ))}
+        {schema.map((field) => {
+          const styles = fieldStyles.get(field.id);
+          return (
+            <div className="salto-selection-panel__field" key={field.id}>
+              <dt style={styles?.key}>{field.label}</dt>
+              <dd style={styles?.value}>{renderResult(field.id)}</dd>
+            </div>
+          );
+        })}
       </dl>
     </div>
   );

@@ -22,7 +22,7 @@ function mapDictionaryField(
   field: DictionaryQuerySchemaField,
   lookup: Awaited<ReturnType<DictionaryClient["lookup"]>>,
 ): QueryFieldResult {
-  const result = lookup.fields[field.dictionaryField];
+  const result = lookup.fields[field.content.dictionaryField];
   if (result.status === "unavailable") {
     return { fieldId: field.id, status: "unavailable", reason: result.reason };
   }
@@ -57,9 +57,9 @@ export function createDictionaryQueryExecutor(
         .filter((field) => field.enabled)
         .toSorted((left, right) => left.order - right.order);
       const dictionaryFields = activeFields.filter(
-        (field): field is DictionaryQuerySchemaField => field.source === "dictionary",
+        (field): field is DictionaryQuerySchemaField => field.content.source === "dictionary",
       );
-      const llmFields = activeFields.filter((field) => field.source === "llm");
+      const llmFields = activeFields.filter((field) => field.content.source === "llm");
       const activeSignal = signal ?? new AbortController().signal;
       
       const allResults: QueryFieldResult[] = [];

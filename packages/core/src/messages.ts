@@ -5,6 +5,8 @@ import type {
 } from "./llm/types";
 import {
   isValidExtensionSettings,
+  type TemplateFieldDefinition,
+  type TemplateFieldDefinitionInput,
   type ExtensionSettings,
   type PromptContext,
   type QueryFieldResult,
@@ -163,6 +165,28 @@ export type DeleteQueryTemplateRequest = {
   readonly payload: { readonly templateId: string };
 };
 
+export type ListTemplateFieldDefinitionsRequest = {
+  readonly type: "list-template-field-definitions";
+};
+
+export type CreateTemplateFieldDefinitionRequest = {
+  readonly type: "create-template-field-definition";
+  readonly payload: TemplateFieldDefinitionInput;
+};
+
+export type UpdateTemplateFieldDefinitionRequest = {
+  readonly type: "update-template-field-definition";
+  readonly payload: {
+    readonly definitionId: string;
+    readonly input: TemplateFieldDefinitionInput;
+  };
+};
+
+export type DeleteTemplateFieldDefinitionRequest = {
+  readonly type: "delete-template-field-definition";
+  readonly payload: { readonly definitionId: string };
+};
+
 export type GetExtensionSettingsRequest = {
   readonly type: "get-extension-settings";
 };
@@ -228,6 +252,10 @@ export type ExtensionRequest =
   | CopyQueryTemplateRequest
   | UpdateQueryTemplateRequest
   | DeleteQueryTemplateRequest
+  | ListTemplateFieldDefinitionsRequest
+  | CreateTemplateFieldDefinitionRequest
+  | UpdateTemplateFieldDefinitionRequest
+  | DeleteTemplateFieldDefinitionRequest
   | GetExtensionSettingsRequest
   | SaveExtensionSettingsRequest;
 
@@ -324,6 +352,21 @@ export type ExtensionSuccessResponse =
     }
   | {
       readonly ok: true;
+      readonly type: "list-template-field-definitions";
+      readonly data: { readonly definitions: readonly TemplateFieldDefinition[] };
+    }
+  | {
+      readonly ok: true;
+      readonly type: "create-template-field-definition" | "update-template-field-definition";
+      readonly data: TemplateFieldDefinition;
+    }
+  | {
+      readonly ok: true;
+      readonly type: "delete-template-field-definition";
+      readonly data: { readonly deletedDefinitionId: string };
+    }
+  | {
+      readonly ok: true;
       readonly type: "get-extension-settings" | "save-extension-settings";
       readonly data: ExtensionSettings;
     };
@@ -349,6 +392,8 @@ export type ExtensionErrorCode =
   | "last-template"
   | "template-invalid"
   | "settings-invalid"
+  | "field-definition-not-found"
+  | "field-definition-invalid"
   | "unknown-message";
 
 export type ExtensionErrorResponse = {

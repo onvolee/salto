@@ -9,22 +9,20 @@ export type QuerySchemaFieldSource = "llm" | "dictionary";
 export type DictionaryQueryField = DictionaryFieldKey;
 export type DictionaryQueryFieldSpec = typeof DICTIONARY_FIELD_TYPES;
 
-type QuerySchemaFieldBase = {
-  readonly id: ClientGeneratedId;
+type TemplateFieldContentBase = {
   readonly label: string;
-  readonly order: number;
-  readonly enabled: boolean;
+  readonly description?: string;
 };
 
-export type LlmQuerySchemaField = QuerySchemaFieldBase & {
+export type LlmTemplateFieldContent = TemplateFieldContentBase & {
   readonly source: "llm";
   readonly type: QuerySchemaFieldType;
   readonly instruction: string;
   readonly dictionaryField?: never;
 };
 
-export type DictionaryQuerySchemaField = {
-  [K in DictionaryQueryField]: QuerySchemaFieldBase & {
+export type DictionaryTemplateFieldContent = {
+  [K in DictionaryQueryField]: TemplateFieldContentBase & {
     readonly source: "dictionary";
     readonly dictionaryField: K;
     readonly type: DictionaryQueryFieldSpec[K];
@@ -32,7 +30,43 @@ export type DictionaryQuerySchemaField = {
   };
 }[DictionaryQueryField];
 
-export type QuerySchemaField = LlmQuerySchemaField | DictionaryQuerySchemaField;
+export type TemplateFieldContent =
+  | LlmTemplateFieldContent
+  | DictionaryTemplateFieldContent;
+
+type TemplateFieldDefinitionMetadata = {
+  readonly id: ClientGeneratedId;
+  readonly createdAt: IsoDateTimeString;
+  readonly updatedAt: IsoDateTimeString;
+};
+
+export type LlmTemplateFieldDefinition = LlmTemplateFieldContent & TemplateFieldDefinitionMetadata;
+export type DictionaryTemplateFieldDefinition = DictionaryTemplateFieldContent & TemplateFieldDefinitionMetadata;
+export type TemplateFieldDefinition =
+  | LlmTemplateFieldDefinition
+  | DictionaryTemplateFieldDefinition;
+export type TemplateFieldDefinitionInput = TemplateFieldContent;
+
+type QuerySchemaFieldBase = {
+  readonly id: ClientGeneratedId;
+  readonly definitionId: ClientGeneratedId;
+  readonly order: number;
+  readonly enabled: boolean;
+  readonly keyCss?: string;
+  readonly valueCss?: string;
+};
+
+export type QuerySchemaField = QuerySchemaFieldBase & {
+  readonly content: TemplateFieldContent;
+};
+
+export type LlmQuerySchemaField = QuerySchemaFieldBase & {
+  readonly content: LlmTemplateFieldContent;
+};
+
+export type DictionaryQuerySchemaField = QuerySchemaFieldBase & {
+  readonly content: DictionaryTemplateFieldContent;
+};
 
 export interface QueryTemplate {
   readonly id: ClientGeneratedId;
@@ -144,6 +178,18 @@ export function isValidQueryTemplateInput(value: unknown): value is QueryTemplat
   });
 }
 
+export function isValidTemplateFieldDefinition(value: unknown): value is TemplateFieldDefinition {
+  return isRecord(value)
+    && isNonEmptyString(value.id)
+    && isIsoDateTime(value.createdAt)
+    && isIsoDateTime(value.updatedAt)
+    && isValidTemplateFieldContent(value);
+}
+
+export function isValidTemplateFieldDefinitionInput(value: unknown): value is TemplateFieldDefinitionInput {
+  return isValidTemplateFieldContent(value);
+}
+
 export function isValidExtensionSettings(value: unknown): value is ExtensionSettings {
   return isRecord(value)
     && Object.keys(value).length === 5
@@ -157,10 +203,24 @@ export function isValidExtensionSettings(value: unknown): value is ExtensionSett
 function isValidQuerySchemaField(value: unknown): value is QuerySchemaField {
   if (!isRecord(value)
     || !isNonEmptyString(value.id)
-    || !isNonEmptyString(value.label)
+    || !isNonEmptyString(value.definitionId)
+    || !isValidTemplateFieldContent(value.content)
     || !Number.isInteger(value.order)
     || (value.order as number) < 0
     || typeof value.enabled !== "boolean"
+    || (value.keyCss !== undefined && typeof value.keyCss !== "string")
+    || (value.valueCss !== undefined && typeof value.valueCss !== "string")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function isValidTemplateFieldContent(value: unknown): value is TemplateFieldContent {
+  if (!isRecord(value)
+    || !isNonEmptyString(value.label)
+    || (value.description !== undefined && typeof value.description !== "string")
   ) {
     return false;
   }
@@ -200,35 +260,74 @@ function isIsoDateTime(value: unknown): value is IsoDateTimeString {
 }
 
 export function createDefaultQueryTemplate(seedTime: IsoDateTimeString): QueryTemplate {
+  const [translationDefinition, keyPointsDefinition] = createDefaultTemplateFieldDefinitions(seedTime);
   return {
     id: "system-default",
     name: "Default",
     createdAt: seedTime,
     updatedAt: seedTime,
     fields: [
-      {
-        id: "system-default:translation",
-        label: "Translation",
-        source: "llm",
-        type: "text",
-        instruction:
-          "Translate {{selection}} into {{targetLanguage}}. " +
-          "Use {{sentence}} only when needed for disambiguation. " +
-          "Return only the translation.",
-        order: 0,
-        enabled: true
-      },
-      {
-        id: "system-default:key-points",
-        label: "Key points",
-        source: "llm",
-        type: "list",
-        instruction:
-          "List the key meanings or usage notes for {{selection}} in " +
-          "{{sentence}}. Write each item in {{targetLanguage}}.",
-        order: 1,
-        enabled: true
-      }
+      createTemplateFieldSnapshot(
+        translationDefinition,
+        "system-default:translation",
+        0,
+      ),
+      createTemplateFieldSnapshot(
+        keyPointsDefinition,
+        "system-default:key-points",
+        1,
+      ),
     ]
   };
+}
+
+export function createDefaultTemplateFieldDefinitions(
+  seedTime: IsoDateTimeString,
+): readonly [LlmTemplateFieldDefinition, LlmTemplateFieldDefinition] {
+  return [
+    {
+      id: "system-field:translation",
+      label: "Translation",
+      source: "llm",
+      type: "text",
+      instruction:
+        "Translate {{selection}} into {{targetLanguage}}. " +
+        "Use {{sentence}} only when needed for disambiguation. " +
+        "Return only the translation.",
+      createdAt: seedTime,
+      updatedAt: seedTime,
+    },
+    {
+      id: "system-field:key-points",
+      label: "Key points",
+      source: "llm",
+      type: "list",
+      instruction:
+        "List the key meanings or usage notes for {{selection}} in " +
+        "{{sentence}}. Write each item in {{targetLanguage}}.",
+      createdAt: seedTime,
+      updatedAt: seedTime,
+    },
+  ];
+}
+
+export function templateFieldContentFromDefinition(
+  definition: TemplateFieldDefinition,
+): TemplateFieldContent {
+  const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...content } = definition;
+  return { ...content };
+}
+
+export function createTemplateFieldSnapshot(
+  definition: TemplateFieldDefinition,
+  resultId: ClientGeneratedId,
+  order: number,
+): QuerySchemaField {
+  return {
+    id: resultId,
+    definitionId: definition.id,
+    content: templateFieldContentFromDefinition(definition),
+    order,
+    enabled: true,
+  } as QuerySchemaField;
 }

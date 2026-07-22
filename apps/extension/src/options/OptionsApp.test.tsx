@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -87,110 +87,41 @@ describe("OptionsApp", () => {
     expect(screen.getByRole("button", { name: "添加字段" })).toBeDisabled();
   });
 
-  it("edits template fields in a dialog instead of inline in the list", async () => {
+  it("separates reusable field definitions from template composition", async () => {
     render(<OptionsApp />);
     const user = userEvent.setup();
 
     await screen.findByRole("heading", { name: "通用" });
     await user.click(screen.getByRole("button", { name: "划词翻译" }));
-    await user.click(screen.getByRole("button", { name: "新建模板" }));
+    expect(screen.getByRole("tab", { name: "Templates" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: "Template fields" }));
+    expect(window.location.hash).toBe("#/translate-template/fields");
+    expect(await screen.findByRole("button", { name: "新建字段定义" })).toBeInTheDocument();
 
-    expect(screen.queryByLabelText("Label")).not.toBeInTheDocument();
-    expect(screen.getByText("翻译")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "编辑翻译" }));
-    expect(screen.getByRole("dialog", { name: "编辑字段" })).toBeInTheDocument();
-
-    const labelInput = screen.getByLabelText("Label");
-    await user.clear(labelInput);
-    await user.click(screen.getByRole("button", { name: "应用" }));
-
-    expect(screen.getByRole("dialog", { name: "编辑字段" })).toBeInTheDocument();
-    expect(labelInput).toHaveFocus();
-    expect(screen.getByText("字段名称不能为空")).toBeInTheDocument();
-
-    await user.type(labelInput, "摘要");
-    await user.click(screen.getByRole("button", { name: "取消" }));
-
-    expect(screen.queryByRole("dialog", { name: "编辑字段" })).not.toBeInTheDocument();
-    expect(screen.getByText("翻译")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "编辑翻译" }));
-    await user.clear(screen.getByLabelText("Label"));
-    await user.type(screen.getByLabelText("Label"), "摘要");
-    await user.click(screen.getByRole("button", { name: "应用" }));
-
-    expect(screen.queryByRole("dialog", { name: "编辑字段" })).not.toBeInTheDocument();
-    expect(screen.getByText("摘要")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "添加字段" }));
-    await user.click(screen.getByRole("button", { name: "编辑新字段" }));
-    await user.clear(screen.getByLabelText("Label"));
-    await user.type(screen.getByLabelText("Label"), "上下文");
-    await user.type(screen.getByLabelText("Instruction"), "Summarize the context.");
-    await user.click(screen.getByRole("button", { name: "应用" }));
-
-    expect(screen.getByText("上下文")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新建字段定义" }));
+    expect(screen.getByRole("dialog", { name: "新建字段定义" })).toBeInTheDocument();
+    expect(screen.getByLabelText("字段名称")).toBeInTheDocument();
+    expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
   });
 
-  it("inserts every prompt variable at the textarea selection without a provider request", async () => {
+  it("adds the same library definition repeatedly and edits only snapshot appearance", async () => {
     render(<OptionsApp />);
     const user = userEvent.setup();
 
     await screen.findByRole("heading", { name: "通用" });
     await user.click(screen.getByRole("button", { name: "划词翻译" }));
     await user.click(screen.getByRole("button", { name: "新建模板" }));
-    await user.click(screen.getByRole("button", { name: "编辑翻译" }));
 
-    const instruction = screen.getByLabelText("Instruction") as HTMLTextAreaElement;
-    const variableSelect = screen.getByLabelText("插入变量");
-    const variables = [
-      "selection",
-      "sentence",
-      "paragraphs",
-      "targetLanguage",
-      "webTitle",
-      "webUrl",
-      "webContent",
-    ] as const;
+    const add = await screen.findByRole("button", { name: "添加字段" });
+    expect(add).toBeEnabled();
+    await user.click(add);
+    await user.click(add);
 
-    expect(screen.getAllByRole("option").map((option) => option.getAttribute("value")))
-      .toEqual(["", ...variables]);
-
-    for (const variable of variables) {
-      instruction.focus();
-      instruction.setSelectionRange(0, instruction.value.length);
-      await user.selectOptions(variableSelect, variable);
-      const expected = `{{${variable}}}`;
-      expect(instruction).toHaveValue(expected);
-      expect(instruction).toHaveFocus();
-      expect(instruction.selectionStart).toBe(expected.length);
-      expect(instruction.selectionEnd).toBe(expected.length);
-    }
-
-    expect(browserOptionsLlmClient.testConnection).not.toHaveBeenCalled();
-  });
-
-  it("links distinct prompt warnings to the instruction and keeps them non-blocking", async () => {
-    render(<OptionsApp />);
-    const user = userEvent.setup();
-
-    await screen.findByRole("heading", { name: "通用" });
-    await user.click(screen.getByRole("button", { name: "划词翻译" }));
-    await user.click(screen.getByRole("button", { name: "新建模板" }));
-    await user.click(screen.getByRole("button", { name: "编辑翻译" }));
-
-    const instruction = screen.getByLabelText("Instruction");
-    fireEvent.change(instruction, { target: { value: "Use {{pageText}} and {{ }}." } });
-
-    expect(screen.getByText("变量警告（仍可保存）")).toBeInTheDocument();
-    expect(screen.getByText("未知变量：{{pageText}}")).toBeInTheDocument();
-    expect(screen.getByText("畸形变量：{{ }}（变量名为空）")).toBeInTheDocument();
-    expect(instruction.getAttribute("aria-describedby")).toContain("instruction-warning");
-
-    await user.click(screen.getByRole("button", { name: "应用" }));
-    expect(screen.queryByRole("dialog", { name: "编辑字段" })).not.toBeInTheDocument();
-    expect(screen.getByText("2 个变量警告（仍可保存）")).toBeInTheDocument();
+    expect(screen.getAllByText("Translation")).toHaveLength(2);
+    expect(screen.queryByLabelText("Instruction")).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "编辑Translation外观" })[0]);
+    expect(screen.getByLabelText("Key CSS")).toBeInTheDocument();
+    expect(screen.getByLabelText("当前模板预览")).toHaveTextContent("Translation");
   });
 
   it("previews and persists a changed theme", async () => {

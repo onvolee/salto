@@ -3,7 +3,13 @@ import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createDefaultQueryTemplate, type QueryTemplate } from "@salto/core";
+import {
+  createDefaultQueryTemplate,
+  createDefaultTemplateFieldDefinitions,
+  createTemplateFieldSnapshot,
+  type QueryTemplate,
+  type QueryTemplateInput,
+} from "@salto/core";
 import { SaltoDatabase } from "../db/database";
 import { createLocalRepositories } from "./local-repositories";
 
@@ -18,17 +24,21 @@ function createTestRepositories(databaseName: string) {
   return { database, repositories: createLocalRepositories(database, { clock, createId }) };
 }
 
-function userTemplateInput(name = "Reading notes") {
+function userTemplateInput(name = "Reading notes"): QueryTemplateInput {
+  const definition = createDefaultTemplateFieldDefinitions(clock())[0];
   return {
     name,
     fields: [{
       id: "translation",
-      label: "Translation",
-      source: "llm" as const,
-      type: "text" as const,
-      instruction: "Translate {{selection}}.",
+      definitionId: definition.id,
+      content: {
+        label: definition.label,
+        source: "llm",
+        type: "text",
+        instruction: "Translate {{selection}}.",
+      },
       order: 0,
-      enabled: true
+      enabled: true,
     }]
   };
 }
@@ -248,6 +258,125 @@ describe("local repositories", () => {
       themeMode: "dark",
       activeDictionaryProvider: "youdao-web",
     });
+  });
+
+  it("migrates v7 templates into definitions and snapshots across a database reopen", async () => {
+    const databaseName = "template-field-migration-test";
+    const legacy = new Dexie(databaseName);
+    defineLegacySchema(legacy, 7);
+    await legacy.open();
+    await legacy.table("queryTemplates").put({
+      id: "legacy-reading",
+      name: "Legacy reading",
+      fields: [{
+        id: "legacy-translation",
+        label: "Legacy translation",
+        source: "llm",
+        type: "text",
+        instruction: "Translate {{selection}} carefully.",
+        order: 0,
+        enabled: true,
+        migrationFieldExtension: { preserved: true },
+      }],
+      createdAt: "2026-07-15T00:00:00.000Z",
+      updatedAt: "2026-07-15T01:00:00.000Z",
+    });
+    await legacy.table("settings").put({
+      id: "extension",
+      activeQueryTemplateId: "legacy-reading",
+      targetLanguage: "ja-JP",
+      highlightEnabled: true,
+      highlightSameWords: false,
+      themeMode: "dark",
+      activeDictionaryProvider: "youdao-web",
+      panelWidth: 420,
+      panelHeight: 260,
+    });
+    legacy.close();
+
+    const first = createTestRepositories(databaseName);
+    const migrated = await first.repositories.templates.get("legacy-reading");
+    const definitions = await first.repositories.fieldDefinitions.list();
+
+    expect(migrated).toEqual({
+      id: "legacy-reading",
+      name: "Legacy reading",
+      fields: [{
+        id: "legacy-translation",
+        definitionId: "migrated-field:legacy-reading:legacy-translation",
+        content: {
+          label: "Legacy translation",
+          source: "llm",
+          type: "text",
+          instruction: "Translate {{selection}} carefully.",
+        },
+        order: 0,
+        enabled: true,
+        migrationFieldExtension: { preserved: true },
+      }],
+      createdAt: "2026-07-15T00:00:00.000Z",
+      updatedAt: "2026-07-15T01:00:00.000Z",
+    });
+    expect(definitions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "migrated-field:legacy-reading:legacy-translation",
+        label: "Legacy translation",
+        instruction: "Translate {{selection}} carefully.",
+      }),
+    ]));
+    expect((await first.repositories.settings.get()).activeQueryTemplateId).toBe("legacy-reading");
+    const definitionCount = definitions.length;
+    first.database.close();
+
+    const reopened = createTestRepositories(databaseName);
+    expect(await reopened.repositories.templates.get("legacy-reading")).toEqual(migrated);
+    expect(await reopened.repositories.fieldDefinitions.list()).toHaveLength(definitionCount);
+    expect((await reopened.repositories.settings.get()).activeQueryTemplateId).toBe("legacy-reading");
+  });
+
+  it("keeps deleted default field definitions deleted across a database reopen", async () => {
+    const databaseName = "template-field-default-delete-test";
+    const first = createTestRepositories(databaseName);
+    await first.repositories.fieldDefinitions.list();
+    await first.repositories.fieldDefinitions.delete("system-field:translation");
+    first.database.close();
+
+    const reopened = createTestRepositories(databaseName);
+    expect((await reopened.repositories.fieldDefinitions.list()).map(({ id }) => id))
+      .not.toContain("system-field:translation");
+  });
+
+  it("keeps template snapshots unchanged when a field definition is edited or deleted", async () => {
+    const { repositories } = createTestRepositories("template-field-snapshot-independence-test");
+    const definition = await repositories.fieldDefinitions.create({
+      label: "Meaning",
+      description: "Dictionary meaning",
+      source: "dictionary",
+      dictionaryField: "meaning",
+      type: "text",
+    });
+    const template = await repositories.templates.create({
+      name: "Repeated meaning",
+      fields: [
+        createTemplateFieldSnapshot(definition, "meaning-a", 0),
+        createTemplateFieldSnapshot(definition, "meaning-b", 1),
+      ],
+    });
+
+    await repositories.fieldDefinitions.update(definition.id, {
+      ...definition,
+      label: "Edited meaning",
+    });
+    await repositories.fieldDefinitions.delete(definition.id);
+
+    expect((await repositories.templates.get(template.id))?.fields).toEqual(template.fields);
+    const copied = await repositories.templates.copy(template.id);
+    expect(copied.fields.map((field) => field.id)).not.toEqual(
+      template.fields.map((field) => field.id),
+    );
+    expect(copied.fields.map((field) => field.content)).toEqual(
+      template.fields.map((field) => field.content),
+    );
   });
 
   it("repairs malformed settings field by field without leaking stored shapes or touching vocabulary", async () => {
@@ -546,7 +675,7 @@ describe("local repositories", () => {
 
       const upgraded = createTestRepositories(databaseName);
       const active = await upgraded.repositories.settings.getActive();
-      expect(upgraded.database.verno).toBe(7);
+      expect(upgraded.database.verno).toBe(8);
       const migratedTemplate = await upgraded.repositories.templates.get(legacyTemplate.id);
 
       if (version >= 2) {

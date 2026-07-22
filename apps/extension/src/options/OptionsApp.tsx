@@ -23,6 +23,7 @@ import { SettingsSidebar } from "./components/settings-sidebar";
 import { useOptionsSettings } from "./hooks/use-options-settings";
 import { useSettingsRouter } from "./hooks/use-settings-router";
 import { useQueryTemplates } from "./hooks/use-query-templates";
+import { useTemplateFieldDefinitions } from "./hooks/use-template-field-definitions";
 import { AiProviderSection } from "./sections/ai-provider-section";
 import { GeneralSection } from "./sections/general-section";
 import { SelectionSection } from "./sections/selection-section";
@@ -32,7 +33,12 @@ import { VocabularySection } from "./sections/vocabulary-section";
 import { SETTINGS_SECTIONS } from "./types";
 
 export function OptionsApp() {
-  const { activeSection, navigateToSection } = useSettingsRouter();
+  const {
+    activeSection,
+    navigateToSection,
+    navigateToSelectionView,
+    selectionView,
+  } = useSettingsRouter();
   const [youdaoPreview, setYoudaoPreview] = useState<YoudaoTestPreview | null>(null);
   const [dictionaryTestStatus, setDictionaryTestStatus] = useState<
     "idle" | "testing" | "success" | "error"
@@ -62,6 +68,7 @@ export function OptionsApp() {
       }
     },
   });
+  const templateFieldDefinitions = useTemplateFieldDefinitions();
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.themeMode;
@@ -187,10 +194,13 @@ export function OptionsApp() {
                 {activeSection === "selection" ? (
                   <SelectionSection
                     activeTemplateId={settings.activeQueryTemplateId}
+                    definitions={templateFieldDefinitions}
                     editor={queryTemplates}
                     onActiveTemplateChange={(templateId) => {
                       updateSetting("activeQueryTemplateId", templateId);
                     }}
+                    onViewChange={navigateToSelectionView}
+                    view={selectionView}
                   />
                 ) : null}
                 {activeSection === "sources" ? (

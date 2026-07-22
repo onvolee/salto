@@ -2,52 +2,58 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createDefaultQueryTemplate } from "@salto/core";
+import {
+  createDefaultQueryTemplate,
+  createDefaultTemplateFieldDefinitions,
+} from "@salto/core";
 
 import type { useQueryTemplates } from "../hooks/use-query-templates";
+import type { useTemplateFieldDefinitions } from "../hooks/use-template-field-definitions";
 import { templateDraftFromQueryTemplate } from "../template-editor";
 import { SelectionSection } from "./selection-section";
+
+function definitionEditor() {
+  return {
+    createDefinition: vi.fn(),
+    definitions: createDefaultTemplateFieldDefinitions("2026-07-23T00:00:00.000Z"),
+    deleteDefinition: vi.fn(),
+    message: null,
+    status: "idle" as const,
+    updateDefinition: vi.fn(),
+  } as unknown as ReturnType<typeof useTemplateFieldDefinitions>;
+}
 
 describe("selection settings", () => {
   afterEach(cleanup);
 
-  it("updates the active-template settings draft without an immediate persistence action", async () => {
+  it("updates the active-template settings draft without immediate persistence", async () => {
     const systemTemplate = createDefaultQueryTemplate("2026-07-19T00:00:00.000Z");
     const userTemplate = { ...systemTemplate, id: "reading", name: "Reading" };
     const selectTemplate = vi.fn();
     const onActiveTemplateChange = vi.fn();
     const editor = {
       activeTemplateId: systemTemplate.id,
-      addField: vi.fn(),
-      cancelDraft: vi.fn(),
-      changeFieldSource: vi.fn(),
-      copyTemplate: vi.fn(),
-      deleteTemplate: vi.fn(),
       draft: templateDraftFromQueryTemplate(systemTemplate),
       errors: { field: {} },
       isSystemTemplate: true,
       message: null,
-      moveField: vi.fn(),
-      removeField: vi.fn(),
-      saveDraft: vi.fn(),
-      selectTemplate,
       selectedTemplateId: systemTemplate.id,
-      startNewTemplate: vi.fn(),
+      selectTemplate,
       status: "idle" as const,
       templates: [systemTemplate, userTemplate],
-      toggleField: vi.fn(),
-      updateDraft: vi.fn(),
-      updateField: vi.fn(),
     } as unknown as ReturnType<typeof useQueryTemplates>;
     render(
       <SelectionSection
         activeTemplateId={systemTemplate.id}
+        definitions={definitionEditor()}
         editor={editor}
         onActiveTemplateChange={onActiveTemplateChange}
+        onViewChange={vi.fn()}
+        view="templates"
       />,
     );
     const user = userEvent.setup();
@@ -58,27 +64,44 @@ describe("selection settings", () => {
 
     expect(selectTemplate).toHaveBeenCalledWith("reading");
     expect(onActiveTemplateChange).toHaveBeenCalledWith("reading");
-    expect(screen.queryByRole("button", { name: "设为当前" })).not.toBeInTheDocument();
   });
 
-  it("reorders fields and saves a user template with keyboard controls", async () => {
+  it("restores the requested tab and routes tab changes", async () => {
+    const template = createDefaultQueryTemplate("2026-07-19T00:00:00.000Z");
+    const onViewChange = vi.fn();
+    render(
+      <SelectionSection
+        activeTemplateId={template.id}
+        definitions={definitionEditor()}
+        editor={{} as ReturnType<typeof useQueryTemplates>}
+        onActiveTemplateChange={vi.fn()}
+        onViewChange={onViewChange}
+        view="fields"
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Template fields" })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Templates" }));
+    expect(onViewChange).toHaveBeenCalledWith("templates");
+  });
+
+  it("reorders snapshots with keyboard controls and edits appearance in the draft", async () => {
     const systemTemplate = createDefaultQueryTemplate("2026-07-19T00:00:00.000Z");
     const userTemplate = {
       ...systemTemplate,
       id: "reading",
       name: "Reading",
       fields: [
-        { ...systemTemplate.fields[0], id: "translation", label: "Translation", order: 0 },
-        { ...systemTemplate.fields[0], id: "context", label: "Context", order: 1 },
+        { ...systemTemplate.fields[0], id: "translation", content: { ...systemTemplate.fields[0].content, label: "Translation" }, order: 0 },
+        { ...systemTemplate.fields[0], id: "context", content: { ...systemTemplate.fields[0].content, label: "Context" }, order: 1 },
       ],
     };
     const moveField = vi.fn();
-    const saveDraft = vi.fn().mockResolvedValue(true);
+    const updateField = vi.fn();
     const editor = {
       activeTemplateId: userTemplate.id,
       addField: vi.fn(),
       cancelDraft: vi.fn(),
-      changeFieldSource: vi.fn(),
       copyTemplate: vi.fn(),
       deleteTemplate: vi.fn(),
       draft: templateDraftFromQueryTemplate(userTemplate),
@@ -87,7 +110,7 @@ describe("selection settings", () => {
       message: null,
       moveField,
       removeField: vi.fn(),
-      saveDraft,
+      saveDraft: vi.fn(),
       selectTemplate: vi.fn(),
       selectedTemplateId: userTemplate.id,
       startNewTemplate: vi.fn(),
@@ -95,25 +118,34 @@ describe("selection settings", () => {
       templates: [systemTemplate, userTemplate],
       toggleField: vi.fn(),
       updateDraft: vi.fn(),
-      updateField: vi.fn(),
+      updateField,
     } as unknown as ReturnType<typeof useQueryTemplates>;
     render(
       <SelectionSection
         activeTemplateId={userTemplate.id}
+        definitions={definitionEditor()}
         editor={editor}
         onActiveTemplateChange={vi.fn()}
+        onViewChange={vi.fn()}
+        view="templates"
       />,
     );
     const user = userEvent.setup();
 
-    const moveDown = screen.getByRole("button", { name: "下移Translation" });
-    moveDown.focus();
-    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("button", { name: "下移Translation" }));
     expect(moveField).toHaveBeenCalledWith(0, 1);
 
-    const save = screen.getByRole("button", { name: "保存模板" });
-    save.focus();
-    await user.keyboard("{Enter}");
-    expect(saveDraft).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("button", { name: "编辑Translation外观" }));
+    const preview = screen.getByLabelText("当前模板预览");
+    expect(preview).toHaveTextContent("Reading");
+    expect(preview).toHaveTextContent("Context");
+    expect(within(preview).getByRole("button", { name: "重新生成模拟翻译" }))
+      .toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Key CSS"), {
+      target: { value: "color: tomato;" },
+    });
+    expect(updateField).toHaveBeenCalledWith("translation", expect.objectContaining({
+      keyCss: expect.stringContaining("color: tomato;"),
+    }));
   });
 });

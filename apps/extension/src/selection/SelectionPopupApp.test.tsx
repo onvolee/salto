@@ -29,10 +29,8 @@ const defaultTemplate: QueryTemplate = {
   updatedAt: "2026-07-19T00:00:00.000Z",
   fields: [{
     id: "translation",
-    label: "Translation",
-    source: "llm",
-    type: "text",
-    instruction: "Translate {{selection}}.",
+    definitionId: "definition-translation",
+    content: { label: "Translation", source: "llm", type: "text", instruction: "Translate {{selection}}." },
     order: 0,
     enabled: true,
   }],
@@ -251,10 +249,10 @@ describe("SelectionPopupApp", () => {
       id: "field-states",
       name: "Field states",
       fields: [
-        { ...defaultTemplate.fields[0], id: "ready", label: "Ready", order: 2 },
-        { ...defaultTemplate.fields[0], id: "failed", label: "Failed", order: 0 },
-        { ...defaultTemplate.fields[0], id: "unavailable", label: "Unavailable", order: 1 },
-        { ...defaultTemplate.fields[0], id: "disabled", label: "Disabled", order: 3, enabled: false },
+        { ...defaultTemplate.fields[0], id: "ready", content: { ...defaultTemplate.fields[0].content, label: "Ready" }, order: 2 },
+        { ...defaultTemplate.fields[0], id: "failed", content: { ...defaultTemplate.fields[0].content, label: "Failed" }, order: 0 },
+        { ...defaultTemplate.fields[0], id: "unavailable", content: { ...defaultTemplate.fields[0].content, label: "Unavailable" }, order: 1 },
+        { ...defaultTemplate.fields[0], id: "disabled", content: { ...defaultTemplate.fields[0].content, label: "Disabled" }, order: 3, enabled: false },
       ],
     };
     let resolveTranslation!: (response: Awaited<ReturnType<ExtensionMessageClient["send"]>>) => void;

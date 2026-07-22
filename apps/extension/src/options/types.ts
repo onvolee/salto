@@ -35,6 +35,8 @@ export const SETTINGS_SECTIONS = [
 
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
 
+export type SelectionView = "templates" | "fields";
+
 export type SaveStatus =
   | "synced"
   | "dirty"

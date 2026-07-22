@@ -21,15 +21,32 @@ const context: PromptContext = {
   webContent: "This word is unfamiliar to the reader."
 };
 
+function llmField(
+  id: string,
+  label: string,
+  type: "text" | "list",
+  instruction: string,
+  order: number,
+  enabled = true,
+): QueryTemplate["fields"][number] {
+  return {
+    id,
+    definitionId: `definition:${id}`,
+    content: { label, source: "llm", type, instruction },
+    order,
+    enabled,
+  };
+}
+
 const template: QueryTemplate = {
   id: "system-default",
   name: "Default",
   createdAt: "2026-07-16T00:00:00.000Z",
   updatedAt: "2026-07-16T00:00:00.000Z",
   fields: [
-    { id: "second", label: "Second", source: "llm", type: "list", instruction: "Use {{selection}} with {{pageText}}.", order: 1, enabled: true },
-    { id: "first", label: "First", source: "llm", type: "text", instruction: "Use {{targetLanguage}}.", order: 0, enabled: true },
-    { id: "disabled", label: "Disabled", source: "llm", type: "text", instruction: "This disabled field is reserved.", order: 2, enabled: false }
+    llmField("second", "Second", "list", "Use {{selection}} with {{pageText}}.", 1),
+    llmField("first", "First", "text", "Use {{targetLanguage}}.", 0),
+    llmField("disabled", "Disabled", "text", "This disabled field is reserved.", 2, false),
   ]
 };
 
@@ -588,15 +605,7 @@ describe("background message boundary", () => {
       name: "Reading",
       createdAt: "2026-07-16T00:00:00.000Z",
       updatedAt: "2026-07-16T00:00:00.000Z",
-      fields: [{
-        id: "runtime-field",
-        label: "Runtime",
-        source: "llm",
-        type: "text",
-        instruction: "Old instruction",
-        order: 0,
-        enabled: true,
-      }],
+      fields: [llmField("runtime-field", "Runtime", "text", "Old instruction", 0)],
     };
     const templates = {
       update: vi.fn(async (next: QueryTemplate) => {
@@ -645,15 +654,13 @@ describe("background message boundary", () => {
     });
     const savedTemplate: QueryTemplate = {
       ...storedTemplate,
-      fields: [{
-        id: "runtime-field",
-        label: "Runtime",
-        source: "llm",
-        type: "text",
-        instruction: "Translate {{ selection }} to {{targetLanguage}}; context={{sentence}}.",
-        order: 0,
-        enabled: true,
-      }],
+      fields: [llmField(
+        "runtime-field",
+        "Runtime",
+        "text",
+        "Translate {{ selection }} to {{targetLanguage}}; context={{sentence}}.",
+        0,
+      )],
     };
 
     await expect(services.handleMessage({
@@ -826,6 +833,71 @@ describe("background message boundary", () => {
     }, { source: "extension-page" })).resolves.toEqual({
       ok: false,
       error: { code: "invalid-payload", message: "Invalid extension message payload" }
+    });
+  });
+
+  it("manages template field definitions only through the extension-page boundary", async () => {
+    const input = {
+      label: "Meaning",
+      description: "Dictionary meaning",
+      source: "dictionary" as const,
+      dictionaryField: "meaning" as const,
+      type: "text" as const,
+    };
+    const definition = {
+      ...input,
+      id: "definition-1",
+      createdAt: "2026-07-16T00:00:00.000Z",
+      updatedAt: "2026-07-16T00:00:00.000Z",
+    };
+    const fieldDefinitions = {
+      list: vi.fn().mockResolvedValue([definition]),
+      create: vi.fn().mockResolvedValue(definition),
+      update: vi.fn().mockResolvedValue({ ...definition, label: "Edited" }),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const services = createBackgroundServices({
+      repositories: { fieldDefinitions } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor(),
+    });
+
+    await expect(services.handleMessage(
+      { type: "list-template-field-definitions" },
+      { source: "content-script" },
+    )).resolves.toMatchObject({ ok: false, error: { code: "forbidden" } });
+    await expect(services.handleMessage(
+      { type: "list-template-field-definitions" },
+      { source: "extension-page" },
+    )).resolves.toEqual({
+      ok: true,
+      type: "list-template-field-definitions",
+      data: { definitions: [definition] },
+    });
+    await expect(services.handleMessage(
+      { type: "create-template-field-definition", payload: input },
+      { source: "extension-page" },
+    )).resolves.toEqual({
+      ok: true,
+      type: "create-template-field-definition",
+      data: definition,
+    });
+    await expect(services.handleMessage({
+      type: "update-template-field-definition",
+      payload: { definitionId: definition.id, input: { ...input, label: "Edited" } },
+    }, { source: "extension-page" })).resolves.toMatchObject({
+      ok: true,
+      type: "update-template-field-definition",
+      data: { label: "Edited" },
+    });
+    await expect(services.handleMessage({
+      type: "delete-template-field-definition",
+      payload: { definitionId: definition.id },
+    }, { source: "extension-page" })).resolves.toEqual({
+      ok: true,
+      type: "delete-template-field-definition",
+      data: { deletedDefinitionId: definition.id },
     });
   });
 
