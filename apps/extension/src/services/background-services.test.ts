@@ -72,7 +72,7 @@ function createServices() {
 }
 
 describe("background message boundary", () => {
-  it("runs the fixed Youdao connection test only for the extension settings page", async () => {
+  it("runs the requested Youdao preview only for the settings page", async () => {
     const { settings } = createServices();
     const dictionaryAdapter = {
       capabilities: {
@@ -86,6 +86,10 @@ describe("background message boundary", () => {
         language: "en",
         fields: {},
       }),
+      preview: vi.fn().mockResolvedValue({
+        term: "example",
+        sections: [{ kind: "basic", entries: ["n. 示例"] }],
+      }),
     };
     const services = createBackgroundServices({
       repositories: { settings } as never,
@@ -96,7 +100,7 @@ describe("background message boundary", () => {
     });
 
     await expect(services.handleMessage(
-      { type: "test-dictionary-connection" },
+      { type: "test-dictionary-connection", payload: { term: "example" } },
       { source: "content-script" },
     )).resolves.toEqual({
       ok: false,
@@ -105,10 +109,10 @@ describe("background message boundary", () => {
         message: "This request is available only from extension settings",
       },
     });
-    expect(dictionaryAdapter.lookup).not.toHaveBeenCalled();
+    expect(dictionaryAdapter.preview).not.toHaveBeenCalled();
 
     await expect(services.handleMessage(
-      { type: "test-dictionary-connection" },
+      { type: "test-dictionary-connection", payload: { term: "example" } },
       { source: "extension-page" },
     )).resolves.toEqual({
       ok: false,
@@ -117,28 +121,33 @@ describe("background message boundary", () => {
         message: "This request is available only from extension settings",
       },
     });
-    expect(dictionaryAdapter.lookup).not.toHaveBeenCalled();
+    expect(dictionaryAdapter.preview).not.toHaveBeenCalled();
 
     const response = await services.handleMessage(
-      { type: "test-dictionary-connection" },
+      { type: "test-dictionary-connection", payload: { term: "example" } },
       { source: "options-page" },
     );
 
-    expect(dictionaryAdapter.lookup).toHaveBeenCalledOnce();
-    expect(dictionaryAdapter.lookup).toHaveBeenCalledWith(
+    expect(dictionaryAdapter.preview).toHaveBeenCalledOnce();
+    expect(dictionaryAdapter.preview).toHaveBeenCalledWith(
       { term: "example", language: "en" },
       expect.any(AbortSignal),
     );
     expect(response).toEqual({
       ok: true,
       type: "test-dictionary-connection",
-      data: { connected: true, providerId: "youdao-web" },
+      data: {
+        providerId: "youdao-web",
+        preview: {
+          term: "example",
+          sections: [{ kind: "basic", entries: ["n. 示例"] }],
+        },
+      },
     });
-    expect(JSON.stringify(response)).not.toContain("fields");
-    expect(JSON.stringify(response)).not.toContain("example");
+    expect(JSON.stringify(response)).not.toContain("html");
   });
 
-  it("rejects dictionary test payloads so the UI cannot choose a URL or term", async () => {
+  it("accepts only a test term so the UI cannot choose a URL or translation source", async () => {
     const { services } = createServices();
 
     for (const request of [{
@@ -149,8 +158,10 @@ describe("background message boundary", () => {
       },
     }, {
       type: "test-dictionary-connection",
-      term: "private-term",
-      url: "https://attacker.example/proxy",
+      payload: {
+        term: "private-term",
+        providerId: "cambridge-web",
+      },
     }]) {
       await expect(services.handleMessage(
         request,
@@ -174,6 +185,7 @@ describe("background message boundary", () => {
         supportedFields: ["meaning" as const],
       },
       lookup: vi.fn().mockRejectedValue(new DictionaryLookupError("provider-error")),
+      preview: vi.fn().mockRejectedValue(new DictionaryLookupError("provider-error")),
     };
     const services = createBackgroundServices({
       repositories: { settings } as never,
@@ -184,7 +196,7 @@ describe("background message boundary", () => {
     });
 
     const response = await services.handleMessage(
-      { type: "test-dictionary-connection" },
+      { type: "test-dictionary-connection", payload: { term: "example" } },
       { source: "options-page" },
     );
 
@@ -198,15 +210,18 @@ describe("background message boundary", () => {
     expect(JSON.stringify(response)).not.toContain("html");
   });
 
-  it("refuses a connection test when the registered adapter is not Youdao", async () => {
+  it("maps missing entries and parser failures to distinct safe preview errors", async () => {
     const { settings } = createServices();
     const dictionaryAdapter = {
       capabilities: {
-        providerId: "cambridge-web" as const,
+        providerId: "youdao-web" as const,
         supportedLanguages: ["en"],
         supportedFields: ["meaning" as const],
       },
       lookup: vi.fn(),
+      preview: vi.fn()
+        .mockRejectedValueOnce(new DictionaryLookupError("not-found"))
+        .mockRejectedValueOnce(new DictionaryLookupError("parser-failure")),
     };
     const services = createBackgroundServices({
       repositories: { settings } as never,
@@ -217,7 +232,42 @@ describe("background message boundary", () => {
     });
 
     await expect(services.handleMessage(
-      { type: "test-dictionary-connection" },
+      { type: "test-dictionary-connection", payload: { term: "missing" } },
+      { source: "options-page" },
+    )).resolves.toEqual({
+      ok: false,
+      error: { code: "not-found", message: "The dictionary entry was not found" },
+    });
+    await expect(services.handleMessage(
+      { type: "test-dictionary-connection", payload: { term: "changed" } },
+      { source: "options-page" },
+    )).resolves.toEqual({
+      ok: false,
+      error: { code: "parser-failure", message: "The dictionary response could not be parsed" },
+    });
+  });
+
+  it("refuses a connection test when the registered adapter is not Youdao", async () => {
+    const { settings } = createServices();
+    const dictionaryAdapter = {
+      capabilities: {
+        providerId: "cambridge-web" as const,
+        supportedLanguages: ["en"],
+        supportedFields: ["meaning" as const],
+      },
+      lookup: vi.fn(),
+      preview: vi.fn(),
+    };
+    const services = createBackgroundServices({
+      repositories: { settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: createFakeQueryExecutor(),
+      dictionaryAdapter,
+    });
+
+    await expect(services.handleMessage(
+      { type: "test-dictionary-connection", payload: { term: "example" } },
       { source: "options-page" },
     )).resolves.toEqual({
       ok: false,

@@ -1,3 +1,5 @@
+import type { YoudaoPreview } from "../messages";
+
 export const DICTIONARY_FIELD_TYPES = {
   phonetic: "text",
   partOfSpeech: "text",
@@ -58,6 +60,13 @@ export interface DictionaryAdapter {
     request: DictionaryLookupRequest,
     signal: AbortSignal
   ): Promise<DictionaryLookupResult>;
+}
+
+export interface DictionaryPreviewAdapter extends DictionaryAdapter {
+  preview(
+    request: DictionaryLookupRequest,
+    signal: AbortSignal,
+  ): Promise<YoudaoPreview>;
 }
 
 export interface DictionaryClient {

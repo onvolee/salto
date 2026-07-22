@@ -27,6 +27,35 @@ dictionaryAdapterContract("youdao-web", {
 });
 
 describe("youdao-web adapter", () => {
+  it("builds preview requests only from the fixed origin and returns no HTML", async () => {
+    const getText = vi.fn().mockResolvedValue(fixture("common-word"));
+    const adapter = createYoudaoWebAdapter({
+      httpClient: { getText },
+      hasOriginPermission: vi.fn().mockResolvedValue(true),
+    });
+
+    await expect(adapter.preview(
+      { term: "example / private", language: "en" },
+      new AbortController().signal,
+    )).resolves.toEqual({
+      term: "bank",
+      sections: [
+        { kind: "basic", entries: ["/baenk/", "n. the land beside a river"] },
+        { kind: "word-forms", entries: [
+          { label: "复数", value: "banks" },
+          { label: "过去式", value: "banked" },
+          { label: "现在分词", value: "banking" },
+        ] },
+        { kind: "synonyms", entries: ["shore", "riverside"] },
+      ],
+    });
+
+    expect(getText).toHaveBeenCalledWith({
+      url: "https://dict.youdao.com/w/eng/example%20%2F%20private/",
+      signal: expect.any(AbortSignal),
+    });
+  });
+
   it("builds requests only from the fixed origin and encoded lookup term", async () => {
     const getText = vi.fn().mockResolvedValue(fixture("common-word"));
     const hasOriginPermission = vi.fn().mockResolvedValue(true);
