@@ -4,7 +4,7 @@ import { createRuntimeMessageListener } from "./runtime-listener";
 
 describe("runtime message listener", () => {
   it("keeps the response channel alive for async handlers", async () => {
-    const handleMessage = vi.fn().mockResolvedValue({ ok: true, type: "list-highlight-terms", data: { terms: [] } });
+    const handleMessage = vi.fn().mockResolvedValue({ ok: true, type: "list-highlight-terms", data: { enabled: true, terms: [] } });
     const sendResponse = vi.fn();
     const listener = createRuntimeMessageListener(
       { handleMessage },
@@ -23,11 +23,11 @@ describe("runtime message listener", () => {
     await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledWith({
       ok: true,
       type: "list-highlight-terms",
-      data: { terms: [] }
+      data: { enabled: true, terms: [] }
     }));
   });
 
-  it("marks extension pages as trusted settings senders", () => {
+  it("distinguishes the options page from other trusted extension pages", () => {
     const handleMessage = vi.fn().mockResolvedValue({
       ok: true,
       type: "test-llm-connection",
@@ -46,7 +46,30 @@ describe("runtime message listener", () => {
 
     expect(handleMessage).toHaveBeenCalledWith(
       { type: "test-llm-connection" },
+      { source: "options-page" },
+    );
+
+    listener(
+      { type: "test-llm-connection" },
+      { url: "chrome-extension://salto/popup.html" },
+      vi.fn(),
+    );
+    expect(handleMessage).toHaveBeenLastCalledWith(
+      { type: "test-llm-connection" },
       { source: "extension-page" },
     );
+  });
+
+  it("returns a stable failure response when an async handler rejects", async () => {
+    const handleMessage = vi.fn().mockRejectedValue(new Error("database closed"));
+    const sendResponse = vi.fn();
+    const listener = createRuntimeMessageListener({ handleMessage });
+
+    expect(listener({ type: "list-highlight-terms" }, {}, sendResponse)).toBe(true);
+
+    await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledWith({
+      ok: false,
+      error: { code: "request-failed", message: "The extension request could not be completed" },
+    }));
   });
 });

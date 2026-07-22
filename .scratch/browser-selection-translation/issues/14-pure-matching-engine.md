@@ -1,6 +1,6 @@
 # 14 — 纯匹配引擎
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Blocked by: 04（已完成）
 
@@ -27,9 +27,9 @@ Blocked by: 04（已完成）
 
 ## Acceptance criteria
 
-- [ ] 所有 frozen matching rules 有纯函数测试，包括最长术语、边界和特殊字符。
-- [ ] matcher 不修改输入、不触碰 DOM、不生成未 escape 的正则。
-- [ ] 大术语集测试证明结果确定且不会因词序改变而改变。
+- [x] 所有 frozen matching rules 有纯函数测试，包括最长术语、边界和特殊字符。
+- [x] matcher 不修改输入、不触碰 DOM、不生成未 escape 的正则。
+- [x] 大术语集测试证明结果确定且不会因词序改变而改变。
 
 ## Verification
 
@@ -42,3 +42,7 @@ Blocked by: 04（已完成）
 ## Rollback boundary
 
 回滚 matcher 不得清除 saved vocabulary 或改变 vocabulary canonical keys；改变匹配规则必须补充迁移/兼容说明和回归测试。
+
+## Comments
+
+- 2026-07-20: Implemented the storage-neutral `@salto/core` saved-term matcher. It normalizes and deduplicates canonical keys, uses explicit ASCII `[A-Za-z0-9_]` boundaries and ASCII case folding, escapes literal regex terms, returns UTF-16 match ranges, and resolves overlaps by longest term then canonical key. Tests cover NFKC/whitespace, input immutability, apostrophes, Unicode behavior, regex metacharacters, overlap ordering, and a 2,000-term deterministic fixture. Verified with `pnpm test`, `pnpm typecheck`, and `pnpm build` (all pass; extension tests: 191 passed, 1 skipped).

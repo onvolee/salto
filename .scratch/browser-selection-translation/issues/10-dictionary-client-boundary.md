@@ -1,6 +1,6 @@
 # 10 — 字典客户端边界和契约
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Blocked by: 04（已完成）
 
@@ -30,16 +30,25 @@ Blocked by: 04（已完成）
 
 ## Acceptance criteria
 
-- [ ] normalized contract 能表达所有 fixed dictionary fields，并拒绝错误 value shape。
-- [ ] adapter capability 和 unsupported-language rejection 在请求前生效。
-- [ ] timeout、cancel、size、content-type 和 parser failure 都返回稳定、无 secret 的错误分类。
-- [ ] 同一 contract tests 可运行于 fake 和 11 的 `youdao-web` adapter。
-- [ ] 默认测试不发送 live dictionary request。
+- [x] normalized contract 能表达所有 fixed dictionary fields，并拒绝错误 value shape。
+- [x] adapter capability 和 unsupported-language rejection 在请求前生效。
+- [x] timeout、cancel、size、content-type 和 parser failure 都返回稳定、无 secret 的错误分类。
+- [x] 同一 contract tests 可运行于 fake 和 11 的 `youdao-web` adapter。
+- [x] 默认测试不发送 live dictionary request。
 
 ## Verification
 
 - core/client contract tests 覆盖成功、缺失字段、错误类型、语言拒绝、超时、取消、超大响应和错误 content type。
 - `pnpm test`、`pnpm typecheck`、`pnpm build`。
+
+验证记录（2026-07-19）：
+
+- deterministic fake 已运行 `@salto/core/testing` 导出的共享 adapter contract suite；11 可用相同 scenario factory 接入本地 HTML fixtures。
+- HTTP boundary 测试只注入 fake fetch，覆盖 timeout、中途取消、stream byte limit、content-type、HTTP failure、network failure 和 `credentials: omit`，未发送 live request。
+- 初次 `pnpm test`：core 49 tests、extension 163 tests 通过。
+- dictionary 单一真源修复后：core 50 tests、core/extension typecheck、template-editor 3 tests 和 production build 通过；09 的异步等待竞态修复后，主验收重跑 workspace test 为 core 50、extension 163 全部通过。
+- `pnpm typecheck`：通过。
+- `pnpm build`：通过，Chrome MV3 production bundle 生成成功。
 
 ## Exit criteria
 

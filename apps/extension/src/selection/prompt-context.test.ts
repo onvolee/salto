@@ -101,4 +101,21 @@ describe("prompt context extraction", () => {
     expect(extractPromptContext(selectText(selected, 0, 15), "zh-CN").selection)
       .toBe("full  width");
   });
+
+  it("bounds oversized selection, sentence, paragraphs, title, and URL during extraction", () => {
+    const longSentence = `selected ${"sentence ".repeat(180)}`;
+    document.body.innerHTML = `<main><p>${"previous ".repeat(300)}</p><p id="selected">${longSentence}</p><p>${"next ".repeat(300)}</p></main>`;
+    document.title = "t".repeat(400);
+    history.replaceState({}, "", `/read?value=${"u".repeat(2200)}`);
+    const selected = document.querySelector("#selected")!;
+
+    const context = extractPromptContext(selectText(selected, 0, longSentence.length), "zh-CN");
+
+    expect(context.selection.length).toBe(500);
+    expect(context.sentence.length).toBe(1000);
+    expect(context.paragraphs.length).toBe(2000);
+    expect(context.webTitle.length).toBe(300);
+    expect(context.webUrl.length).toBe(2048);
+    expect(context.webContent.length).toBeLessThanOrEqual(2000);
+  });
 });

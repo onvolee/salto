@@ -12,8 +12,16 @@ import type {
   VocabularyItem
 } from "@salto/core";
 
-export type StoredExtensionSettings = ExtensionSettings & { readonly id: "extension" };
-export type StoredLlmConfig = LlmPublicConfig & { readonly id: "active" };
+export type StoredExtensionSettings = ExtensionSettings & {
+  readonly id: "extension";
+  readonly dictionaryConsentedOrigin?: string;
+  readonly legacySettingsMigrationCompleted?: true;
+  readonly activeQueryTemplateRecovery?: "active-template-unavailable";
+};
+export type StoredLlmConfig = LlmPublicConfig & {
+  readonly id: "active";
+  readonly consentedOrigin?: string;
+};
 export type StoredLlmSecret = LlmSecret & { readonly id: "active" };
 
 export class SaltoDatabase extends Dexie {

@@ -1,5 +1,8 @@
 import {
   analyzeLlmPromptFields,
+  DictionaryLookupError,
+  isPromptContextWithinLimits,
+  PROMPT_CONTEXT_LIMITS,
   isValidExtensionSettings,
   isValidQueryTemplate,
   isValidQueryTemplateInput,
@@ -8,6 +11,9 @@ import {
   type ExtensionErrorCode,
   type ExtensionRequest,
   type ExtensionResponse,
+  type ExtensionSettings,
+  type DictionaryAdapter,
+  type DictionaryPreviewAdapter,
   type LlmPublicConfig,
   type LlmQuerySchemaField,
   type PromptContext,
@@ -25,11 +31,16 @@ export interface QueryExecutor {
     template: QueryTemplate,
     context: PromptContext,
     signal?: AbortSignal,
+    onFieldReady?: (result: QueryFieldResult) => void,
   ): Promise<unknown>;
 }
 
 export type BackgroundMessageContext = {
-  readonly source: "content-script" | "extension-page" | "unknown";
+  readonly source:
+    | "content-script"
+    | "extension-page"
+    | "options-page"
+    | "unknown";
 };
 
 export type BackgroundServiceDependencies = {
@@ -37,8 +48,16 @@ export type BackgroundServiceDependencies = {
   readonly saveVocabulary: SaveVocabularyService;
   readonly enrichmentQueue: EnrichmentQueue;
   readonly queryExecutor: QueryExecutor;
+  readonly dictionaryAdapter?: DictionaryAdapter | DictionaryPreviewAdapter;
   readonly hasOriginPermission?: (permissionOrigin: string) => Promise<boolean>;
   readonly testLlmConnection?: () => Promise<void>;
+  readonly prepareSettings?: () => Promise<void>;
+  readonly notifySettingsChanged?: (settings: ExtensionSettings) => Promise<void>;
+  readonly notifyTranslationFieldReady?: (
+    requestId: string,
+    fieldId: string,
+    result: QueryFieldResult,
+  ) => Promise<void>;
 };
 
 const PROMPT_CONTEXT_KEYS = [
@@ -75,9 +94,8 @@ function isPromptContext(value: unknown): value is PromptContext {
   if (!isRecord(value) || !PROMPT_CONTEXT_KEYS.every((key) => typeof value[key] === "string")) {
     return false;
   }
-  const selection = value.selection as string;
-  const webContent = value.webContent as string;
-  return selection.trim().length > 0 && selection.length <= 500 && webContent.length <= 2000;
+  const context = value as unknown as PromptContext;
+  return context.selection.trim().length > 0 && isPromptContextWithinLimits(context);
 }
 
 function isSavePayload(
@@ -96,7 +114,11 @@ function isSavePayload(
   return isRecord(context)
     && ["sentence", "paragraphs", "pageTitle", "pageUrl"].every(
       (key) => typeof context[key] === "string",
-    );
+    )
+    && (context.sentence as string).length <= PROMPT_CONTEXT_LIMITS.sentence
+    && (context.paragraphs as string).length <= PROMPT_CONTEXT_LIMITS.paragraphs
+    && (context.pageTitle as string).length <= PROMPT_CONTEXT_LIMITS.webTitle
+    && (context.pageUrl as string).length <= PROMPT_CONTEXT_LIMITS.webUrl;
 }
 
 function isLlmPublicConfig(value: unknown): value is LlmPublicConfig {
@@ -111,6 +133,32 @@ function isTemplateIdPayload(value: unknown): value is { readonly templateId: st
   return isRecord(value) && typeof value.templateId === "string" && value.templateId.trim().length > 0;
 }
 
+function publicQueryTemplateSnapshot(template: QueryTemplate): QueryTemplate {
+  return {
+    id: template.id,
+    name: template.name,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+    fields: template.fields.map((field) => {
+      const common = {
+        id: field.id,
+        label: field.label,
+        source: field.source,
+        type: field.type,
+        order: field.order,
+        enabled: field.enabled,
+      };
+      return field.source === "llm"
+        ? { ...common, source: "llm" as const, instruction: field.instruction }
+        : {
+            ...common,
+            source: "dictionary" as const,
+            dictionaryField: field.dictionaryField,
+          } as QueryTemplate["fields"][number];
+    }),
+  };
+}
+
 export function parseExtensionRequest(
   value: unknown,
 ): ExtensionRequest | null | "unknown" {
@@ -122,14 +170,19 @@ export function parseExtensionRequest(
       && typeof value.payload.requestId === "string"
       && value.payload.requestId.length > 0
       && isPromptContext(value.payload.context)
+      && isValidQueryTemplate(value.payload.template)
       ? {
         type: value.type,
         payload: {
           requestId: value.payload.requestId,
           context: value.payload.context,
+          template: publicQueryTemplateSnapshot(value.payload.template),
         },
       }
       : null;
+  }
+  if (value.type === "get-active-query-template") {
+    return { type: value.type };
   }
   if (value.type === "cancel-translation") {
     return isRecord(value.payload)
@@ -140,6 +193,14 @@ export function parseExtensionRequest(
   }
   if (value.type === "save-vocabulary") {
     return isSavePayload(value.payload) ? { type: value.type, payload: value.payload } : null;
+  }
+  if (value.type === "check-vocabulary-exists") {
+    return isRecord(value.payload)
+      && typeof value.payload.term === "string"
+      && value.payload.term.length > 0
+      && typeof value.payload.language === "string"
+      ? { type: value.type, payload: { term: value.payload.term, language: value.payload.language } }
+      : null;
   }
   if (value.type === "list-query-templates" || value.type === "get-extension-settings") {
     return { type: value.type };
@@ -152,7 +213,6 @@ export function parseExtensionRequest(
   if (
     value.type === "copy-query-template"
     || value.type === "delete-query-template"
-    || value.type === "set-default-query-template"
   ) {
     return isTemplateIdPayload(value.payload) ? { type: value.type, payload: value.payload } : null;
   }
@@ -183,6 +243,16 @@ export function parseExtensionRequest(
     || value.type === "test-llm-connection"
   ) {
     return { type: value.type };
+  }
+  if (value.type === "test-dictionary-connection") {
+    return isRecord(value.payload)
+      && Object.keys(value).length === 2
+      && Object.keys(value.payload).length === 1
+      && typeof value.payload.term === "string"
+      && value.payload.term.trim().length > 0
+      && value.payload.term.length <= 500
+      ? { type: value.type, payload: { term: value.payload.term.trim() } }
+      : null;
   }
   if (value.type === "save-llm-config") {
     return isRecord(value.payload)
@@ -243,7 +313,13 @@ function failedField(fieldId: string, code: string, message: string): QueryField
 }
 
 function assertExtensionPage(context: BackgroundMessageContext) {
-  if (context.source !== "extension-page") {
+  if (context.source !== "extension-page" && context.source !== "options-page") {
+    throw new ServiceError("forbidden", "This request is available only from extension settings");
+  }
+}
+
+function assertOptionsPage(context: BackgroundMessageContext) {
+  if (context.source !== "options-page") {
     throw new ServiceError("forbidden", "This request is available only from extension settings");
   }
 }
@@ -257,6 +333,24 @@ function mapUnknownError(error: unknown): ExtensionResponse {
   }
   if (error instanceof QueryTemplateRepositoryError) {
     return errorResponse(error.code, error.message);
+  }
+  if (error instanceof DictionaryLookupError) {
+    if (error.code === "permission-denied") {
+      return errorResponse("permission-denied", error.message);
+    }
+    if (error.code === "network" || error.code === "timeout") {
+      return errorResponse(error.code, error.message);
+    }
+    if (error.code === "provider-error") {
+      return errorResponse("provider", error.message);
+    }
+    if (error.code === "not-found") {
+      return errorResponse("not-found", error.message);
+    }
+    if (error.code === "parser-failure") {
+      return errorResponse("parser-failure", error.message);
+    }
+    return errorResponse("invalid-response", error.message);
   }
   if (isRecord(error) && typeof error.code === "string") {
     const code = error.code.replace(/^llm-/, "") as ExtensionErrorCode;
@@ -306,12 +400,24 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
           };
         }
 
+        await dependencies.prepareSettings?.();
+
+        if (request.type === "get-active-query-template") {
+          const { template, resolution } = await dependencies.repositories.settings.getActive();
+          return {
+            ok: true,
+            type: request.type,
+            data: { template: publicQueryTemplateSnapshot(template), resolution },
+          };
+        }
+
         if (request.type === "translate-selection") {
           translationControllers.get(request.payload.requestId)?.abort();
           const controller = new AbortController();
           translationControllers.set(request.payload.requestId, controller);
           try {
-            const { settings, template } = await dependencies.repositories.settings.getActive();
+            const settings = await dependencies.repositories.settings.get();
+            const template = request.payload.template;
             const promptContext = {
               ...request.payload.context,
               targetLanguage: settings.targetLanguage,
@@ -320,6 +426,13 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
               template,
               promptContext,
               controller.signal,
+              (result) => {
+                void dependencies.notifyTranslationFieldReady?.(
+                  request.payload.requestId,
+                  result.fieldId,
+                  result,
+                );
+              },
             );
             const activeFields = template.fields
               .filter((field) => field.enabled)
@@ -386,6 +499,18 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
           };
         }
 
+        if (request.type === "check-vocabulary-exists") {
+          const exists = await dependencies.repositories.vocabulary.exists(
+            request.payload.term,
+            request.payload.language
+          );
+          return {
+            ok: true,
+            type: request.type,
+            data: { exists },
+          };
+        }
+
         if (request.type === "retry-enrichment") {
           await dependencies.enrichmentQueue.retryFailed(request.payload?.vocabularyItemId);
           void dependencies.enrichmentQueue.wake();
@@ -426,7 +551,7 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
           return {
             ok: true,
             type: request.type,
-            data: result,
+            data: { enabled: settings.highlightEnabled, ...result },
           };
         }
 
@@ -492,6 +617,11 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
           assertExtensionPage(context);
           await dependencies.repositories.templates.delete(request.payload.templateId);
           const settings = await dependencies.repositories.settings.get();
+          try {
+            await dependencies.notifySettingsChanged?.(settings);
+          } catch {
+            // The durable fallback remains valid when no subscriber is reachable.
+          }
           return {
             ok: true,
             type: request.type,
@@ -499,15 +629,6 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
               deletedTemplateId: request.payload.templateId,
               activeQueryTemplateId: settings.activeQueryTemplateId
             }
-          };
-        }
-
-        if (request.type === "set-default-query-template") {
-          assertExtensionPage(context);
-          return {
-            ok: true,
-            type: request.type,
-            data: await dependencies.repositories.templates.setDefault(request.payload.templateId)
           };
         }
 
@@ -522,10 +643,41 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
 
         if (request.type === "save-extension-settings") {
           assertExtensionPage(context);
+          const settings = await dependencies.repositories.settings.save(request.payload);
+          try {
+            await dependencies.notifySettingsChanged?.(settings);
+          } catch {
+            // Persistence succeeded; unavailable listeners must not turn the save into a failure.
+          }
           return {
             ok: true,
             type: request.type,
-            data: await dependencies.repositories.settings.save(request.payload)
+            data: settings
+          };
+        }
+
+        if (request.type === "test-dictionary-connection") {
+          assertOptionsPage(context);
+          if (
+            dependencies.dictionaryAdapter?.capabilities.providerId !== "youdao-web"
+            || !("preview" in dependencies.dictionaryAdapter)
+          ) {
+            throw new ServiceError(
+              "not-configured",
+              "The Youdao dictionary adapter is not registered",
+            );
+          }
+          const preview = await dependencies.dictionaryAdapter.preview(
+            { term: request.payload.term, language: "en" },
+            new AbortController().signal,
+          );
+          return {
+            ok: true,
+            type: request.type,
+            data: {
+              providerId: dependencies.dictionaryAdapter.capabilities.providerId,
+              preview,
+            },
           };
         }
 
@@ -539,6 +691,7 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
           await dependencies.repositories.llmSettings.save(
             normalized.config,
             apiKey ? { apiKey } : undefined,
+            normalized.permissionOrigin,
           );
           return {
             ok: true,

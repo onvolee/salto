@@ -2,13 +2,22 @@ import "fake-indexeddb/auto";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { VocabularyField } from "@salto/core";
+import {
+  createDictionaryClient,
+  createFakeDictionaryAdapter,
+  DictionaryLookupError,
+  type DictionaryAdapter,
+  type DictionaryLookupResult,
+  type VocabularyField,
+} from "@salto/core";
 
 import { SaltoDatabase } from "../db/database";
 import { createLocalRepositories } from "../repositories";
 
 import { createDeterministicDictionaryFake } from "./deterministic-dictionary-fake";
+import { createDictionaryEnrichmentSource } from "./dictionary-enrichment-source";
 import { createEnrichmentQueue } from "./enrichment-queue";
+import type { EnrichmentSource } from "./types";
 
 const databases: SaltoDatabase[] = [];
 const clock = () => "2026-07-16T00:00:00.000Z";
@@ -45,6 +54,33 @@ function createQueue(
   repositories: ReturnType<typeof createRepositories>,
   options: { failFields?: readonly ("phonetic" | "partOfSpeech" | "meaning" | "synonyms" | "wordForms")[] } = {}
 ) {
+  const dictionarySource = options.failFields
+    ? createDeterministicDictionaryFake({ failFields: options.failFields })
+    : createDictionaryEnrichmentSource({
+      settings: repositories.settings,
+      dictionaryClient: createDictionaryClient(createFakeDictionaryAdapter({
+        providerId: "youdao-web",
+        supportedLanguages: ["en"],
+        fixtures: [{
+          request: { term: "unfamiliar", language: "en" },
+          fields: {
+            phonetic: "/unfamiliar/",
+            partOfSpeech: "noun",
+            meaning: "(dictionary) unfamiliar",
+            synonyms: ["unfamiliar-synonym-1", "unfamiliar-synonym-2"],
+            wordForms: ["unfamiliars", "unfamiliaring"],
+          },
+        }],
+      })),
+    });
+  return createQueueWithSources(database, repositories, [dictionarySource, createFakeLlmSource()]);
+}
+
+function createQueueWithSources(
+  database: SaltoDatabase,
+  repositories: ReturnType<typeof createRepositories>,
+  sources: readonly EnrichmentSource[],
+) {
   return createEnrichmentQueue({
     database,
     repositories: {
@@ -52,7 +88,7 @@ function createQueue(
       learning: repositories.learning,
       vocabulary: repositories.vocabulary
     },
-    sources: [createDeterministicDictionaryFake({ failFields: options.failFields }), createFakeLlmSource()],
+    sources,
     clock,
     createId,
     maxAttempts: 3,
@@ -76,6 +112,15 @@ async function saveFixture(
       pageUrl: "https://example.com/read"
     }
   });
+}
+
+async function readField(
+  repositories: ReturnType<typeof createRepositories>,
+  vocabularyItemId: string,
+  fieldKey: VocabularyField["key"],
+) {
+  return (await repositories.vocabulary.listFields(vocabularyItemId))
+    .find((field) => field.key === fieldKey);
 }
 
 afterEach(async () => {
@@ -122,6 +167,136 @@ describe("enrichment queue", () => {
     ]);
   });
 
+  it("persists partial fake-adapter results and retries only unfinished fields", async () => {
+    const database = createTestDatabase("dictionary-client-partial");
+    const repositories = createRepositories(database);
+    const saved = await saveFixture(repositories);
+    const firstAdapter = createFakeDictionaryAdapter({
+      providerId: "youdao-web",
+      supportedLanguages: ["en"],
+      fixtures: [{
+        request: { term: "unfamiliar", language: "en" },
+        fields: {
+          phonetic: "/original/",
+          meaning: "A term that is not familiar",
+        },
+      }],
+    });
+    const firstLookup = vi.fn<DictionaryAdapter["lookup"]>(firstAdapter.lookup.bind(firstAdapter));
+    const firstSource = createDictionaryEnrichmentSource({
+      settings: repositories.settings,
+      dictionaryClient: createDictionaryClient({ ...firstAdapter, lookup: firstLookup }),
+    });
+    const firstQueue = createQueueWithSources(
+      database,
+      repositories,
+      [firstSource, createFakeLlmSource()],
+    );
+
+    await firstQueue.wake();
+
+    expect(firstLookup).toHaveBeenCalledOnce();
+    expect(await readField(repositories, saved.vocabularyItemId, "phonetic"))
+      .toEqual(expect.objectContaining({ status: "ready", value: "/original/" }));
+    expect(await readField(repositories, saved.vocabularyItemId, "synonyms"))
+      .toEqual(expect.objectContaining({ status: "pending" }));
+    expect((await repositories.enrichmentJobs.listByVocabularyItem(saved.vocabularyItemId))
+      .map((pendingJob) => pendingJob.fieldKey).toSorted())
+      .toEqual(["partOfSpeech", "synonyms", "wordForms"]);
+
+    const retryAdapter = createFakeDictionaryAdapter({
+      providerId: "youdao-web",
+      supportedLanguages: ["en"],
+      fixtures: [{
+        request: { term: "unfamiliar", language: "en" },
+        fields: {
+          phonetic: "/replacement/",
+          partOfSpeech: "adjective",
+          meaning: "replacement meaning",
+          synonyms: ["unknown"],
+          wordForms: ["unfamiliarly"],
+        },
+      }],
+    });
+    const retryLookup = vi.fn<DictionaryAdapter["lookup"]>(retryAdapter.lookup.bind(retryAdapter));
+    const retryQueue = createQueueWithSources(database, repositories, [
+      createDictionaryEnrichmentSource({
+        settings: repositories.settings,
+        dictionaryClient: createDictionaryClient({ ...retryAdapter, lookup: retryLookup }),
+      }),
+      createFakeLlmSource(),
+    ]);
+
+    await retryQueue.wake();
+
+    expect(retryLookup).toHaveBeenCalledOnce();
+    expect(await readField(repositories, saved.vocabularyItemId, "phonetic"))
+      .toEqual(expect.objectContaining({ status: "ready", value: "/original/" }));
+    expect(await readField(repositories, saved.vocabularyItemId, "synonyms"))
+      .toEqual(expect.objectContaining({ status: "ready", value: ["unknown"] }));
+    expect(await repositories.enrichmentJobs.listByVocabularyItem(saved.vocabularyItemId))
+      .toHaveLength(0);
+    expect(await database.learningCards.count()).toBe(1);
+  });
+
+  it("routes a Youdao failure through field retry and clears errors on success", async () => {
+    const database = createTestDatabase("dictionary-client-retry");
+    const repositories = createRepositories(database);
+    const saved = await saveFixture(repositories);
+    const success: DictionaryLookupResult = {
+      providerId: "youdao-web",
+      term: "unfamiliar",
+      language: "en",
+      fields: {
+        phonetic: { status: "ready", type: "text", value: "/unfamiliar/" },
+        partOfSpeech: { status: "ready", type: "text", value: "adjective" },
+        meaning: { status: "ready", type: "text", value: "Not familiar" },
+        synonyms: { status: "ready", type: "list", value: ["unknown"] },
+        wordForms: { status: "ready", type: "list", value: ["unfamiliarly"] },
+      },
+    };
+    const lookup = vi.fn<DictionaryAdapter["lookup"]>()
+      .mockRejectedValueOnce(new DictionaryLookupError("timeout"))
+      .mockResolvedValue(success);
+    const source = createDictionaryEnrichmentSource({
+      settings: repositories.settings,
+      dictionaryClient: createDictionaryClient({
+        capabilities: {
+          providerId: "youdao-web",
+          supportedLanguages: ["en"],
+          supportedFields: ["phonetic", "partOfSpeech", "meaning", "synonyms", "wordForms"],
+        },
+        lookup,
+      }),
+    });
+    const queue = createQueueWithSources(
+      database,
+      repositories,
+      [source, createFakeLlmSource()],
+    );
+
+    await queue.wake();
+
+    expect(await readField(repositories, saved.vocabularyItemId, "meaning"))
+      .toEqual(expect.objectContaining({
+        status: "failed",
+        errorMessage: "The dictionary lookup timed out",
+      }));
+    expect(await repositories.enrichmentJobs.listByVocabularyItem(saved.vocabularyItemId))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ fieldKey: "meaning", status: "queued", attempts: 1 }),
+      ]));
+
+    await queue.wake();
+
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(await readField(repositories, saved.vocabularyItemId, "meaning"))
+      .toEqual(expect.objectContaining({ status: "ready", value: "Not familiar" }));
+    expect(await repositories.enrichmentJobs.listByVocabularyItem(saved.vocabularyItemId))
+      .toHaveLength(0);
+    expect(await database.learningCards.count()).toBe(1);
+  });
+
   it("keeps dictionary fields pending when no provider is configured", async () => {
     const database = createTestDatabase("no-provider");
     const repositories = createRepositories(database);
@@ -132,11 +307,9 @@ describe("enrichment queue", () => {
         learning: repositories.learning,
         vocabulary: repositories.vocabulary
       },
-      sources: [{
-        async executeBatch(request) {
-          return [];
-        }
-      }, createFakeLlmSource()],
+      sources: [createDictionaryEnrichmentSource({
+        settings: repositories.settings,
+      }), createFakeLlmSource()],
       clock,
       createId,
       maxAttempts: 3,
@@ -268,6 +441,48 @@ describe("enrichment queue", () => {
     expect(cards).toHaveLength(1);
   });
 
+  it("recovers queued and stale running jobs after restart without rerunning failed or completed jobs", async () => {
+    const databaseName = "restart-status-matrix";
+    const firstDatabase = createTestDatabase(databaseName);
+    const firstRepositories = createRepositories(firstDatabase);
+    const saved = await saveFixture(firstRepositories);
+    await firstDatabase.enrichmentJobs.bulkDelete([
+      `${saved.vocabularyItemId}:synonyms:job`,
+      `${saved.vocabularyItemId}:wordForms:job`,
+    ]);
+    await firstDatabase.enrichmentJobs.update(`${saved.vocabularyItemId}:partOfSpeech:job`, {
+      status: "running",
+      attempts: 1,
+      nextRunAt: "2020-01-01T00:00:00.000Z",
+    });
+    await firstDatabase.enrichmentJobs.update(`${saved.vocabularyItemId}:meaning:job`, {
+      status: "failed",
+      attempts: 3,
+    });
+    await firstDatabase.enrichmentJobs.update(`${saved.vocabularyItemId}:examples:job`, {
+      status: "succeeded",
+      attempts: 1,
+    } as never);
+    firstDatabase.close();
+
+    const secondDatabase = createTestDatabase(databaseName);
+    const secondRepositories = createRepositories(secondDatabase);
+    const queue = createQueue(secondDatabase, secondRepositories);
+    await queue.recover();
+    await queue.wake();
+
+    expect(await secondDatabase.vocabularyFields.get(`${saved.vocabularyItemId}:phonetic`))
+      .toEqual(expect.objectContaining({ status: "ready" }));
+    expect(await secondDatabase.vocabularyFields.get(`${saved.vocabularyItemId}:partOfSpeech`))
+      .toEqual(expect.objectContaining({ status: "ready" }));
+    expect(await secondDatabase.enrichmentJobs.get(`${saved.vocabularyItemId}:meaning:job`))
+      .toEqual(expect.objectContaining({ status: "failed", attempts: 3 }));
+    expect(await secondDatabase.enrichmentJobs.get(`${saved.vocabularyItemId}:examples:job`))
+      .toEqual(expect.objectContaining({ status: "succeeded", attempts: 1 }));
+    expect(await secondDatabase.vocabularyFields.get(`${saved.vocabularyItemId}:examples`))
+      .toEqual(expect.objectContaining({ status: "pending" }));
+  });
+
   it("creates only one meaning-recall card per item", async () => {
     const database = createTestDatabase("idempotent-card");
     const repositories = createRepositories(database);
@@ -281,6 +496,116 @@ describe("enrichment queue", () => {
     const cards = await database.learningCards.toArray();
     expect(cards).toHaveLength(1);
     expect(cards[0].id).toBe(`${saved.vocabularyItemId}:meaning-recall`);
+  });
+
+  it("does not overwrite a ready field when a redundant job is recovered", async () => {
+    const database = createTestDatabase("preserve-ready-field");
+    const repositories = createRepositories(database);
+    const saved = await saveFixture(repositories);
+    const fieldId = `${saved.vocabularyItemId}:phonetic`;
+    const pendingField = await database.vocabularyFields.get(fieldId);
+    if (!pendingField) {
+      throw new Error("Expected the saved phonetic field");
+    }
+    await database.vocabularyFields.put({
+      ...pendingField,
+      status: "ready",
+      value: "/existing/",
+    } as VocabularyField);
+
+    const queue = createQueue(database, repositories);
+    await queue.wake();
+
+    expect(await database.vocabularyFields.get(fieldId)).toEqual(
+      expect.objectContaining({ status: "ready", value: "/existing/" }),
+    );
+    expect(await database.enrichmentJobs.get(`${saved.vocabularyItemId}:phonetic:job`))
+      .toBeUndefined();
+  });
+
+  it("removes ready-field jobs before a missing-provider batch", async () => {
+    const database = createTestDatabase("ready-field-missing-provider");
+    const repositories = createRepositories(database);
+    const saved = await saveFixture(repositories);
+    const fieldId = `${saved.vocabularyItemId}:phonetic`;
+    const pendingField = await database.vocabularyFields.get(fieldId);
+    if (!pendingField) {
+      throw new Error("Expected the saved phonetic field");
+    }
+    await database.vocabularyFields.put({
+      ...pendingField,
+      status: "ready",
+      value: "/existing/",
+    } as VocabularyField);
+    await database.enrichmentJobs.bulkDelete([
+      `${saved.vocabularyItemId}:partOfSpeech:job`,
+      `${saved.vocabularyItemId}:examples:job`,
+      `${saved.vocabularyItemId}:synonyms:job`,
+      `${saved.vocabularyItemId}:wordForms:job`,
+    ]);
+    const source = createDictionaryEnrichmentSource({
+      settings: repositories.settings,
+    });
+    const executeBatch = vi.spyOn(source, "executeBatch");
+    const queue = createQueueWithSources(database, repositories, [source]);
+
+    await queue.wake();
+
+    expect(executeBatch).toHaveBeenCalledOnce();
+    expect(executeBatch).toHaveBeenCalledWith(expect.objectContaining({
+      jobs: [expect.objectContaining({ fieldKey: "meaning", attempts: 1 })],
+    }));
+    expect(await database.vocabularyFields.get(fieldId)).toEqual(
+      expect.objectContaining({ status: "ready", value: "/existing/" }),
+    );
+    expect(await database.enrichmentJobs.get(`${saved.vocabularyItemId}:phonetic:job`))
+      .toBeUndefined();
+    expect(await database.enrichmentJobs.get(`${saved.vocabularyItemId}:meaning:job`))
+      .toEqual(expect.objectContaining({ status: "queued", attempts: 0 }));
+  });
+
+  it("ignores a stale response after the job is reclaimed by a new worker", async () => {
+    const database = createTestDatabase("stale-response-identity");
+    const repositories = createRepositories(database);
+    const saved = await saveFixture(repositories);
+    const jobId = `${saved.vocabularyItemId}:meaning:job`;
+    await database.enrichmentJobs.bulkDelete([
+      `${saved.vocabularyItemId}:phonetic:job`,
+      `${saved.vocabularyItemId}:partOfSpeech:job`,
+      `${saved.vocabularyItemId}:examples:job`,
+      `${saved.vocabularyItemId}:synonyms:job`,
+      `${saved.vocabularyItemId}:wordForms:job`,
+    ]);
+
+    let resolveFirst: ((value: readonly import("./types").EnrichmentFieldResult[]) => void) | undefined;
+    let resolveSecond: ((value: readonly import("./types").EnrichmentFieldResult[]) => void) | undefined;
+    const firstSource: EnrichmentSource = {
+      executeBatch: vi.fn(() => new Promise<readonly import("./types").EnrichmentFieldResult[]>((resolve) => { resolveFirst = resolve; })),
+    };
+    const secondSource: EnrichmentSource = {
+      executeBatch: vi.fn(() => new Promise<readonly import("./types").EnrichmentFieldResult[]>((resolve) => { resolveSecond = resolve; })),
+    };
+    const firstWorker = createQueueWithSources(database, repositories, [firstSource]);
+    const secondWorker = createQueueWithSources(database, repositories, [secondSource]);
+
+    const firstWake = firstWorker.wake();
+    await vi.waitFor(() => expect(firstSource.executeBatch).toHaveBeenCalledOnce());
+    await database.enrichmentJobs.update(jobId, { status: "queued", nextRunAt: clock() });
+
+    const secondWake = secondWorker.wake();
+    await vi.waitFor(() => expect(secondSource.executeBatch).toHaveBeenCalledOnce());
+    resolveFirst?.([{ jobId, fieldKey: "meaning", status: "ready", value: "stale meaning" }]);
+    await firstWake;
+
+    expect(await database.vocabularyFields.get(`${saved.vocabularyItemId}:meaning`))
+      .toEqual(expect.objectContaining({ status: "pending" }));
+    expect(await database.enrichmentJobs.get(jobId))
+      .toEqual(expect.objectContaining({ status: "running", attempts: 2 }));
+
+    resolveSecond?.([{ jobId, fieldKey: "meaning", status: "ready", value: "current meaning" }]);
+    await secondWake;
+    expect(await database.vocabularyFields.get(`${saved.vocabularyItemId}:meaning`))
+      .toEqual(expect.objectContaining({ status: "ready", value: "current meaning" }));
   });
 
   it("does not create a card when meaning is not ready", async () => {

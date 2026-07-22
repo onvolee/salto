@@ -1,21 +1,13 @@
+import {
+  DICTIONARY_FIELD_TYPES,
+  type DictionaryFieldKey
+} from "../dictionary/types";
 import type { ClientGeneratedId, IsoDateTimeString } from "../shared/sync";
 
 export type QuerySchemaFieldType = "text" | "list";
 export type QuerySchemaFieldSource = "llm" | "dictionary";
-export type DictionaryQueryField =
-  | "phonetic"
-  | "partOfSpeech"
-  | "meaning"
-  | "synonyms"
-  | "wordForms";
-
-export type DictionaryQueryFieldSpec = {
-  readonly phonetic: "text";
-  readonly partOfSpeech: "text";
-  readonly meaning: "text";
-  readonly synonyms: "list";
-  readonly wordForms: "list";
-};
+export type DictionaryQueryField = DictionaryFieldKey;
+export type DictionaryQueryFieldSpec = typeof DICTIONARY_FIELD_TYPES;
 
 type QuerySchemaFieldBase = {
   readonly id: ClientGeneratedId;
@@ -94,14 +86,15 @@ export interface ExtensionSettings {
   readonly targetLanguage: string;
   readonly highlightEnabled: boolean;
   readonly themeMode: "system" | "light" | "dark";
-  readonly activeDictionaryProvider?: "youdao-web" | "cambridge-web";
+  readonly activeDictionaryProvider: "youdao-web";
 }
 
 export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   activeQueryTemplateId: "system-default",
   targetLanguage: "zh-CN",
   highlightEnabled: true,
-  themeMode: "system"
+  themeMode: "system",
+  activeDictionaryProvider: "youdao-web"
 };
 
 export function isValidQueryTemplate(value: unknown): value is QueryTemplate {
@@ -153,13 +146,12 @@ export function isValidQueryTemplateInput(value: unknown): value is QueryTemplat
 
 export function isValidExtensionSettings(value: unknown): value is ExtensionSettings {
   return isRecord(value)
+    && Object.keys(value).length === 5
     && isNonEmptyString(value.activeQueryTemplateId)
     && isNonEmptyString(value.targetLanguage)
     && typeof value.highlightEnabled === "boolean"
     && (value.themeMode === "system" || value.themeMode === "light" || value.themeMode === "dark")
-    && (value.activeDictionaryProvider === undefined
-      || value.activeDictionaryProvider === "youdao-web"
-      || value.activeDictionaryProvider === "cambridge-web");
+    && value.activeDictionaryProvider === "youdao-web";
 }
 
 function isValidQuerySchemaField(value: unknown): value is QuerySchemaField {
@@ -184,27 +176,15 @@ function isValidQuerySchemaField(value: unknown): value is QuerySchemaField {
     if (!("dictionaryField" in value) || !isDictionaryQueryField(value.dictionaryField)) {
       return false;
     }
-    return value.type === DICTIONARY_QUERY_FIELD_TYPES[value.dictionaryField]
+    return value.type === DICTIONARY_FIELD_TYPES[value.dictionaryField]
       && !("instruction" in value);
   }
 
   return false;
 }
 
-const DICTIONARY_QUERY_FIELD_TYPES: DictionaryQueryFieldSpec = {
-  phonetic: "text",
-  partOfSpeech: "text",
-  meaning: "text",
-  synonyms: "list",
-  wordForms: "list"
-};
-
 function isDictionaryQueryField(value: unknown): value is DictionaryQueryField {
-  return value === "phonetic"
-    || value === "partOfSpeech"
-    || value === "meaning"
-    || value === "synonyms"
-    || value === "wordForms";
+  return typeof value === "string" && Object.hasOwn(DICTIONARY_FIELD_TYPES, value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

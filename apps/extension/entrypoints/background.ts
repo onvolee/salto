@@ -1,13 +1,20 @@
 import { SaltoDatabase } from "salto-src/db";
 import { createDictionaryEnrichmentSource } from "salto-src/enrichment/dictionary-enrichment-source";
+import { createDictionaryQueryExecutor } from "salto-src/dictionary/dictionary-query-executor";
+import { createYoudaoWebAdapter } from "salto-src/dictionary/youdao-web-adapter";
 import { createEnrichmentQueue } from "salto-src/enrichment/enrichment-queue";
 import { createLlmEnrichmentSource } from "salto-src/enrichment/llm-enrichment-source";
 import { createOpenAiCompatibleClient } from "salto-src/llm/openai-compatible-client";
 import { createOpenAiCompatibleQueryExecutor } from "salto-src/llm/openai-compatible-query-executor";
+import { registerSelectionPanelCommand } from "salto-src/selection/panel-command";
 import { createLocalRepositories } from "salto-src/repositories";
 import { createBackgroundServices } from "salto-src/services/background-services";
 import { createRuntimeMessageListener } from "salto-src/services/runtime-listener";
-import { normalizeLlmPublicConfig } from "@salto/core";
+import {
+  migrateLegacySettings,
+} from "salto-src/settings/legacy-settings-migration";
+import { createSettingsNotificationPublisher } from "salto-src/settings/settings-notifications";
+import { createDictionaryClient, normalizeLlmPublicConfig } from "@salto/core";
 
 function createId(): string {
   return crypto.randomUUID();
@@ -24,21 +31,81 @@ class ProviderSetupError extends Error {
 }
 
 export default defineBackground(() => {
+  registerSelectionPanelCommand({
+    onCommand: browser.commands.onCommand,
+    queryActiveTab: () => browser.tabs.query({ active: true, currentWindow: true }),
+    sendToTab: (tabId, message) => browser.tabs.sendMessage(tabId, message),
+  });
+
   const database = new SaltoDatabase();
   const repositories = createLocalRepositories(database, {
     clock: () => new Date().toISOString(),
     createId
   });
+  let settingsReady: Promise<void> | undefined;
+  const prepareSettings = () => {
+    settingsReady ??= migrateLegacySettings(repositories.settings, {
+      async get(key) {
+        return browser.storage.local.get(key) as Promise<Record<string, unknown>>;
+      },
+      async remove(key) {
+        await browser.storage.local.remove(key);
+      },
+    }).then(() => undefined).catch((error: unknown) => {
+      settingsReady = undefined;
+      throw error;
+    });
+    return settingsReady;
+  };
+  const notifySettingsChanged = createSettingsNotificationPublisher({
+    queryTabs: () => browser.tabs.query({}),
+    sendRuntime: (notification) => browser.runtime.sendMessage(notification),
+    sendTab: (tabId, notification) => browser.tabs.sendMessage(tabId, notification),
+  });
+  const notifyTranslationFieldReady = async (
+    requestId: string,
+    fieldId: string,
+    result: import("@salto/core").QueryFieldResult,
+  ) => {
+    const notification = {
+      type: "translation-field-ready" as const,
+      payload: { requestId, fieldId, result },
+    };
+    const tabs = await browser.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id) {
+        try {
+          await browser.tabs.sendMessage(tab.id, notification);
+        } catch {
+          // Tab might not have a content script, ignore
+        }
+      }
+    }
+    try {
+      await browser.runtime.sendMessage(notification);
+    } catch {
+      // No listeners, ignore
+    }
+  };
   const hasOriginPermission = (permissionOrigin: string) => {
     return browser.permissions.contains({ origins: [permissionOrigin] });
   };
-  const queryExecutor = createOpenAiCompatibleQueryExecutor({
+  const llmQueryExecutor = createOpenAiCompatibleQueryExecutor({
     llmSettings: repositories.llmSettings,
     createClient: createOpenAiCompatibleClient,
     hasOriginPermission,
   });
+  const dictionaryAdapter = createYoudaoWebAdapter({
+    hasOriginPermission,
+  });
+  const dictionaryClient = createDictionaryClient(dictionaryAdapter);
+  const queryExecutor = createDictionaryQueryExecutor({
+    dictionaryClient,
+    llmExecutor: llmQueryExecutor,
+  });
   const dictionarySource = createDictionaryEnrichmentSource({
     settings: repositories.settings,
+    dictionaryClient,
     useDeterministicFake: process.env.NODE_ENV === "development",
   });
   const llmSource = createLlmEnrichmentSource({
@@ -69,7 +136,11 @@ export default defineBackground(() => {
     saveVocabulary: repositories.saveVocabulary,
     enrichmentQueue,
     queryExecutor,
+    dictionaryAdapter,
     hasOriginPermission,
+    prepareSettings,
+    notifySettingsChanged,
+    notifyTranslationFieldReady,
     async testLlmConnection() {
       const credentials = await repositories.llmSettings.getCredentials();
       if (!credentials) {
@@ -92,9 +163,10 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener(createRuntimeMessageListener(
     services,
     browser.runtime.getURL(""),
+    browser.runtime.getURL("/setting.html"),
   ));
   browser.runtime.onInstalled.addListener(() => {
-    void repositories.settings.ensureDefaults();
+    void prepareSettings().catch(() => {});
   });
   browser.runtime.onStartup.addListener(() => {
     void enrichmentQueue.recover().then(() => enrichmentQueue.wake());
@@ -105,5 +177,6 @@ export default defineBackground(() => {
     }
   });
 
+  void prepareSettings().catch(() => {});
   void enrichmentQueue.recover().then(() => enrichmentQueue.wake());
 });

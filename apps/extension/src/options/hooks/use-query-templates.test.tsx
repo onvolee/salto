@@ -36,6 +36,23 @@ function createClient(template: QueryTemplate): ExtensionMessageClient & {
     if (request.type === "update-query-template") {
       return { ok: true, type: request.type, data: request.payload.template };
     }
+    if (request.type === "copy-query-template") {
+      return {
+        ok: true,
+        type: request.type,
+        data: { ...template, id: "copied-template", name: "Reading copy" },
+      };
+    }
+    if (request.type === "delete-query-template") {
+      return {
+        ok: true,
+        type: request.type,
+        data: {
+          deletedTemplateId: request.payload.templateId,
+          activeQueryTemplateId: "system-default",
+        },
+      };
+    }
     return { ok: false, error: { code: "unknown-message", message: "unsupported" } };
   });
   return { send };
@@ -87,5 +104,57 @@ describe("useQueryTemplates", () => {
     act(() => { result.current.cancelDraft(); });
     expect(result.current.draft?.fields.map((field) => field.order)).toEqual([0, 1]);
     expect(result.current.draft?.fields[0].instruction).toBe(template.fields[0].instruction);
+  });
+
+  it("saves unknown and malformed prompt variables as non-blocking warnings", async () => {
+    const template = createTemplate();
+    const client = createClient(template);
+    const { result } = renderHook(() => useQueryTemplates({ client }));
+    await waitFor(() => expect(result.current.selectedTemplateId).toBe(template.id));
+
+    act(() => {
+      result.current.updateField(template.fields[0].id, {
+        instruction: "Use {{pageText}} and {{ }}.",
+      });
+    });
+
+    let saved = false;
+    await act(async () => { saved = await result.current.saveDraft(); });
+
+    expect(saved).toBe(true);
+    expect(result.current.message).toBe("模板已保存");
+    expect(client.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: "update-query-template",
+      payload: expect.objectContaining({
+        template: expect.objectContaining({
+          fields: expect.arrayContaining([
+            expect.objectContaining({ instruction: "Use {{pageText}} and {{ }}." }),
+          ]),
+        }),
+      }),
+    }));
+  });
+
+  it("keeps the settings draft aligned when copy or delete changes the selected template", async () => {
+    const template = createTemplate();
+    const client = createClient(template);
+    const onActiveTemplateChange = vi.fn();
+    const onTemplateDeleted = vi.fn();
+    const { result } = renderHook(() => useQueryTemplates({
+      client,
+      confirm: () => true,
+      onActiveTemplateChange,
+      onTemplateDeleted,
+    }));
+    await waitFor(() => expect(result.current.selectedTemplateId).toBe(template.id));
+
+    await act(() => result.current.copyTemplate(template.id));
+    expect(onActiveTemplateChange).toHaveBeenCalledWith("copied-template");
+
+    await act(() => result.current.deleteTemplate("copied-template"));
+    expect(onTemplateDeleted).toHaveBeenCalledWith(
+      "copied-template",
+      "system-default",
+    );
   });
 });

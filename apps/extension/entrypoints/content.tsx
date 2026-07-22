@@ -2,15 +2,35 @@ import "salto-src/selection/selection-popup.css";
 
 import { createRoot, type Root } from "react-dom/client";
 
-import { highlightSavedTerms } from "salto-src/highlighting/single-pass-highlighter";
+import { createHighlightSession } from "salto-src/highlighting/highlight-session";
 import { browserMessageClient } from "salto-src/selection/message-client";
 import { SelectionPopupApp } from "salto-src/selection/SelectionPopupApp";
+import { isExtensionNotification } from "@salto/core";
 
 export default defineContentScript({
   matches: ["<all_urls>"],
   runAt: "document_idle",
   cssInjectionMode: "ui",
   async main(ctx) {
+    const highlightSession = createHighlightSession({
+      document,
+      async loadSnapshot() {
+        const response = await browserMessageClient.send({ type: "list-highlight-terms" });
+        if (!response.ok || response.type !== "list-highlight-terms") {
+          throw new Error("Highlight snapshot unavailable");
+        }
+        return { enabled: response.data.enabled, terms: response.data.terms };
+      },
+      subscribeSettings(listener) {
+        const handleMessage = (message: unknown) => {
+          if (isExtensionNotification(message) && message.type === "extension-settings-changed") {
+            listener(message.payload);
+          }
+        };
+        browser.runtime.onMessage.addListener(handleMessage);
+        return () => browser.runtime.onMessage.removeListener(handleMessage);
+      },
+    });
     const ui = await createShadowRootUi<Root>(ctx, {
       name: "salto-selection-popup",
       position: "overlay",
@@ -22,7 +42,7 @@ export default defineContentScript({
         container.append(app);
 
         const root = createRoot(app);
-        root.render(<SelectionPopupApp />);
+        root.render(<SelectionPopupApp onSaveSuccess={(term) => highlightSession.addSavedTerm(term)} />);
         return root;
       },
       onRemove(root) {
@@ -31,13 +51,10 @@ export default defineContentScript({
     });
 
     ui.mount();
-    void browserMessageClient.send({ type: "list-highlight-terms" }).then((highlightResponse) => {
-      if (highlightResponse.ok && highlightResponse.type === "list-highlight-terms") {
-        highlightSavedTerms(document, highlightResponse.data.paths);
-      }
-    }).catch(() => {
-      // The selection UI remains available if persisted highlights cannot be read.
+    highlightSession.start();
+    ctx.onInvalidated(() => {
+      highlightSession.teardown();
+      ui.remove();
     });
-    ctx.onInvalidated(() => ui.remove());
   },
 });

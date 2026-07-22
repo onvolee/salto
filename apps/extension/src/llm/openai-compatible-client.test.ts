@@ -56,10 +56,12 @@ describe("AI SDK OpenAI-compatible client", () => {
       temperature: number;
       messages: Array<{ role: string; content: string }>;
       response_format: { type: string };
+      enable_thinking: boolean;
     };
     expect(body.model).toBe("model-a");
     expect(body.temperature).toBe(0.2);
     expect(body.response_format.type).toBe("json_object");
+    expect(body.enable_thinking).toBe(false);
     expect(body.messages[0]?.content).toContain("untrusted data");
     expect(body.messages[1]?.content).toContain("<salto_fields_json>");
     expect(body.messages[1]?.content).toContain("\\u003c/salto_fields_json\\u003e");
@@ -136,6 +138,23 @@ describe("AI SDK OpenAI-compatible client", () => {
     await expect(client.complete({ fields: [] })).rejects.toEqual(
       expect.objectContaining({ code: "timeout" }),
     );
+  });
+
+  it("passes enable_thinking when the config opts into thinking", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(completionResponse(
+      JSON.stringify({ translation: "河岸" }),
+    ));
+    const client = createOpenAiCompatibleClient(
+      { ...config, enableThinking: true },
+      { apiKey: "secret-a" },
+      { fetch },
+    );
+
+    await client.complete({ fields: [] });
+    const body = JSON.parse(fetch.mock.calls[0]?.[1]?.body as string) as {
+      enable_thinking: boolean;
+    };
+    expect(body.enable_thinking).toBe(true);
   });
 
   it("tests the configured model through AI SDK generation", async () => {

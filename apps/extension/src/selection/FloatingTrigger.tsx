@@ -1,6 +1,6 @@
-import { TranslateIcon } from "@hugeicons/core-free-icons";
+import { BubbleChatTranslateFreeIcons } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { PointerEventHandler } from "react";
+import type { PointerEventHandler, Ref } from "react";
 
 import { Button } from "salto-src/components/ui/button";
 
@@ -8,23 +8,27 @@ import type { Point } from "./positioning";
 
 type FloatingTriggerProps = {
   position: Point;
+  triggerRef?: Ref<HTMLButtonElement>;
   onOpen: () => void;
   onPointerDown: PointerEventHandler<HTMLButtonElement>;
 };
 
-export function FloatingTrigger({ position, onOpen, onPointerDown }: FloatingTriggerProps) {
+export function FloatingTrigger({ position, triggerRef, onOpen, onPointerDown }: FloatingTriggerProps) {
   return (
     <Button
       aria-label="Open selection panel"
       className="salto-selection-trigger"
       onClick={onOpen}
       onPointerDown={onPointerDown}
+      ref={triggerRef}
       size="icon-lg"
       style={{ left: position.x, top: position.y }}
       title="Open selection panel"
-      type="button"
+      variant="outline"
+      // type="button"
     >
-      <HugeiconsIcon icon={TranslateIcon} size={16} strokeWidth={1.8} />
+      {/*<HugeiconsIcon aria-hidden="true" icon={TranslateIcon} size={16} strokeWidth={1.8} />*/}
+      <HugeiconsIcon icon={BubbleChatTranslateFreeIcons} size={16} strokeWidth={1.8}/>
     </Button>
   );
 }

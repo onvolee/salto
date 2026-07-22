@@ -33,7 +33,7 @@ function userTemplateInput(name = "Reading notes") {
   };
 }
 
-function defineLegacySchema(database: Dexie, targetVersion: 3 | 4 | 5 | 6): void {
+function defineLegacySchema(database: Dexie, targetVersion: 1 | 2 | 3 | 4 | 5 | 6 | 7): void {
   database.version(1).stores({
     vocabularyItems: "&id, canonicalKey, language, sync.updatedAt",
     vocabularyFields: "&id, vocabularyItemId, key, status, sync.updatedAt",
@@ -42,13 +42,15 @@ function defineLegacySchema(database: Dexie, targetVersion: 3 | 4 | 5 | 6): void
     learningStates: "&id, learningCardId, dueAt, state, sync.updatedAt",
     reviewLogs: "&id, learningCardId, reviewedAt, sync.updatedAt"
   });
-  database.version(2).stores({
-    vocabularyItems: "&id, &canonicalKey, language, sync.updatedAt",
-    vocabularyFields: "&id, &[vocabularyItemId+key], vocabularyItemId, key, status, sync.updatedAt",
-    vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt",
-    queryTemplates: "&id, updatedAt",
-    settings: "&id, activeQueryTemplateId"
-  });
+  if (targetVersion >= 2) {
+    database.version(2).stores({
+      vocabularyItems: "&id, &canonicalKey, language, sync.updatedAt",
+      vocabularyFields: "&id, &[vocabularyItemId+key], vocabularyItemId, key, status, sync.updatedAt",
+      vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt",
+      queryTemplates: "&id, updatedAt",
+      settings: "&id, activeQueryTemplateId"
+    });
+  }
   if (targetVersion >= 3) {
     database.version(3).stores({ llmConfigs: "&id, provider", llmSecrets: "&id" });
   }
@@ -65,6 +67,18 @@ function defineLegacySchema(database: Dexie, targetVersion: 3 | 4 | 5 | 6): void
   if (targetVersion >= 6) {
     database.version(6).stores({
       vocabularyContexts: "&id, vocabularyItemId, pageUrl, savedAt, sync.updatedAt, selectionPath"
+    });
+  }
+  if (targetVersion >= 7) {
+    database.version(7).stores({
+      queryTemplates: "&id, updatedAt",
+      settings: "&id, activeQueryTemplateId"
+    }).upgrade(async (transaction) => {
+      await transaction.table("settings").toCollection().modify((record: Record<string, unknown>) => {
+        if (typeof record.activeQueryTemplateId !== "string" && typeof record.activeTemplateId === "string") {
+          record.activeQueryTemplateId = record.activeTemplateId;
+        }
+      });
     });
   }
 }
@@ -133,7 +147,12 @@ describe("local repositories", () => {
     expect((await repositories.settings.getActive()).template.id).toBe(created.id);
 
     await repositories.templates.delete(created.id);
-    expect((await repositories.settings.getActive()).template.id).toBe("system-default");
+    const fallback = await repositories.settings.getActive();
+    expect(fallback.template.id).toBe("system-default");
+    expect(fallback.resolution).toEqual({
+      status: "recovered",
+      code: "active-template-unavailable",
+    });
     expect(await database.queryTemplates.get(created.id)).toBeUndefined();
   });
 
@@ -158,7 +177,8 @@ describe("local repositories", () => {
       activeQueryTemplateId: "missing",
       targetLanguage: "zh-CN",
       highlightEnabled: true,
-      themeMode: "system"
+      themeMode: "system",
+      activeDictionaryProvider: "youdao-web"
     })).rejects.toMatchObject({ code: "template-not-found" });
   });
 
@@ -177,9 +197,30 @@ describe("local repositories", () => {
 
     expect(recovered.template.id).toBe("system-default");
     expect(recovered.settings.activeQueryTemplateId).toBe("system-default");
+    expect(recovered.resolution).toEqual({
+      status: "recovered",
+      code: "active-template-unavailable",
+    });
+    expect((await repositories.settings.getActive()).resolution).toEqual({
+      status: "recovered",
+      code: "active-template-unavailable",
+    });
     expect((await database.queryTemplates.get(user.id) as (QueryTemplate & Record<string, unknown>) | undefined)?.recoveryMarker)
       .toBe("preserve-user");
     expect((await database.queryTemplates.get("system-default"))?.fields).toHaveLength(2);
+  });
+
+  it("clears the active-template recovery diagnostic after settings are explicitly saved", async () => {
+    const { database, repositories } = createTestRepositories("template-recovery-acknowledgement-test");
+    const user = await repositories.templates.create(userTemplateInput());
+    await repositories.templates.setDefault(user.id);
+    await database.queryTemplates.put({ ...user, fields: [] } as never);
+
+    expect((await repositories.settings.getActive()).resolution.status).toBe("recovered");
+    const recoveredSettings = await repositories.settings.get();
+    await repositories.settings.save(recoveredSettings);
+
+    expect((await repositories.settings.getActive()).resolution).toEqual({ status: "active" });
   });
 
   it("persists template, settings, and timestamps across a new repository instance", async () => {
@@ -191,20 +232,52 @@ describe("local repositories", () => {
       targetLanguage: "ja-JP",
       highlightEnabled: false,
       themeMode: "dark",
-      activeDictionaryProvider: "youdao-web",
-      extraSetting: "preserve"
+      activeDictionaryProvider: "youdao-web"
+    });
+    await first.database.settings.update("extension", {
+      extraSetting: "internal-only"
     } as never);
     first.database.close();
 
     const reopened = createTestRepositories(databaseName);
     expect(await reopened.repositories.templates.get(template.id)).toEqual(template);
-    expect(await reopened.repositories.settings.get()).toEqual(expect.objectContaining({
+    expect(await reopened.repositories.settings.get()).toEqual({
       activeQueryTemplateId: template.id,
       targetLanguage: "ja-JP",
       highlightEnabled: false,
       themeMode: "dark",
       activeDictionaryProvider: "youdao-web",
-      extraSetting: "preserve"
+    });
+  });
+
+  it("repairs malformed settings field by field without leaking stored shapes or touching vocabulary", async () => {
+    const { database, repositories } = createTestRepositories("settings-recovery-test");
+    await database.vocabularyItems.add({
+      id: "kept-item",
+      canonicalKey: "en:kept",
+      term: "Kept",
+      language: "en",
+      sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
+    });
+    await database.settings.put({
+      id: "extension",
+      activeQueryTemplateId: 42,
+      targetLanguage: null,
+      highlightEnabled: "yes",
+      themeMode: "sepia",
+      activeDictionaryProvider: "missing-adapter",
+      internalTimestamp: clock()
+    } as never);
+
+    await expect(repositories.settings.get()).resolves.toEqual({
+      activeQueryTemplateId: "system-default",
+      targetLanguage: "zh-CN",
+      highlightEnabled: true,
+      themeMode: "system",
+      activeDictionaryProvider: "youdao-web"
+    });
+    expect(await database.vocabularyItems.get("kept-item")).toEqual(expect.objectContaining({
+      term: "Kept"
     }));
   });
 
@@ -403,12 +476,14 @@ describe("local repositories", () => {
       .toEqual({ migrated: true });
   });
 
-  it.each([3, 4, 5, 6] as const)(
+  it.each([1, 2, 3, 4, 5, 6, 7] as const)(
     "upgrades schema v%i without losing persisted template or vocabulary data",
     async (version) => {
       const databaseName = `migration-v${version}-test`;
       const legacy = new Dexie(databaseName);
       defineLegacySchema(legacy, version);
+      await legacy.open();
+      expect(legacy.verno).toBe(version);
       const legacyTemplate = {
         ...createDefaultQueryTemplate(clock()),
         id: `legacy-template-v${version}`,
@@ -446,14 +521,16 @@ describe("local repositories", () => {
         savedAt: clock(),
         sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
       });
-      await legacy.table("queryTemplates").add(legacyTemplate);
-      await legacy.table("settings").add({
-        id: "extension",
-        activeQueryTemplateId: legacyTemplate.id,
-        targetLanguage: "zh-CN",
-        highlightEnabled: true,
-        themeMode: "system"
-      });
+      if (version >= 2) {
+        await legacy.table("queryTemplates").add(legacyTemplate);
+        await legacy.table("settings").add({
+          id: "extension",
+          activeQueryTemplateId: legacyTemplate.id,
+          targetLanguage: "zh-CN",
+          highlightEnabled: true,
+          themeMode: "system"
+        });
+      }
       if (version >= 4) {
         await legacy.table("enrichmentJobs").add({
           id: `legacy-job-v${version}`,
@@ -469,15 +546,21 @@ describe("local repositories", () => {
 
       const upgraded = createTestRepositories(databaseName);
       const active = await upgraded.repositories.settings.getActive();
+      expect(upgraded.database.verno).toBe(7);
       const migratedTemplate = await upgraded.repositories.templates.get(legacyTemplate.id);
 
-      expect(active.settings.activeQueryTemplateId).toBe(legacyTemplate.id);
-      expect(active.template.id).toBe(legacyTemplate.id);
-      expect(migratedTemplate).toEqual(expect.objectContaining({
-        migrationExtension: { version }
-      }));
-      expect((migratedTemplate?.fields[0] as Record<string, unknown>).migrationFieldExtension)
-        .toBe(`v${version}`);
+      if (version >= 2) {
+        expect(active.settings.activeQueryTemplateId).toBe(legacyTemplate.id);
+        expect(active.template.id).toBe(legacyTemplate.id);
+        expect(migratedTemplate).toEqual(expect.objectContaining({
+          migrationExtension: { version }
+        }));
+        expect((migratedTemplate?.fields[0] as Record<string, unknown>).migrationFieldExtension)
+          .toBe(`v${version}`);
+      } else {
+        expect(active.settings.activeQueryTemplateId).toBe("system-default");
+        expect(active.template.id).toBe("system-default");
+      }
       expect(await upgraded.database.vocabularyItems.get(`legacy-item-v${version}`))
         .toEqual(expect.objectContaining({ term: `Legacy ${version}` }));
       expect(await upgraded.database.vocabularyFields.get(`legacy-item-v${version}:term`))
@@ -491,7 +574,56 @@ describe("local repositories", () => {
     }
   );
 
-  it("stores public LLM configuration separately from its write-only secret", async () => {
+  it("keeps the original database intact when a forward migration cannot create a unique index", async () => {
+    const databaseName = "migration-failure-preserves-data";
+    const legacy = new Dexie(databaseName);
+    legacy.version(1).stores({
+      vocabularyItems: "&id, canonicalKey, language, sync.updatedAt",
+      vocabularyFields: "&id, vocabularyItemId, key, status, sync.updatedAt",
+      vocabularyContexts: "&id, vocabularyItemId, savedAt, sync.updatedAt",
+      learningCards: "&id, vocabularyItemId, cardType, sync.updatedAt",
+      learningStates: "&id, learningCardId, dueAt, state, sync.updatedAt",
+      reviewLogs: "&id, learningCardId, reviewedAt, sync.updatedAt"
+    });
+    await legacy.table("vocabularyItems").bulkAdd([
+      {
+        id: "duplicate-one",
+        canonicalKey: "en:duplicate",
+        term: "Duplicate one",
+        language: "en",
+        sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
+      },
+      {
+        id: "duplicate-two",
+        canonicalKey: "en:duplicate",
+        term: "Duplicate two",
+        language: "en",
+        sync: { createdAt: clock(), updatedAt: clock(), recordVersion: 1 }
+      }
+    ]);
+    legacy.close();
+
+    const upgraded = createTestRepositories(databaseName).database;
+    await expect(upgraded.open()).rejects.toBeDefined();
+    upgraded.close();
+
+    const recoveryReader = new Dexie(databaseName);
+    recoveryReader.version(1).stores({
+      vocabularyItems: "&id, canonicalKey, language, sync.updatedAt",
+      vocabularyFields: "&id, vocabularyItemId, key, status, sync.updatedAt",
+      vocabularyContexts: "&id, vocabularyItemId, savedAt, sync.updatedAt",
+      learningCards: "&id, vocabularyItemId, cardType, sync.updatedAt",
+      learningStates: "&id, learningCardId, dueAt, state, sync.updatedAt",
+      reviewLogs: "&id, learningCardId, reviewedAt, sync.updatedAt"
+    });
+    expect(await recoveryReader.table("vocabularyItems").toArray()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "duplicate-one", term: "Duplicate one" }),
+      expect.objectContaining({ id: "duplicate-two", term: "Duplicate two" })
+    ]));
+    recoveryReader.close();
+  });
+
+  it("stores public LLM configuration separately from its write-only secret and origin consent", async () => {
     const { database, repositories } = createTestRepositories("llm-settings-test");
     const config = {
       provider: "openai-compatible" as const,
@@ -500,18 +632,90 @@ describe("local repositories", () => {
       temperature: 0.3,
     };
 
-    await repositories.llmSettings.save(config, { apiKey: "secret-a" });
+    await repositories.llmSettings.save(config, { apiKey: "secret-a" }, "https://api.example.com/*");
 
     expect(await repositories.llmSettings.getPublicState()).toEqual({
       config,
       hasApiKey: true,
     });
     expect(await database.llmConfigs.toArray()).toEqual([
-      { id: "active", ...config },
+      { id: "active", ...config, consentedOrigin: "https://api.example.com/*" },
     ]);
     expect(await database.llmSecrets.toArray()).toEqual([
       { id: "active", apiKey: "secret-a" },
     ]);
+    expect(await repositories.llmSettings.getCredentialState()).toEqual({
+      status: "ready",
+      config,
+      secret: { apiKey: "secret-a" },
+      permissionOrigin: "https://api.example.com/*",
+    });
+    expect(JSON.stringify(await repositories.llmSettings.getPublicState())).not.toContain("consentedOrigin");
+  });
+
+  it("requires fresh exact-origin consent for legacy and changed-origin LLM configurations", async () => {
+    const { database, repositories } = createTestRepositories("llm-consent-state-test");
+    await database.llmConfigs.put({
+      id: "active",
+      provider: "openai-compatible",
+      baseUrl: "https://legacy.example/v1",
+      model: "model-a",
+    });
+    await database.llmSecrets.put({ id: "active", apiKey: "secret-a" });
+
+    await expect(repositories.llmSettings.getCredentialState()).resolves.toEqual({
+      status: "consent-required",
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://legacy.example/v1",
+        model: "model-a",
+      },
+    });
+
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://new.example/v1",
+      model: "model-b",
+    }, undefined, "https://new.example/*");
+    await expect(repositories.llmSettings.getCredentialState()).resolves.toMatchObject({
+      status: "ready",
+      permissionOrigin: "https://new.example/*",
+      config: { model: "model-b" },
+    });
+  });
+
+  it("preserves exact LLM consent when only the model changes", async () => {
+    const { database, repositories } = createTestRepositories("llm-model-consent-test");
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "model-a",
+    }, { apiKey: "secret-a" }, "https://api.example.com/*");
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "model-b",
+    });
+
+    expect(await database.llmConfigs.get("active")).toMatchObject({
+      model: "model-b",
+      consentedOrigin: "https://api.example.com/*",
+    });
+    await expect(repositories.llmSettings.getCredentialState()).resolves.toMatchObject({ status: "ready" });
+  });
+
+  it("preserves hidden dictionary consent across public settings saves", async () => {
+    const { database, repositories } = createTestRepositories("dictionary-consent-test");
+    await repositories.settings.ensureDefaults();
+    await repositories.settings.recordDictionaryConsent("https://dict.youdao.com/*");
+    const current = await repositories.settings.get();
+    await repositories.settings.save({ ...current, themeMode: "dark" });
+
+    expect(await repositories.settings.hasDictionaryConsent("https://dict.youdao.com/*")).toBe(true);
+    expect(await database.settings.get("extension")).toMatchObject({
+      dictionaryConsentedOrigin: "https://dict.youdao.com/*",
+    });
+    expect(JSON.stringify(await repositories.settings.get())).not.toContain("dictionaryConsentedOrigin");
   });
 
   it("keeps the existing LLM secret when public configuration changes", async () => {
@@ -521,7 +725,7 @@ describe("local repositories", () => {
       provider: "openai-compatible",
       baseUrl: "https://api.example.com/v1",
       model: "model-a",
-    }, { apiKey: "secret-a" });
+    }, { apiKey: "secret-a" }, "https://api.example.com/*");
     await first.repositories.llmSettings.save({
       provider: "openai-compatible",
       baseUrl: "https://api.example.com/v1",
@@ -539,4 +743,72 @@ describe("local repositories", () => {
       secret: { apiKey: "secret-a" },
     });
   });
+
+  it("quarantines a malformed public LLM config without deleting the write-only secret", async () => {
+    const { database, repositories } = createTestRepositories("llm-settings-recovery-test");
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "model-a",
+    }, { apiKey: "secret-a" });
+    await database.llmConfigs.put({
+      id: "active",
+      provider: "unknown-provider",
+      baseUrl: "not a URL",
+      model: "",
+      temperature: 99,
+    } as never);
+
+    await expect(repositories.llmSettings.getPublicState()).resolves.toEqual({
+      hasApiKey: true,
+    });
+    await expect(repositories.llmSettings.getCredentials()).resolves.toBeNull();
+    expect(await database.llmSecrets.get("active")).toEqual({
+      id: "active",
+      apiKey: "secret-a",
+    });
+
+    await repositories.llmSettings.save({
+      provider: "openai-compatible",
+      baseUrl: "https://replacement.example/v1",
+      model: "model-b",
+    });
+    await expect(repositories.llmSettings.getCredentialState()).resolves.toEqual({
+      status: "consent-required",
+      config: {
+        provider: "openai-compatible",
+        baseUrl: "https://replacement.example/v1",
+        model: "model-b",
+      },
+    });
+  });
+
+  it.each(["   ", 42])(
+    "treats malformed LLM secret %j as not configured without deleting it",
+    async (apiKey) => {
+      const { database, repositories } = createTestRepositories(`llm-secret-recovery-${String(apiKey)}`);
+      await repositories.llmSettings.save({
+        provider: "openai-compatible",
+        baseUrl: "https://api.example.com/v1",
+        model: "model-a",
+      }, { apiKey: "secret-a" });
+      await database.llmSecrets.put({ id: "active", apiKey } as never);
+
+      await expect(repositories.llmSettings.getPublicState()).resolves.toEqual({
+        config: {
+          provider: "openai-compatible",
+          baseUrl: "https://api.example.com/v1",
+          model: "model-a",
+        },
+        hasApiKey: false,
+      });
+      await expect(repositories.llmSettings.getCredentials()).resolves.toBeNull();
+      expect(await database.llmSecrets.get("active")).toEqual({ id: "active", apiKey });
+      await expect(repositories.llmSettings.save({
+        provider: "openai-compatible",
+        baseUrl: "https://replacement.example/v1",
+        model: "model-b",
+      })).rejects.toThrow("API key is required");
+    },
+  );
 });

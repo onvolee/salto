@@ -24,6 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dexie": "4.4.4",
+    "linkedom": "0.18.13",
     "ofetch": "^1.5.1",
     "react": "19.2.7",
     "react-dom": "19.2.7",

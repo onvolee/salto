@@ -1,6 +1,6 @@
 # 16 — 增量扫描和观察
 
-Status: ready-for-agent
+Status: ready-for-human
 
 Blocked by: 15 — DOM 遍历和包装
 
@@ -45,3 +45,8 @@ Blocked by: 15 — DOM 遍历和包装
 ## Rollback boundary
 
 停止 observer 后允许保留已有 highlights，或由 17 显式 cleanup；不得继续处理失效 context，也不得清空页面原文。
+
+## Comments
+
+- 2026-07-20: Implemented the highlighting incremental-scan seam. The content context starts one idle scan from persisted terms, then a child-list/character-data observer enqueues only affected roots. The queue is deduplicated and capped at 128 pending roots; on overflow it coalesces pending siblings/descendants into their nearest common ancestor so non-redundant content is not dropped. Traversal, batch, and frame work are capped at 48 text nodes by default and can be tightened through the seam options. DOM wrapping only happens from RAF callbacks. Salto-produced observer records are discarded synchronously after each write, and teardown disconnects/cancels all pending work.
+- 2026-07-20: Added long-article and rapid-mutation fixtures that assert node/batch bounds, duplicate coalescing, Salto mutation filtering, queue overflow behavior, teardown, and privacy-safe diagnostics (`durationMs`, `nodeCount`, `matchCount` only). The Ticket 15 ownership layer now shares a `WeakMap` of CSS-hidden ancestor results within each apply batch, so repeated text nodes do not repeatedly call `getComputedStyle` for the same ancestors while preserving existing skip results after page style changes.

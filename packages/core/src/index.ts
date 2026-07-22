@@ -1,3 +1,6 @@
+export * from "./dictionary/client";
+export * from "./context-boundaries";
+export * from "./dictionary/errors";
 export * from "./dictionary/types";
 export * from "./learning/types";
 export * from "./llm/config";
@@ -6,6 +9,7 @@ export * from "./llm/types";
 export * from "./messages";
 export * from "./query-template/types";
 export * from "./shared/sync";
+export * from "./highlighting/saved-term-matcher";
 export * from "./vocabulary/ports";
 export * from "./vocabulary/canonicalization";
 export * from "./vocabulary/save-service";

@@ -3,22 +3,37 @@ import type {
   LlmOptionsState,
   LlmPublicConfig,
 } from "./llm/types";
-import type {
-  ExtensionSettings,
-  PromptContext,
-  QueryFieldResult,
-  QueryTemplate,
-  QueryTemplateInput,
+import {
+  isValidExtensionSettings,
+  type ExtensionSettings,
+  type PromptContext,
+  type QueryFieldResult,
+  type QueryTemplate,
+  type QueryTemplateInput,
 } from "./query-template/types";
+import type {
+  SelectionPath,
+} from "./vocabulary/types";
 import type { SaveVocabularyInput, SaveVocabularyResult } from "./vocabulary/ports";
-import type { SelectionPath } from "./vocabulary/types";
 
 export type TranslateSelectionRequest = {
   readonly type: "translate-selection";
   readonly payload: {
     readonly requestId: string;
     readonly context: PromptContext;
+    readonly template: QueryTemplate;
   };
+};
+
+export type ActiveQueryTemplateResolution =
+  | { readonly status: "active" }
+  | {
+      readonly status: "recovered";
+      readonly code: "active-template-unavailable";
+    };
+
+export type GetActiveQueryTemplateRequest = {
+  readonly type: "get-active-query-template";
 };
 
 export type CancelTranslationRequest = {
@@ -29,6 +44,14 @@ export type CancelTranslationRequest = {
 export type SaveVocabularyRequest = {
   readonly type: "save-vocabulary";
   readonly payload: SaveVocabularyInput;
+};
+
+export type CheckVocabularyExistsRequest = {
+  readonly type: "check-vocabulary-exists";
+  readonly payload: {
+    readonly term: string;
+    readonly language: string;
+  };
 };
 
 export type RetryEnrichmentRequest = {
@@ -62,6 +85,60 @@ export type TestLlmConnectionRequest = {
   readonly type: "test-llm-connection";
 };
 
+export type TestDictionaryConnectionRequest = {
+  readonly type: "test-dictionary-connection";
+  readonly payload: {
+    readonly term: string;
+  };
+};
+
+export const YOUDAO_PREVIEW_SECTION_KINDS = [
+  "basic",
+  "word-forms",
+  "web-or-specialized",
+  "english-or-bilingual",
+  "phrases",
+  "synonyms",
+  "examples",
+] as const;
+
+export type YoudaoPreviewSectionKind = (typeof YOUDAO_PREVIEW_SECTION_KINDS)[number];
+
+export type YoudaoTextPreviewSection = {
+  readonly kind: "basic" | "web-or-specialized" | "english-or-bilingual" | "synonyms";
+  readonly entries: readonly string[];
+};
+
+export type YoudaoWordFormsPreviewSection = {
+  readonly kind: "word-forms";
+  readonly entries: readonly { readonly label: string; readonly value: string }[];
+};
+
+export type YoudaoPhrasesPreviewSection = {
+  readonly kind: "phrases";
+  readonly entries: readonly { readonly phrase: string; readonly meaning?: string }[];
+};
+
+export type YoudaoExamplesPreviewSection = {
+  readonly kind: "examples";
+  readonly entries: readonly {
+    readonly english: string;
+    readonly chinese?: string;
+    readonly source?: string;
+  }[];
+};
+
+export type YoudaoPreviewSection =
+  | YoudaoTextPreviewSection
+  | YoudaoWordFormsPreviewSection
+  | YoudaoPhrasesPreviewSection
+  | YoudaoExamplesPreviewSection;
+
+export type YoudaoPreview = {
+  readonly term: string;
+  readonly sections: readonly YoudaoPreviewSection[];
+};
+
 export type ListQueryTemplatesRequest = {
   readonly type: "list-query-templates";
 };
@@ -86,11 +163,6 @@ export type DeleteQueryTemplateRequest = {
   readonly payload: { readonly templateId: string };
 };
 
-export type SetDefaultQueryTemplateRequest = {
-  readonly type: "set-default-query-template";
-  readonly payload: { readonly templateId: string };
-};
-
 export type GetExtensionSettingsRequest = {
   readonly type: "get-extension-settings";
 };
@@ -100,22 +172,62 @@ export type SaveExtensionSettingsRequest = {
   readonly payload: ExtensionSettings;
 };
 
+export type ExtensionSettingsChangedNotification = {
+  readonly type: "extension-settings-changed";
+  readonly payload: ExtensionSettings;
+};
+
+export type TranslationFieldReadyNotification = {
+  readonly type: "translation-field-ready";
+  readonly payload: {
+    readonly requestId: string;
+    readonly fieldId: string;
+    readonly result: QueryFieldResult;
+  };
+};
+
+export type ExtensionNotification =
+  | ExtensionSettingsChangedNotification
+  | TranslationFieldReadyNotification;
+
+export function isExtensionNotification(value: unknown): value is ExtensionNotification {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const type = (value as { readonly type?: unknown }).type;
+  if (type === "extension-settings-changed") {
+    return isValidExtensionSettings((value as { readonly payload?: unknown }).payload);
+  }
+  if (type === "translation-field-ready") {
+    const payload = (value as { readonly payload?: unknown }).payload;
+    return typeof payload === "object"
+      && payload !== null
+      && typeof (payload as { readonly requestId?: unknown }).requestId === "string"
+      && typeof (payload as { readonly fieldId?: unknown }).fieldId === "string"
+      && typeof (payload as { readonly result?: unknown }).result === "object"
+      && (payload as { readonly result?: unknown }).result !== null;
+  }
+  return false;
+}
+
 export type ExtensionRequest =
   | TranslateSelectionRequest
+  | GetActiveQueryTemplateRequest
   | CancelTranslationRequest
   | SaveVocabularyRequest
+  | CheckVocabularyExistsRequest
   | RetryEnrichmentRequest
   | ListFailedEnrichmentRequest
   | ListHighlightTermsRequest
   | GetLlmConfigRequest
   | SaveLlmConfigRequest
   | TestLlmConnectionRequest
+  | TestDictionaryConnectionRequest
   | ListQueryTemplatesRequest
   | CreateQueryTemplateRequest
   | CopyQueryTemplateRequest
   | UpdateQueryTemplateRequest
   | DeleteQueryTemplateRequest
-  | SetDefaultQueryTemplateRequest
   | GetExtensionSettingsRequest
   | SaveExtensionSettingsRequest;
 
@@ -130,7 +242,16 @@ export type ExtensionSuccessResponse =
         readonly fields: readonly QueryFieldResult[];
       };
     }
+  | {
+      readonly ok: true;
+      readonly type: "get-active-query-template";
+      readonly data: {
+        readonly template: QueryTemplate;
+        readonly resolution: ActiveQueryTemplateResolution;
+      };
+    }
   | { readonly ok: true; readonly type: "save-vocabulary"; readonly data: SaveVocabularyResult }
+  | { readonly ok: true; readonly type: "check-vocabulary-exists"; readonly data: { readonly exists: boolean } }
   | { readonly ok: true; readonly type: "retry-enrichment"; readonly data: { readonly reset: number } }
   | {
       readonly ok: true;
@@ -147,6 +268,7 @@ export type ExtensionSuccessResponse =
       readonly ok: true;
       readonly type: "list-highlight-terms";
       readonly data: {
+        readonly enabled: boolean;
         readonly terms: readonly string[];
         readonly paths: readonly {
           readonly term: string;
@@ -176,6 +298,14 @@ export type ExtensionSuccessResponse =
     }
   | {
       readonly ok: true;
+      readonly type: "test-dictionary-connection";
+      readonly data: {
+        readonly providerId: "youdao-web";
+        readonly preview: YoudaoPreview;
+      };
+    }
+  | {
+      readonly ok: true;
       readonly type: "list-query-templates";
       readonly data: {
         readonly templates: readonly QueryTemplate[];
@@ -194,11 +324,6 @@ export type ExtensionSuccessResponse =
     }
   | {
       readonly ok: true;
-      readonly type: "set-default-query-template";
-      readonly data: { readonly template: QueryTemplate; readonly activeQueryTemplateId: string };
-    }
-  | {
-      readonly ok: true;
       readonly type: "get-extension-settings" | "save-extension-settings";
       readonly data: ExtensionSettings;
     };
@@ -212,6 +337,8 @@ export type ExtensionErrorCode =
   | "model-not-found"
   | "network"
   | "not-configured"
+  | "not-found"
+  | "parser-failure"
   | "permission-denied"
   | "provider"
   | "rate-limit"

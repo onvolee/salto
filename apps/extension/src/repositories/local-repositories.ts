@@ -5,7 +5,9 @@ import {
   isValidExtensionSettings,
   isValidQueryTemplate,
   isValidQueryTemplateInput,
+  normalizeLlmPublicConfig,
   normalizeVocabularyText,
+  type ActiveQueryTemplateResolution,
   type EnrichmentJob,
   type EnrichmentJobFor,
   type EnrichmentJobRepository,
@@ -31,7 +33,11 @@ import {
 } from "@salto/core";
 import Dexie from "dexie";
 
-import type { SaltoDatabase, StoredExtensionSettings } from "../db/database";
+import type {
+  SaltoDatabase,
+  StoredExtensionSettings,
+  StoredLlmConfig,
+} from "../db/database";
 
 export type RepositoryDependencies = {
   readonly clock: () => string;
@@ -39,11 +45,23 @@ export type RepositoryDependencies = {
 };
 
 export interface SettingsRepository {
-  ensureDefaults(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }>;
-  getActive(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }>;
+  ensureDefaults(): Promise<{
+    readonly settings: ExtensionSettings;
+    readonly template: QueryTemplate;
+    readonly resolution: ActiveQueryTemplateResolution;
+  }>;
+  getActive(): Promise<{
+    readonly settings: ExtensionSettings;
+    readonly template: QueryTemplate;
+    readonly resolution: ActiveQueryTemplateResolution;
+  }>;
   get(): Promise<ExtensionSettings>;
+  getMigrationState(): Promise<{ readonly legacySettingsCompleted: boolean }>;
   save(settings: ExtensionSettings): Promise<ExtensionSettings>;
+  saveLegacySettingsMigration(settings: ExtensionSettings): Promise<ExtensionSettings>;
   update(settings: ExtensionSettings): Promise<ExtensionSettings>;
+  hasDictionaryConsent(permissionOrigin: string): Promise<boolean>;
+  recordDictionaryConsent(permissionOrigin: string): Promise<void>;
 }
 
 export type QueryTemplateRepositoryErrorCode =
@@ -89,12 +107,24 @@ export interface HighlightTermRepository {
 
 export interface LlmSettingsRepository {
   getPublicState(): Promise<LlmConfigState>;
+  getCredentialState(): Promise<LlmCredentialState>;
   getCredentials(): Promise<{
     readonly config: LlmPublicConfig;
     readonly secret: LlmSecret;
   } | null>;
-  save(config: LlmPublicConfig, secret?: LlmSecret): Promise<void>;
+  save(config: LlmPublicConfig, secret?: LlmSecret, consentedOrigin?: string): Promise<void>;
+  recordConsent(permissionOrigin: string): Promise<void>;
 }
+
+export type LlmCredentialState =
+  | { readonly status: "not-configured" }
+  | { readonly status: "consent-required"; readonly config: LlmPublicConfig }
+  | {
+      readonly status: "ready";
+      readonly config: LlmPublicConfig;
+      readonly secret: LlmSecret;
+      readonly permissionOrigin: string;
+    };
 
 export type LocalRepositories = {
   readonly vocabulary: VocabularyRepository;
@@ -164,6 +194,12 @@ const REMOTE_FIELD_SOURCES = {
 
 class DexieVocabularyRepository implements VocabularyRepository {
   constructor(private readonly database: SaltoDatabase) {}
+
+  async exists(term: string, language: string): Promise<boolean> {
+    const canonicalKey = `${language}:${term.toLocaleLowerCase("en-US")}`;
+    const count = await this.database.vocabularyItems.where("canonicalKey").equals(canonicalKey).count();
+    return count > 0;
+  }
 
   findItemByCanonicalKey(canonicalKey: string): Promise<VocabularyItem | undefined> {
     return this.database.vocabularyItems.where("canonicalKey").equals(canonicalKey).first();
@@ -387,7 +423,11 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
     private readonly dependencies: RepositoryDependencies
   ) {}
 
-  async ensureDefaults(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }> {
+  async ensureDefaults(): Promise<{
+    readonly settings: ExtensionSettings;
+    readonly template: QueryTemplate;
+    readonly resolution: ActiveQueryTemplateResolution;
+  }> {
     return this.database.transaction(
       "rw",
       [this.database.settings, this.database.queryTemplates],
@@ -395,7 +435,11 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
     );
   }
 
-  async getActive(): Promise<{ readonly settings: ExtensionSettings; readonly template: QueryTemplate }> {
+  async getActive(): Promise<{
+    readonly settings: ExtensionSettings;
+    readonly template: QueryTemplate;
+    readonly resolution: ActiveQueryTemplateResolution;
+  }> {
     return this.ensureDefaults();
   }
 
@@ -413,6 +457,23 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
   }
 
   async save(settings: ExtensionSettings): Promise<ExtensionSettings> {
+    return this.saveSettings(settings, false);
+  }
+
+  async saveLegacySettingsMigration(settings: ExtensionSettings): Promise<ExtensionSettings> {
+    return this.saveSettings(settings, true);
+  }
+
+  async getMigrationState(): Promise<{ readonly legacySettingsCompleted: boolean }> {
+    await this.ensureDefaults();
+    const stored = await this.database.settings.get("extension");
+    return { legacySettingsCompleted: stored?.legacySettingsMigrationCompleted === true };
+  }
+
+  private async saveSettings(
+    settings: ExtensionSettings,
+    completeLegacySettingsMigration: boolean,
+  ): Promise<ExtensionSettings> {
     if (!isValidExtensionSettings(settings)) {
       throw new QueryTemplateRepositoryError("settings-invalid", "Invalid extension settings");
     }
@@ -425,7 +486,22 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
         if (!template) {
           throw new QueryTemplateRepositoryError("template-not-found", "Query template was not found");
         }
-        const stored = { ...settings, id: "extension" as const };
+        const current = await this.database.settings.get("extension");
+        const stored: StoredExtensionSettings = {
+          id: "extension",
+          activeQueryTemplateId: settings.activeQueryTemplateId,
+          targetLanguage: settings.targetLanguage,
+          highlightEnabled: settings.highlightEnabled,
+          themeMode: settings.themeMode,
+          activeDictionaryProvider: "youdao-web",
+          ...(current?.dictionaryConsentedOrigin
+            ? { dictionaryConsentedOrigin: current.dictionaryConsentedOrigin }
+            : {}),
+          ...(completeLegacySettingsMigration
+            || current?.legacySettingsMigrationCompleted === true
+            ? { legacySettingsMigrationCompleted: true }
+            : {})
+        };
         await this.database.settings.put(stored);
         return stripSettingsId(stored);
       }
@@ -436,6 +512,19 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
   update(template: QueryTemplate): Promise<QueryTemplate>;
   update(value: ExtensionSettings | QueryTemplate): Promise<ExtensionSettings | QueryTemplate> {
     return "fields" in value ? this.updateTemplate(value) : this.save(value);
+  }
+
+  async hasDictionaryConsent(permissionOrigin: string): Promise<boolean> {
+    await this.ensureDefaults();
+    return (await this.database.settings.get("extension"))?.dictionaryConsentedOrigin === permissionOrigin;
+  }
+
+  async recordDictionaryConsent(permissionOrigin: string): Promise<void> {
+    if (!isNonEmptyString(permissionOrigin)) {
+      throw new QueryTemplateRepositoryError("settings-invalid", "Invalid dictionary consent origin");
+    }
+    await this.ensureDefaults();
+    await this.database.settings.update("extension", { dictionaryConsentedOrigin: permissionOrigin });
   }
 
   async list(): Promise<readonly QueryTemplate[]> {
@@ -538,10 +627,13 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
         }
         await this.database.queryTemplates.delete(id);
         if (settings.activeQueryTemplateId === id) {
+          const current = await this.database.settings.get("extension");
           await this.database.settings.put({
+            ...current,
             ...settings,
             id: "extension",
-            activeQueryTemplateId: "system-default"
+            activeQueryTemplateId: "system-default",
+            activeQueryTemplateRecovery: "active-template-unavailable",
           });
         }
       }
@@ -562,10 +654,8 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
         if (!settings) {
           throw new QueryTemplateRepositoryError("settings-invalid", "Extension settings are unavailable");
         }
-        await this.database.settings.put({
-          ...settings,
-          activeQueryTemplateId: id
-        });
+        const { activeQueryTemplateRecovery: _recovery, ...acknowledgedSettings } = settings;
+        await this.database.settings.put({ ...acknowledgedSettings, activeQueryTemplateId: id });
         return { template, activeQueryTemplateId: id };
       }
     );
@@ -573,24 +663,37 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
 
   private async ensureDefaultsInTransaction() {
     let systemTemplate = await this.database.queryTemplates.get("system-default");
+    const rawSettings = await this.database.settings.get("extension");
+    const systemTemplateWasUnavailable = rawSettings !== undefined && !isValidQueryTemplate(systemTemplate);
     if (!isValidQueryTemplate(systemTemplate)) {
       systemTemplate = createDefaultQueryTemplate(this.dependencies.clock());
       await this.database.queryTemplates.put(systemTemplate);
     }
 
-    const rawSettings = await this.database.settings.get("extension");
     const settings = normalizeStoredSettings(rawSettings);
     const activeTemplate = await this.validTemplate(settings.activeQueryTemplateId);
+    const activeSettingWasMalformed = rawSettings !== undefined
+      && !isNonEmptyString(rawSettings.activeQueryTemplateId);
+    const recovered = rawSettings?.activeQueryTemplateRecovery === "active-template-unavailable"
+      || activeSettingWasMalformed
+      || !activeTemplate
+      || (settings.activeQueryTemplateId === "system-default" && systemTemplateWasUnavailable);
     const activeQueryTemplateId = activeTemplate ? settings.activeQueryTemplateId : systemTemplate.id;
-    const repairedSettings = {
+    const repairedSettings: StoredExtensionSettings = {
       ...settings,
       id: "extension" as const,
-      activeQueryTemplateId
+      activeQueryTemplateId,
+      ...(recovered
+        ? { activeQueryTemplateRecovery: "active-template-unavailable" as const }
+        : {}),
     };
     await this.database.settings.put(repairedSettings);
     return {
       settings: stripSettingsId(repairedSettings),
-      template: activeTemplate ?? systemTemplate
+      template: activeTemplate ?? systemTemplate,
+      resolution: recovered
+        ? { status: "recovered" as const, code: "active-template-unavailable" as const }
+        : { status: "active" as const },
     };
   }
 
@@ -616,49 +719,112 @@ class DexieLlmSettingsRepository implements LlmSettingsRepository {
       this.database.llmConfigs.get("active"),
       this.database.llmSecrets.get("active")
     ]);
-    if (!storedConfig) {
-      return { hasApiKey: false };
+    const config = normalizeStoredLlmConfig(storedConfig);
+    if (!config) {
+      return { hasApiKey: isValidApiKey(storedSecret?.apiKey) };
     }
-    const { id: _id, ...config } = storedConfig;
-    return { config, hasApiKey: Boolean(storedSecret?.apiKey) };
+    return { config, hasApiKey: isValidApiKey(storedSecret?.apiKey) };
   }
 
   async getCredentials() {
+    const state = await this.getCredentialState();
+    return state.status === "ready"
+      ? { config: state.config, secret: state.secret }
+      : null;
+  }
+
+  async getCredentialState(): Promise<LlmCredentialState> {
     const [storedConfig, storedSecret] = await Promise.all([
       this.database.llmConfigs.get("active"),
       this.database.llmSecrets.get("active")
     ]);
-    if (!storedConfig || !storedSecret?.apiKey) {
-      return null;
+    const config = normalizeStoredLlmConfig(storedConfig);
+    if (!config || !isValidApiKey(storedSecret?.apiKey)) {
+      return { status: "not-configured" };
     }
-    const { id: _configId, ...config } = storedConfig;
+    const permissionOrigin = normalizeLlmPublicConfig(config).permissionOrigin;
+    if (storedConfig?.consentedOrigin !== permissionOrigin) {
+      return { status: "consent-required", config };
+    }
     const { id: _secretId, ...secret } = storedSecret;
-    return { config, secret };
+    return { status: "ready", config, secret, permissionOrigin };
   }
 
-  async save(config: LlmPublicConfig, secret?: LlmSecret): Promise<void> {
+  async save(config: LlmPublicConfig, secret?: LlmSecret, consentedOrigin?: string): Promise<void> {
+    const normalized = normalizeLlmPublicConfig(config);
+    const normalizedConfig = normalized.config;
+    if (consentedOrigin !== undefined && consentedOrigin !== normalized.permissionOrigin) {
+      throw new Error("LLM consent origin does not match the configured origin");
+    }
+    const nextApiKey = typeof secret?.apiKey === "string" ? secret.apiKey.trim() : "";
     await this.database.transaction(
       "rw",
       [this.database.llmConfigs, this.database.llmSecrets],
       async () => {
         const existingSecret = await this.database.llmSecrets.get("active");
-        if (!secret?.apiKey && !existingSecret?.apiKey) {
+        const existingConfig = await this.database.llmConfigs.get("active");
+        if (!nextApiKey && !isValidApiKey(existingSecret?.apiKey)) {
           throw new Error("An API key is required for the first LLM configuration");
         }
-        await this.database.llmConfigs.put({ id: "active", ...config });
-        if (secret?.apiKey) {
-          await this.database.llmSecrets.put({ id: "active", apiKey: secret.apiKey });
+        const existingOrigin = existingConfig
+          ? normalizeStoredLlmConfig(existingConfig)
+          : undefined;
+        const preservedConsent = existingOrigin
+          && normalizeLlmPublicConfig(existingOrigin).permissionOrigin === normalized.permissionOrigin
+          ? existingConfig?.consentedOrigin
+          : undefined;
+        const nextConsent = consentedOrigin ?? preservedConsent;
+        await this.database.llmConfigs.put({
+          id: "active",
+          ...normalizedConfig,
+          ...(nextConsent ? { consentedOrigin: nextConsent } : {}),
+        });
+        if (nextApiKey) {
+          await this.database.llmSecrets.put({ id: "active", apiKey: nextApiKey });
         }
       }
     );
+  }
+
+  async recordConsent(permissionOrigin: string): Promise<void> {
+    const [storedConfig, storedSecret] = await Promise.all([
+      this.database.llmConfigs.get("active"),
+      this.database.llmSecrets.get("active"),
+    ]);
+    const config = normalizeStoredLlmConfig(storedConfig);
+    if (
+      !config
+      || !isValidApiKey(storedSecret?.apiKey)
+      || normalizeLlmPublicConfig(config).permissionOrigin !== permissionOrigin
+    ) {
+      throw new Error("LLM configuration is not ready for origin consent");
+    }
+    await this.database.llmConfigs.update("active", { consentedOrigin: permissionOrigin });
+  }
+}
+
+function isValidApiKey(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function normalizeStoredLlmConfig(
+  stored: StoredLlmConfig | undefined,
+): LlmPublicConfig | undefined {
+  if (!stored) {
+    return undefined;
+  }
+  const { id: _id, consentedOrigin: _consentedOrigin, ...config } = stored;
+  try {
+    return normalizeLlmPublicConfig(config).config;
+  } catch {
+    return undefined;
   }
 }
 
 function normalizeStoredSettings(value: StoredExtensionSettings | undefined): StoredExtensionSettings {
   const raw: Record<string, unknown> = isRecord(value) ? value : {};
-  const settings: Record<string, unknown> = {
-    ...raw,
-    id: "extension" as const,
+  return {
+    id: "extension",
     activeQueryTemplateId: isNonEmptyString(raw.activeQueryTemplateId)
       ? raw.activeQueryTemplateId
       : DEFAULT_EXTENSION_SETTINGS.activeQueryTemplateId,
@@ -670,17 +836,18 @@ function normalizeStoredSettings(value: StoredExtensionSettings | undefined): St
       : DEFAULT_EXTENSION_SETTINGS.highlightEnabled,
     themeMode: raw.themeMode === "system" || raw.themeMode === "light" || raw.themeMode === "dark"
       ? raw.themeMode
-      : DEFAULT_EXTENSION_SETTINGS.themeMode
+      : DEFAULT_EXTENSION_SETTINGS.themeMode,
+    activeDictionaryProvider: "youdao-web",
+    ...(isNonEmptyString(raw.dictionaryConsentedOrigin)
+      ? { dictionaryConsentedOrigin: raw.dictionaryConsentedOrigin }
+      : {}),
+    ...(raw.legacySettingsMigrationCompleted === true
+      ? { legacySettingsMigrationCompleted: true }
+      : {}),
+    ...(raw.activeQueryTemplateRecovery === "active-template-unavailable"
+      ? { activeQueryTemplateRecovery: "active-template-unavailable" as const }
+      : {}),
   };
-  if (raw.activeDictionaryProvider === undefined) {
-    delete settings.activeDictionaryProvider;
-  } else if (
-    raw.activeDictionaryProvider !== "youdao-web"
-    && raw.activeDictionaryProvider !== "cambridge-web"
-  ) {
-    delete settings.activeDictionaryProvider;
-  }
-  return settings as unknown as StoredExtensionSettings;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -692,7 +859,13 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function stripSettingsId({ id: _id, ...settings }: StoredExtensionSettings): ExtensionSettings {
-  return settings;
+  return {
+    activeQueryTemplateId: settings.activeQueryTemplateId,
+    targetLanguage: settings.targetLanguage,
+    highlightEnabled: settings.highlightEnabled,
+    themeMode: settings.themeMode,
+    activeDictionaryProvider: "youdao-web"
+  };
 }
 
 export function createLocalRepositories(

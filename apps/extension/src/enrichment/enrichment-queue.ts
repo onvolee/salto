@@ -72,6 +72,25 @@ export function createEnrichmentQueue(dependencies: EnrichmentQueueDependencies)
     );
   }
 
+  async function deleteJobIfFieldReady(job: EnrichmentJob): Promise<boolean> {
+    const fieldId = `${job.vocabularyItemId}:${job.fieldKey}`;
+    return dependencies.database.transaction(
+      "rw",
+      [dependencies.database.vocabularyFields, dependencies.database.enrichmentJobs],
+      async () => {
+        const [field, currentJob] = await Promise.all([
+          dependencies.database.vocabularyFields.get(fieldId),
+          dependencies.database.enrichmentJobs.get(job.id),
+        ]);
+        if (field?.status !== "ready" || currentJob?.status !== "queued") {
+          return false;
+        }
+        await dependencies.database.enrichmentJobs.delete(job.id);
+        return true;
+      },
+    );
+  }
+
   async function updateFieldAndJob(
     job: EnrichmentJob,
     result: EnrichmentFieldResult,
@@ -90,7 +109,16 @@ export function createEnrichmentQueue(dependencies: EnrichmentQueueDependencies)
       async () => {
         const currentField = await dependencies.database.vocabularyFields.get(fieldId);
         const currentJob = await dependencies.database.enrichmentJobs.get(job.id);
-        if (!currentField || !currentJob) {
+        if (
+          !currentField
+          || !currentJob
+          || currentJob.status !== "running"
+          || currentJob.attempts !== job.attempts
+        ) {
+          return;
+        }
+        if (currentField.status === "ready") {
+          await dependencies.database.enrichmentJobs.delete(job.id);
           return;
         }
 
@@ -113,6 +141,29 @@ export function createEnrichmentQueue(dependencies: EnrichmentQueueDependencies)
           await dependencies.database.enrichmentJobs.put(updatedJob);
         }
       }
+    );
+  }
+
+  async function releaseUnansweredJob(job: EnrichmentJob): Promise<void> {
+    await dependencies.database.transaction(
+      "rw",
+      [dependencies.database.enrichmentJobs],
+      async () => {
+        const currentJob = await dependencies.database.enrichmentJobs.get(job.id);
+        if (
+          !currentJob
+          || currentJob.status !== "running"
+          || currentJob.attempts !== job.attempts
+        ) {
+          return;
+        }
+        await dependencies.database.enrichmentJobs.put({
+          ...currentJob,
+          status: "queued",
+          attempts: Math.max(0, job.attempts - 1),
+          nextRunAt: now(),
+        } as EnrichmentJob);
+      },
     );
   }
 
@@ -194,6 +245,9 @@ export function createEnrichmentQueue(dependencies: EnrichmentQueueDependencies)
     const claimedJobs: EnrichmentJob[] = [];
 
     for (const job of jobs) {
+      if (await deleteJobIfFieldReady(job)) {
+        continue;
+      }
       const claimed = await claimJob(job);
       if (claimed) {
         claimedJobs.push(claimed);
@@ -224,12 +278,7 @@ export function createEnrichmentQueue(dependencies: EnrichmentQueueDependencies)
     for (const job of claimedJobs) {
       const result = resultMap.get(job.id);
       if (!result) {
-        await dependencies.repositories.enrichmentJobs.updateStatus(
-          job.id,
-          "running",
-          "queued",
-          { attempts: Math.max(0, job.attempts - 1), nextRunAt: now() }
-        );
+        await releaseUnansweredJob(job);
         continue;
       }
       await updateFieldAndJob(job, result, timestamp);

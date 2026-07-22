@@ -5,7 +5,7 @@ colors:
   surface: "lch(98.94% 0.5 282)"
   surface-subtle: "lch(96.94% 0.5 282)"
   foreground: "lch(9.894% 0 282)"
-  primary: "lch(53% 52.26 286.91)"
+  primary: "lch(49% 52.26 286.91)"
   primary-foreground: "white"
   muted: "lch(93.44% 0.5 282)"
   muted-foreground: "lch(39.576% 1.25 282)"

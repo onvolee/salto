@@ -28,6 +28,7 @@ import {
 } from "salto-src/components/ui/input-group";
 import { Separator } from "salto-src/components/ui/separator";
 import { Spinner } from "salto-src/components/ui/spinner";
+import { Switch } from "salto-src/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
@@ -43,7 +44,7 @@ import type {
 
 type LlmDraftKey = keyof Pick<
   LlmDraft,
-  "apiKey" | "baseUrl" | "model" | "temperature"
+  "apiKey" | "baseUrl" | "model" | "temperature" | "enableThinking"
 >;
 
 type AiProviderSectionProps = {
@@ -64,6 +65,8 @@ const PROMPT_CONTEXT_LABELS: Record<PromptContextVariable, string> = {
   webUrl: "页面地址",
   webContent: "页面正文（最多 2000 字符）",
 };
+
+const AI_CONFIG_ERROR_ID = "ai-provider-config-error";
 
 export function AiProviderSection({
   connectionStatus,
@@ -109,6 +112,7 @@ export function AiProviderSection({
         >
           <InputGroup>
             <InputGroupInput
+              aria-describedby={llmError ? AI_CONFIG_ERROR_ID : undefined}
               aria-invalid={Boolean(llmError)}
               autoComplete="url"
               id="api-base-url"
@@ -132,6 +136,9 @@ export function AiProviderSection({
         >
           <InputGroup>
             <InputGroupInput
+              aria-describedby={llmError && !llm.hasApiKey && !llm.apiKey
+                ? AI_CONFIG_ERROR_ID
+                : undefined}
               aria-invalid={Boolean(llmError && !llm.hasApiKey && !llm.apiKey)}
               autoComplete="new-password"
               id="api-key"
@@ -176,6 +183,9 @@ export function AiProviderSection({
         >
           <InputGroup>
             <InputGroupInput
+              aria-describedby={llmError && !llm.model.trim()
+                ? AI_CONFIG_ERROR_ID
+                : undefined}
               aria-invalid={Boolean(llmError && !llm.model.trim())}
               autoComplete="off"
               id="model-name"
@@ -196,6 +206,9 @@ export function AiProviderSection({
         >
           <InputGroup>
             <InputGroupInput
+              aria-describedby={llmError && llm.temperature
+                ? AI_CONFIG_ERROR_ID
+                : undefined}
               aria-invalid={Boolean(llmError && llm.temperature)}
               id="temperature"
               inputMode="decimal"
@@ -210,10 +223,25 @@ export function AiProviderSection({
             />
           </InputGroup>
         </SettingsField>
+        <Separator />
+        <SettingsField
+          description="关闭可减少 Qwen3 / DeepSeek 等模型的响应延迟。非思考模型会忽略此参数。"
+          htmlFor="enable-thinking"
+          id="enable-thinking"
+          title="启用思考模式"
+        >
+          <Switch
+            aria-describedby={llmError ? AI_CONFIG_ERROR_ID : undefined}
+            checked={llm.enableThinking}
+            id="enable-thinking"
+            name="enable-thinking"
+            onCheckedChange={(checked) => updateLlm("enableThinking", checked)}
+          />
+        </SettingsField>
       </FieldGroup>
 
       {llmError ? (
-        <Alert role="alert" variant="destructive">
+        <Alert id={AI_CONFIG_ERROR_ID} role="alert" variant="destructive">
           <AlertTitle>配置未保存</AlertTitle>
           <AlertDescription>{llmError}</AlertDescription>
         </Alert>
@@ -272,9 +300,18 @@ export function AiProviderSection({
           <AlertDescription>
             {promptAnalysis.warnings.map((warning) => (
               <span className="block" key={warning.fieldId}>
-                {warning.fieldLabel}：{warning.unknownVariables
-                  .map((variable) => `{{${variable}}}`)
-                  .join("、")}
+                {warning.fieldLabel}：
+                {warning.unknownVariables.length > 0
+                  ? `未知变量 ${warning.unknownVariables
+                    .map((variable) => `{{${variable}}}`)
+                    .join("、")}`
+                  : null}
+                {warning.unknownVariables.length > 0 && warning.malformedTokens.length > 0
+                  ? "；"
+                  : null}
+                {warning.malformedTokens.length > 0
+                  ? `畸形变量 ${warning.malformedTokens.map(({ raw }) => raw).join("、")}`
+                  : null}
               </span>
             ))}
           </AlertDescription>

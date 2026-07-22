@@ -6,13 +6,17 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import type { PromptContext } from "@salto/core";
+import type {
+  PromptContext,
+  QueryTemplate,
+} from "@salto/core";
 
 import type { ThemeMode } from "salto-src/theme/theme-settings";
 import { useThemeMode } from "salto-src/theme/use-theme-mode";
 
 import { FloatingTrigger } from "./FloatingTrigger";
 import { browserMessageClient, type ExtensionMessageClient } from "./message-client";
+import { isOpenSelectionPanelMessage } from "./panel-command";
 import {
   clampToViewport,
   getInitialPanelPosition,
@@ -23,6 +27,7 @@ import {
 } from "./positioning";
 import {
   SelectionPanel,
+  type ActiveTemplateState,
   type SelectionPanelProps,
   type TranslationState
 } from "./SelectionPanel";
@@ -38,6 +43,16 @@ const TRIGGER_SIZE: Size = { width: 32, height: 32 };
 
 type SurfaceMode = "hidden" | "trigger-visible" | "panel-open";
 type SaveState = SelectionPanelProps["saveState"];
+type PanelOpenSubscription = (listener: () => void) => () => void;
+
+function subscribeToBrowserPanelOpen(listener: () => void): () => void {
+  if (typeof browser === "undefined") return () => undefined;
+  const handleMessage = (message: unknown) => {
+    if (isOpenSelectionPanelMessage(message)) listener();
+  };
+  browser.runtime.onMessage.addListener(handleMessage);
+  return () => browser.runtime.onMessage.removeListener(handleMessage);
+}
 
 function getViewportSize(): Size {
   return { width: window.innerWidth, height: window.innerHeight };
@@ -54,9 +69,13 @@ function eventIncludesElement(event: Event, element: Element | null): boolean {
 export function SelectionPopupApp({
   createRequestId = () => crypto.randomUUID(),
   messageClient = browserMessageClient,
+  onSaveSuccess,
+  subscribePanelOpen = subscribeToBrowserPanelOpen,
 }: {
   readonly createRequestId?: () => string;
   readonly messageClient?: ExtensionMessageClient;
+  readonly onSaveSuccess?: (term: string) => void;
+  readonly subscribePanelOpen?: PanelOpenSubscription;
 }) {
   const [mode, setMode] = useState<SurfaceMode>("hidden");
   const themeMode = useThemeMode();
@@ -64,10 +83,15 @@ export function SelectionPopupApp({
   const [triggerPosition, setTriggerPosition] = useState<Point>({ x: 0, y: 0 });
   const [panelPosition, setPanelPosition] = useState<Point>({ x: 0, y: 0 });
   const panelRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const restoreTriggerFocusRef = useRef(false);
   const translationRequestRef = useRef<string | null>(null);
+  const panelGenerationRef = useRef(0);
+  const templateSnapshotRef = useRef<QueryTemplate | null>(null);
   const saveRequestRef = useRef(0);
   const [promptContext, setPromptContext] = useState<PromptContext | null>(null);
   const [translation, setTranslation] = useState<TranslationState>({ status: "loading" });
+  const [activeTemplate, setActiveTemplate] = useState<ActiveTemplateState>({ status: "loading" });
   const [saveState, setSaveState] = useState<SaveState>("idle");
 
   const refreshTrigger = useCallback(() => {
@@ -83,19 +107,30 @@ export function SelectionPopupApp({
     setMode("trigger-visible");
   }, []);
 
-  const closePanel = useCallback(() => {
+  const closePanel = useCallback((restoreTriggerFocus = true) => {
+    panelGenerationRef.current += 1;
     const requestId = translationRequestRef.current;
     translationRequestRef.current = null;
+    templateSnapshotRef.current = null;
     if (requestId) {
       void messageClient.cancelTranslation?.(requestId).catch(() => undefined);
     }
     saveRequestRef.current += 1;
-    window.getSelection()?.removeAllRanges();
-    setSession(null);
-    setMode("hidden");
-  }, [messageClient]);
+    if (restoreTriggerFocus && session) {
+      restoreTriggerFocusRef.current = true;
+      setMode("trigger-visible");
+    } else {
+      window.getSelection()?.removeAllRanges();
+      setSession(null);
+      setMode("hidden");
+    }
+  }, [messageClient, session]);
 
-  const requestTranslation = useCallback((context: PromptContext) => {
+  const requestTranslation = useCallback((
+    context: PromptContext,
+    template: QueryTemplate,
+    generation: number,
+  ) => {
     const previousRequestId = translationRequestRef.current;
     if (previousRequestId) {
       void messageClient.cancelTranslation?.(previousRequestId).catch(() => undefined);
@@ -105,13 +140,34 @@ export function SelectionPopupApp({
     setTranslation({ status: "loading" });
     void messageClient.send({
       type: "translate-selection",
-      payload: { requestId, context },
+      payload: { requestId, context, template },
     }).then((response) => {
-      if (translationRequestRef.current !== requestId) {
+      if (
+        translationRequestRef.current !== requestId
+        || panelGenerationRef.current !== generation
+      ) {
         return;
       }
       if (response.ok && response.type === "translate-selection") {
-        setTranslation({ status: "complete", data: response.data });
+        setTranslation((prev) => {
+          if (prev.status === "streaming") {
+            const streamingFieldIds = new Set(prev.fields.map((f) => f.fieldId));
+            const mergedFields = [
+              ...prev.fields,
+              ...response.data.fields.filter((f) => !streamingFieldIds.has(f.fieldId)),
+            ];
+            return {
+              status: "complete",
+              data: {
+                templateId: response.data.templateId,
+                templateName: response.data.templateName,
+                schema: response.data.schema,
+                fields: mergedFields,
+              },
+            };
+          }
+          return { status: "complete", data: response.data };
+        });
       } else {
         setTranslation({
           status: "request-error",
@@ -119,34 +175,162 @@ export function SelectionPopupApp({
         });
       }
     }).catch(() => {
-      if (translationRequestRef.current === requestId) {
+      if (
+        translationRequestRef.current === requestId
+        && panelGenerationRef.current === generation
+      ) {
         setTranslation({ status: "request-error", message: "Translation request failed" });
       }
     });
   }, [createRequestId, messageClient]);
 
-  const openPanel = useCallback(() => {
-    if (!session) {
+  const openPanel = useCallback((requestedSession?: SelectionSnapshot) => {
+    const nextSession = requestedSession ?? session;
+    if (!nextSession) {
       return;
     }
 
+    const generation = panelGenerationRef.current + 1;
+    panelGenerationRef.current = generation;
+    templateSnapshotRef.current = null;
     const viewport = getViewportSize();
+    const nextTriggerPosition = requestedSession
+      ? getTriggerPosition(nextSession.anchorRect, TRIGGER_SIZE, viewport)
+      : triggerPosition;
+    setSession(nextSession);
+    setTriggerPosition(nextTriggerPosition);
     setPanelPosition(
-      getInitialPanelPosition(triggerPosition, TRIGGER_SIZE, getPanelSize(viewport), viewport),
+      getInitialPanelPosition(nextTriggerPosition, TRIGGER_SIZE, getPanelSize(viewport), viewport),
     );
-    const context = extractPromptContext(session.range, "");
+    const context = extractPromptContext(nextSession.range, "");
     saveRequestRef.current += 1;
     setPromptContext(context);
-    setSaveState("idle");
+    setActiveTemplate({ status: "loading" });
+    setTranslation({ status: "loading" });
     setMode("panel-open");
-    requestTranslation(context);
-  }, [requestTranslation, session, triggerPosition]);
+
+    void messageClient.send({
+      type: "check-vocabulary-exists",
+      payload: { term: nextSession.text, language: "en" },
+    }).then((response) => {
+      if (panelGenerationRef.current !== generation) {
+        return;
+      }
+      if (response.ok && response.type === "check-vocabulary-exists" && response.data.exists) {
+        setSaveState("saved");
+      } else {
+        setSaveState("idle");
+      }
+    }).catch(() => {
+      if (panelGenerationRef.current === generation) {
+        setSaveState("idle");
+      }
+    });
+
+    void messageClient.send({ type: "get-active-query-template" }).then((response) => {
+      if (panelGenerationRef.current !== generation) {
+        return;
+      }
+      if (!response.ok || response.type !== "get-active-query-template") {
+        setActiveTemplate({
+          status: "error",
+          message: response.ok ? "Unexpected response" : response.error.message,
+        });
+        return;
+      }
+      const snapshot = response.data.template;
+      templateSnapshotRef.current = snapshot;
+      setActiveTemplate({
+        status: "ready",
+        template: snapshot,
+        resolution: response.data.resolution,
+      });
+      requestTranslation(context, snapshot, generation);
+    }).catch(() => {
+      if (panelGenerationRef.current === generation) {
+        setActiveTemplate({
+          status: "error",
+          message: "Active template could not be loaded",
+        });
+      }
+    });
+  }, [messageClient, requestTranslation, session, triggerPosition]);
+
+  useEffect(() => subscribePanelOpen(() => {
+    if (mode === "panel-open") return;
+    const snapshot = readSelectionSnapshot(window.getSelection());
+    if (snapshot) openPanel(snapshot);
+  }), [mode, openPanel, subscribePanelOpen]);
+
+  useEffect(() => {
+    if (mode !== "trigger-visible" || !restoreTriggerFocusRef.current) return;
+    restoreTriggerFocusRef.current = false;
+    triggerRef.current?.focus({ preventScroll: true });
+  }, [mode]);
 
   const regenerateTranslation = useCallback(() => {
-    if (promptContext) {
-      requestTranslation(promptContext);
+    const template = templateSnapshotRef.current;
+    if (promptContext && template) {
+      const generation = panelGenerationRef.current + 1;
+      panelGenerationRef.current = generation;
+      requestTranslation(promptContext, template, generation);
     }
   }, [promptContext, requestTranslation]);
+
+  useEffect(() => {
+    if (typeof browser === "undefined" || !browser?.runtime?.onMessage) return;
+    const handleMessage = (message: unknown) => {
+      if (
+        typeof message === "object"
+        && message !== null
+        && (message as { type?: string }).type === "translation-field-ready"
+      ) {
+        const payload = (message as { payload?: {
+          requestId?: string;
+          fieldId?: string;
+          result?: import("@salto/core").QueryFieldResult;
+        } }).payload;
+        if (
+          !payload
+          || typeof payload.requestId !== "string"
+          || typeof payload.fieldId !== "string"
+          || !payload.result
+        ) {
+          return;
+        }
+        if (translationRequestRef.current !== payload.requestId) {
+          return;
+        }
+        setTranslation((prev) => {
+          if (prev.status === "streaming") {
+            const existingFields = prev.fields.filter((f) => f.fieldId !== payload.fieldId);
+            return {
+              ...prev,
+              fields: [...existingFields, payload.result!],
+            };
+          }
+          if (prev.status === "loading") {
+            const template = templateSnapshotRef.current;
+            if (!template) return prev;
+            const schema = template.fields
+              .filter((field) => field.enabled)
+              .toSorted((left, right) => left.order - right.order)
+              .map(({ id, label }) => ({ id, label }));
+            return {
+              status: "streaming" as const,
+              templateId: template.id,
+              templateName: template.name,
+              schema,
+              fields: [payload.result!],
+            };
+          }
+          return prev;
+        });
+      }
+    };
+    browser.runtime.onMessage.addListener(handleMessage);
+    return () => browser.runtime.onMessage.removeListener(handleMessage);
+  }, []);
 
   const saveSelection = useCallback(() => {
     if (!session || !promptContext || saveState === "saving" || saveState === "saved") {
@@ -154,6 +338,7 @@ export function SelectionPopupApp({
     }
     setSaveState("saving");
     const requestId = ++saveRequestRef.current;
+    const savedTerm = session.text;
     const selectionPath = extractSelectionPath(session.range);
     void messageClient.send({
       type: "save-vocabulary",
@@ -169,15 +354,19 @@ export function SelectionPopupApp({
         }
       }
     }).then((response) => {
+      const saved = response.ok && response.type === "save-vocabulary";
+      if (saved) {
+        onSaveSuccess?.(savedTerm);
+      }
       if (saveRequestRef.current === requestId) {
-        setSaveState(response.ok && response.type === "save-vocabulary" ? "saved" : "error");
+        setSaveState(saved ? "saved" : "error");
       }
     }).catch(() => {
       if (saveRequestRef.current === requestId) {
         setSaveState("error");
       }
     });
-  }, [messageClient, promptContext, saveState, session]);
+  }, [messageClient, onSaveSuccess, promptContext, saveState, session]);
 
   useEffect(() => {
     refreshTrigger();
@@ -248,14 +437,14 @@ export function SelectionPopupApp({
         return;
       }
 
-      closePanel();
+      closePanel(false);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (mode === "panel-open" && event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        closePanel();
+        closePanel(true);
       }
     };
 
@@ -317,9 +506,10 @@ export function SelectionPopupApp({
   if (mode === "trigger-visible") {
     return wrapSurface(
       <FloatingTrigger
-        onOpen={openPanel}
+        onOpen={() => openPanel()}
         onPointerDown={preserveSelection}
         position={triggerPosition}
+        triggerRef={triggerRef}
       />,
       themeMode,
     );
@@ -328,7 +518,8 @@ export function SelectionPopupApp({
   if (mode === "panel-open" && session) {
     return wrapSurface(
       <SelectionPanel
-        onClose={closePanel}
+        activeTemplate={activeTemplate}
+        onClose={() => closePanel(true)}
         onPositionChange={setPanelPosition}
         onRegenerate={regenerateTranslation}
         onSave={saveSelection}
