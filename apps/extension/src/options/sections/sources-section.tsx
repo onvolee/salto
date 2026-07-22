@@ -105,11 +105,13 @@ export function SourcesSection({
   permissionClient = browserDictionaryPermissionClient,
   preview: externalPreview,
   onPreviewChange,
+  onTestStatusChange,
 }: {
   dictionaryClient?: OptionsDictionaryClient;
   permissionClient?: DictionaryPermissionClient;
   preview?: YoudaoTestPreview | null;
   onPreviewChange?: (preview: YoudaoTestPreview) => void;
+  onTestStatusChange?: (status: TestStatus, message: string) => void;
 }) {
   const [status, setStatus] = useState<TestStatus>("idle");
   const [statusMessage, setStatusMessage] = useState("");
@@ -122,10 +124,13 @@ export function SourcesSection({
   const testConnection = async () => {
     setStatus("testing");
     setStatusMessage("");
+    onTestStatusChange?.("testing", "");
     try {
       if (!await permissionClient.request(YOUDAO_PERMISSION_ORIGIN)) {
+        const message = "未授予有道词典访问权限，可重新测试。";
         setStatus("error");
-        setStatusMessage("未授予有道词典访问权限，可重新测试。");
+        setStatusMessage(message);
+        onTestStatusChange?.("error", message);
         return;
       }
       const nextPreview = await dictionaryClient.testConnection(term.trim());
@@ -134,11 +139,15 @@ export function SourcesSection({
       } else {
         setLocalPreview(nextPreview);
       }
+      const message = "有道词典连接成功。";
       setStatus("success");
-      setStatusMessage("有道词典连接成功。");
+      setStatusMessage(message);
+      onTestStatusChange?.("success", message);
     } catch (error) {
+      const message = dictionaryFailureMessage(error);
       setStatus("error");
-      setStatusMessage(dictionaryFailureMessage(error));
+      setStatusMessage(message);
+      onTestStatusChange?.("error", message);
     }
   };
 

@@ -40,6 +40,7 @@ function createClients(configured = true) {
       hasApiKey: true,
       promptAnalysis: { referencedVariables: [], warnings: [] },
     } : {
+      config: undefined,
       hasApiKey: false,
       promptAnalysis: { referencedVariables: [], warnings: [] },
     }),

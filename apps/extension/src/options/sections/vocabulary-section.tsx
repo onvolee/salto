@@ -19,14 +19,20 @@ type FailedItem = {
   fields: string[];
 };
 
-export function VocabularySection() {
+export function VocabularySection({
+  onFailedCountChange,
+}: {
+  onFailedCountChange?: (count: number) => void;
+} = {}) {
   const [items, setItems] = useState<FailedItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = async () => {
     const response = await browserMessageClient.send({ type: "list-failed-enrichment" });
     if (response.ok && response.type === "list-failed-enrichment") {
-      setItems(response.data.items as FailedItem[]);
+      const failedItems = response.data.items as FailedItem[];
+      setItems(failedItems);
+      onFailedCountChange?.(failedItems.length);
     }
   };
 
