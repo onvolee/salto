@@ -492,8 +492,11 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
           activeQueryTemplateId: settings.activeQueryTemplateId,
           targetLanguage: settings.targetLanguage,
           highlightEnabled: settings.highlightEnabled,
+          highlightSameWords: settings.highlightSameWords,
           themeMode: settings.themeMode,
           activeDictionaryProvider: "youdao-web",
+          panelWidth: settings.panelWidth,
+          panelHeight: settings.panelHeight,
           ...(current?.dictionaryConsentedOrigin
             ? { dictionaryConsentedOrigin: current.dictionaryConsentedOrigin }
             : {}),
@@ -838,6 +841,12 @@ function normalizeStoredSettings(value: StoredExtensionSettings | undefined): St
       ? raw.themeMode
       : DEFAULT_EXTENSION_SETTINGS.themeMode,
     activeDictionaryProvider: "youdao-web",
+    panelWidth: typeof raw.panelWidth === "number"
+      ? raw.panelWidth
+      : DEFAULT_EXTENSION_SETTINGS.panelWidth,
+    panelHeight: typeof raw.panelHeight === "number"
+      ? raw.panelHeight
+      : DEFAULT_EXTENSION_SETTINGS.panelHeight,
     ...(isNonEmptyString(raw.dictionaryConsentedOrigin)
       ? { dictionaryConsentedOrigin: raw.dictionaryConsentedOrigin }
       : {}),
@@ -864,7 +873,9 @@ function stripSettingsId({ id: _id, ...settings }: StoredExtensionSettings): Ext
     targetLanguage: settings.targetLanguage,
     highlightEnabled: settings.highlightEnabled,
     themeMode: settings.themeMode,
-    activeDictionaryProvider: "youdao-web"
+    activeDictionaryProvider: "youdao-web",
+    panelWidth: settings.panelWidth,
+    panelHeight: settings.panelHeight,
   };
 }
 

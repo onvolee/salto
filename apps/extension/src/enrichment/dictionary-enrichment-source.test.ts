@@ -14,8 +14,11 @@ const activeSettings = {
   activeQueryTemplateId: "system-default",
   targetLanguage: "zh-CN",
   highlightEnabled: true,
+  highlightSameWords: false,
   themeMode: "system" as const,
   activeDictionaryProvider: "youdao-web" as const,
+  panelWidth: 360,
+  panelHeight: 220,
 };
 
 function job(

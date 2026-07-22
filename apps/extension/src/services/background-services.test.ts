@@ -50,11 +50,23 @@ function createServices() {
       activeQueryTemplateId: template.id,
       targetLanguage: "zh-CN",
       highlightEnabled: true,
+      highlightSameWords: false,
       themeMode: "system",
       activeDictionaryProvider: "youdao-web",
+      panelWidth: 360,
+      panelHeight: 220,
     }),
     getActive: vi.fn().mockResolvedValue({
-      settings: { activeQueryTemplateId: template.id, targetLanguage: "zh-CN", highlightEnabled: true, themeMode: "system" },
+      settings: {
+        activeQueryTemplateId: template.id,
+        targetLanguage: "zh-CN",
+        highlightEnabled: true,
+        highlightSameWords: false,
+        themeMode: "system",
+        activeDictionaryProvider: "youdao-web",
+        panelWidth: 360,
+        panelHeight: 220,
+      },
       template
     })
   };
@@ -293,8 +305,11 @@ describe("background message boundary", () => {
         activeQueryTemplateId: "system-default",
         targetLanguage: "zh-CN",
         highlightEnabled: true,
+        highlightSameWords: false,
         themeMode: "system" as const,
         activeDictionaryProvider: "youdao-web" as const,
+        panelWidth: 360,
+        panelHeight: 220,
       },
       template: storedTemplate,
       resolution: {
@@ -340,8 +355,11 @@ describe("background message boundary", () => {
         activeQueryTemplateId: "different-template",
         targetLanguage: "ja-JP",
         highlightEnabled: true,
+        highlightSameWords: false,
         themeMode: "system",
         activeDictionaryProvider: "youdao-web",
+        panelWidth: 360,
+        panelHeight: 220,
       }),
     };
     const services = createBackgroundServices({
@@ -549,7 +567,11 @@ describe("background message boundary", () => {
         activeQueryTemplateId: template.id,
         targetLanguage: "zh-CN",
         highlightEnabled: false,
-        themeMode: "system"
+        highlightSameWords: false,
+        themeMode: "system",
+        activeDictionaryProvider: "youdao-web",
+        panelWidth: 360,
+        panelHeight: 220,
       },
       template
     });
@@ -567,8 +589,11 @@ describe("background message boundary", () => {
       activeQueryTemplateId: template.id,
       targetLanguage: "ja-JP",
       highlightEnabled: true,
+      highlightSameWords: false,
       themeMode: "system",
       activeDictionaryProvider: "youdao-web",
+      panelWidth: 360,
+      panelHeight: 220,
     });
 
     const response = await services.handleMessage(translateRequest);
@@ -898,8 +923,11 @@ describe("background message boundary", () => {
       activeQueryTemplateId: "user-template",
       targetLanguage: "zh-CN",
       highlightEnabled: true,
+      highlightSameWords: false,
       themeMode: "system" as const,
       activeDictionaryProvider: "youdao-web" as const,
+      panelWidth: 360,
+      panelHeight: 220,
     };
     const after = { ...before, activeQueryTemplateId: "system-default" };
     const settings = {
@@ -935,7 +963,9 @@ describe("background message boundary", () => {
       targetLanguage: "ja-JP",
       highlightEnabled: false,
       themeMode: "dark" as const,
-      activeDictionaryProvider: "youdao-web" as const
+      activeDictionaryProvider: "youdao-web" as const,
+      panelWidth: 360,
+      panelHeight: 220,
     };
     const settings = {
       get: vi.fn().mockResolvedValue({
@@ -943,7 +973,9 @@ describe("background message boundary", () => {
         targetLanguage: "zh-CN",
         highlightEnabled: true,
         themeMode: "system",
-        activeDictionaryProvider: "youdao-web"
+        activeDictionaryProvider: "youdao-web",
+        panelWidth: 360,
+        panelHeight: 220,
       }),
       save: vi.fn().mockResolvedValue(savedSettings)
     };
