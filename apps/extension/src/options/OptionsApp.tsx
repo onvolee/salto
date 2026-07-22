@@ -26,12 +26,14 @@ import { AiProviderSection } from "./sections/ai-provider-section";
 import { GeneralSection } from "./sections/general-section";
 import { SelectionSection } from "./sections/selection-section";
 import { SourcesSection } from "./sections/sources-section";
+import type { YoudaoTestPreview } from "./dictionary-client";
 import { VocabularySection } from "./sections/vocabulary-section";
 import { SETTINGS_SECTIONS, type SettingsSectionId } from "./types";
 
 export function OptionsApp() {
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("general");
+  const [youdaoPreview, setYoudaoPreview] = useState<YoudaoTestPreview | null>(null);
   const {
     connectionStatus,
     llm,
@@ -159,7 +161,10 @@ export function OptionsApp() {
                   />
                 ) : null}
                 {activeSection === "sources" ? (
-                  <SourcesSection />
+                  <SourcesSection
+                    onPreviewChange={setYoudaoPreview}
+                    preview={youdaoPreview}
+                  />
                 ) : null}
                 {activeSection === "vocabulary" ? <VocabularySection /> : null}
                 {activeSection === "ai-provider" ? (

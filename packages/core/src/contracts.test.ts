@@ -11,6 +11,7 @@ import {
   normalizeSavedTerms,
   VOCABULARY_FIELD_KEYS,
   type DictionaryAdapter,
+  type DictionaryPreviewAdapter,
   type DictionaryFieldKey,
   type DictionaryQueryField,
   type DictionaryQueryFieldSpec,
@@ -43,6 +44,7 @@ describe("@salto/core public contract", () => {
   it("keeps extension adapters behind core ports", () => {
     expectTypeOf<LlmClient>().toHaveProperty("complete");
     expectTypeOf<DictionaryAdapter>().toHaveProperty("lookup");
+    expectTypeOf<DictionaryPreviewAdapter>().toHaveProperty("preview");
     expectTypeOf<VocabularyItem>().toHaveProperty("canonicalKey").toEqualTypeOf<string>();
     expectTypeOf<LearningCard>().toHaveProperty("cardType").toEqualTypeOf<"meaning-recall">();
   });

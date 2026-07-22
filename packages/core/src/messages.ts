@@ -87,6 +87,56 @@ export type TestLlmConnectionRequest = {
 
 export type TestDictionaryConnectionRequest = {
   readonly type: "test-dictionary-connection";
+  readonly payload: {
+    readonly term: string;
+  };
+};
+
+export const YOUDAO_PREVIEW_SECTION_KINDS = [
+  "basic",
+  "word-forms",
+  "web-or-specialized",
+  "english-or-bilingual",
+  "phrases",
+  "synonyms",
+  "examples",
+] as const;
+
+export type YoudaoPreviewSectionKind = (typeof YOUDAO_PREVIEW_SECTION_KINDS)[number];
+
+export type YoudaoTextPreviewSection = {
+  readonly kind: "basic" | "web-or-specialized" | "english-or-bilingual" | "synonyms";
+  readonly entries: readonly string[];
+};
+
+export type YoudaoWordFormsPreviewSection = {
+  readonly kind: "word-forms";
+  readonly entries: readonly { readonly label: string; readonly value: string }[];
+};
+
+export type YoudaoPhrasesPreviewSection = {
+  readonly kind: "phrases";
+  readonly entries: readonly { readonly phrase: string; readonly meaning?: string }[];
+};
+
+export type YoudaoExamplesPreviewSection = {
+  readonly kind: "examples";
+  readonly entries: readonly {
+    readonly english: string;
+    readonly chinese?: string;
+    readonly source?: string;
+  }[];
+};
+
+export type YoudaoPreviewSection =
+  | YoudaoTextPreviewSection
+  | YoudaoWordFormsPreviewSection
+  | YoudaoPhrasesPreviewSection
+  | YoudaoExamplesPreviewSection;
+
+export type YoudaoPreview = {
+  readonly term: string;
+  readonly sections: readonly YoudaoPreviewSection[];
 };
 
 export type ListQueryTemplatesRequest = {
@@ -250,8 +300,8 @@ export type ExtensionSuccessResponse =
       readonly ok: true;
       readonly type: "test-dictionary-connection";
       readonly data: {
-        readonly connected: true;
         readonly providerId: "youdao-web";
+        readonly preview: YoudaoPreview;
       };
     }
   | {
@@ -287,6 +337,8 @@ export type ExtensionErrorCode =
   | "model-not-found"
   | "network"
   | "not-configured"
+  | "not-found"
+  | "parser-failure"
   | "permission-denied"
   | "provider"
   | "rate-limit"

@@ -20,9 +20,11 @@ The parser uses these provider-owned DOM anchors observed on 2026-07-19:
 - `#noResult` identifies an explicit missing entry.
 
 If the entry anchors change, the parser returns `parser-failure`. Optional sections may be
-absent without discarding successful fields. The adapter does not parse examples,
-etymology, phrases, account state, advertisements, or scripts. Errors expose only stable
-contract codes; response HTML and selector diagnostics are never logged.
+absent without discarding successful fields. The test-preview path emits only validated text
+entries from available source-native sections: basic definitions, word forms, network or
+specialized meanings, English or bilingual meanings, phrases, synonyms, and examples. It
+never returns response HTML, audio controls, account state, advertisements, scripts, or
+selector diagnostics. Errors expose only stable contract codes.
 
 ## Verification
 

@@ -1,16 +1,18 @@
 import {
   DictionaryLookupError,
   normalizeDictionaryFields,
-  type DictionaryAdapter,
   type DictionaryFieldKey,
-  type DictionaryLookupResult
+  type DictionaryLookupRequest,
+  type DictionaryLookupResult,
+  type DictionaryPreviewAdapter,
+  type YoudaoPreview,
 } from "@salto/core";
 
 import {
   createDictionaryHttpClient,
   type DictionaryHttpClient
 } from "./dictionary-http-client";
-import { parseYoudaoHtml } from "./youdao-web-parser";
+import { parseYoudaoHtml, parseYoudaoPreviewHtml } from "./youdao-web-parser";
 
 export const YOUDAO_ORIGIN = "https://dict.youdao.com";
 export const YOUDAO_PERMISSION_ORIGIN = `${YOUDAO_ORIGIN}/*`;
@@ -30,11 +32,19 @@ export interface YoudaoWebAdapterDependencies {
 
 export function createYoudaoWebAdapter(
   dependencies: YoudaoWebAdapterDependencies
-): DictionaryAdapter {
+): DictionaryPreviewAdapter {
   const httpClient = dependencies.httpClient ?? createDictionaryHttpClient({
     retry: 1,
     retryDelayMs: 100
   });
+
+  async function fetchEntryHtml(request: DictionaryLookupRequest, signal: AbortSignal): Promise<string> {
+    if (!await dependencies.hasOriginPermission(YOUDAO_PERMISSION_ORIGIN)) {
+      throw new DictionaryLookupError("permission-denied");
+    }
+    const url = `${YOUDAO_ORIGIN}/w/eng/${encodeURIComponent(request.term)}/`;
+    return httpClient.getText({ url, signal });
+  }
 
   return {
     capabilities: {
@@ -44,12 +54,7 @@ export function createYoudaoWebAdapter(
     },
 
     async lookup(request, signal): Promise<DictionaryLookupResult> {
-      if (!await dependencies.hasOriginPermission(YOUDAO_PERMISSION_ORIGIN)) {
-        throw new DictionaryLookupError("permission-denied");
-      }
-
-      const url = `${YOUDAO_ORIGIN}/w/eng/${encodeURIComponent(request.term)}/`;
-      const html = await httpClient.getText({ url, signal });
+      const html = await fetchEntryHtml(request, signal);
       const parsed = parseYoudaoHtml(html);
       const fields = normalizeDictionaryFields(
         parsed.status === "found" ? parsed.fields : {},
@@ -63,6 +68,14 @@ export function createYoudaoWebAdapter(
         language: request.language,
         fields
       };
-    }
+    },
+
+    async preview(request, signal): Promise<YoudaoPreview> {
+      const parsed = parseYoudaoPreviewHtml(await fetchEntryHtml(request, signal));
+      if (parsed.status === "not-found") {
+        throw new DictionaryLookupError("not-found");
+      }
+      return parsed.preview;
+    },
   };
 }

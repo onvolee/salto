@@ -13,6 +13,7 @@ import {
   type ExtensionResponse,
   type ExtensionSettings,
   type DictionaryAdapter,
+  type DictionaryPreviewAdapter,
   type LlmPublicConfig,
   type LlmQuerySchemaField,
   type PromptContext,
@@ -47,7 +48,7 @@ export type BackgroundServiceDependencies = {
   readonly saveVocabulary: SaveVocabularyService;
   readonly enrichmentQueue: EnrichmentQueue;
   readonly queryExecutor: QueryExecutor;
-  readonly dictionaryAdapter?: DictionaryAdapter;
+  readonly dictionaryAdapter?: DictionaryAdapter | DictionaryPreviewAdapter;
   readonly hasOriginPermission?: (permissionOrigin: string) => Promise<boolean>;
   readonly testLlmConnection?: () => Promise<void>;
   readonly prepareSettings?: () => Promise<void>;
@@ -244,7 +245,14 @@ export function parseExtensionRequest(
     return { type: value.type };
   }
   if (value.type === "test-dictionary-connection") {
-    return Object.keys(value).length === 1 ? { type: value.type } : null;
+    return isRecord(value.payload)
+      && Object.keys(value).length === 2
+      && Object.keys(value.payload).length === 1
+      && typeof value.payload.term === "string"
+      && value.payload.term.trim().length > 0
+      && value.payload.term.length <= 500
+      ? { type: value.type, payload: { term: value.payload.term.trim() } }
+      : null;
   }
   if (value.type === "save-llm-config") {
     return isRecord(value.payload)
@@ -335,6 +343,12 @@ function mapUnknownError(error: unknown): ExtensionResponse {
     }
     if (error.code === "provider-error") {
       return errorResponse("provider", error.message);
+    }
+    if (error.code === "not-found") {
+      return errorResponse("not-found", error.message);
+    }
+    if (error.code === "parser-failure") {
+      return errorResponse("parser-failure", error.message);
     }
     return errorResponse("invalid-response", error.message);
   }
@@ -644,22 +658,25 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
 
         if (request.type === "test-dictionary-connection") {
           assertOptionsPage(context);
-          if (dependencies.dictionaryAdapter?.capabilities.providerId !== "youdao-web") {
+          if (
+            dependencies.dictionaryAdapter?.capabilities.providerId !== "youdao-web"
+            || !("preview" in dependencies.dictionaryAdapter)
+          ) {
             throw new ServiceError(
               "not-configured",
               "The Youdao dictionary adapter is not registered",
             );
           }
-          await dependencies.dictionaryAdapter.lookup(
-            { term: "example", language: "en" },
+          const preview = await dependencies.dictionaryAdapter.preview(
+            { term: request.payload.term, language: "en" },
             new AbortController().signal,
           );
           return {
             ok: true,
             type: request.type,
             data: {
-              connected: true,
               providerId: dependencies.dictionaryAdapter.capabilities.providerId,
+              preview,
             },
           };
         }
