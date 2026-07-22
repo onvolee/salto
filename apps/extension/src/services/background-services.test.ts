@@ -934,6 +934,7 @@ describe("background message boundary", () => {
       activeQueryTemplateId: "user-1",
       targetLanguage: "ja-JP",
       highlightEnabled: false,
+      highlightSameWords: false,
       themeMode: "dark" as const,
       activeDictionaryProvider: "youdao-web" as const
     };
@@ -942,6 +943,7 @@ describe("background message boundary", () => {
         activeQueryTemplateId: template.id,
         targetLanguage: "zh-CN",
         highlightEnabled: true,
+        highlightSameWords: false,
         themeMode: "system",
         activeDictionaryProvider: "youdao-web"
       }),

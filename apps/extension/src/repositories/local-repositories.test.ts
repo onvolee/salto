@@ -177,6 +177,7 @@ describe("local repositories", () => {
       activeQueryTemplateId: "missing",
       targetLanguage: "zh-CN",
       highlightEnabled: true,
+      highlightSameWords: false,
       themeMode: "system",
       activeDictionaryProvider: "youdao-web"
     })).rejects.toMatchObject({ code: "template-not-found" });
@@ -231,6 +232,7 @@ describe("local repositories", () => {
       activeQueryTemplateId: template.id,
       targetLanguage: "ja-JP",
       highlightEnabled: false,
+      highlightSameWords: false,
       themeMode: "dark",
       activeDictionaryProvider: "youdao-web"
     });
@@ -245,6 +247,7 @@ describe("local repositories", () => {
       activeQueryTemplateId: template.id,
       targetLanguage: "ja-JP",
       highlightEnabled: false,
+      highlightSameWords: false,
       themeMode: "dark",
       activeDictionaryProvider: "youdao-web",
     });
@@ -273,6 +276,7 @@ describe("local repositories", () => {
       activeQueryTemplateId: "system-default",
       targetLanguage: "zh-CN",
       highlightEnabled: true,
+      highlightSameWords: false,
       themeMode: "system",
       activeDictionaryProvider: "youdao-web"
     });

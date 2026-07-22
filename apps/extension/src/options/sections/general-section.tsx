@@ -123,6 +123,24 @@ export function GeneralSection({
             />
           </div>
         </SettingsField>
+        <Separator />
+        <SettingsField
+          description="开启后高亮网页中所有相同的单词；关闭后仅标记保存时的原始位置。"
+          htmlFor="highlight-same-words"
+          id="highlight-same-words"
+          title="高亮相同单词"
+        >
+          <div className="flex min-h-7 items-center justify-end">
+            <Switch
+              checked={settings.highlightSameWords}
+              disabled={!settings.highlightEnabled}
+              id="highlight-same-words"
+              onCheckedChange={(checked) => {
+                updateSetting("highlightSameWords", checked);
+              }}
+            />
+          </div>
+        </SettingsField>
       </FieldGroup>
     </section>
   );
