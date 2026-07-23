@@ -35,6 +35,17 @@
   --salto-success: #15803d;
   --salto-destructive: #dc2626;
   --salto-focus-halo: color-mix(in oklab, var(--salto-ring), transparent 68%);
+
+  /* Shared spacing and shape primitives. */
+  --salto-space-xs: 4px;
+  --salto-space-sm: 8px;
+  --salto-space-md: 12px;
+  --salto-space-lg: 16px;
+  --salto-radius-sm: 4px;
+  --salto-radius-md: 6px;
+  --salto-radius-panel: 8px;
+  --salto-radius-max: 12px;
+  --salto-radius-pill: 999px;
   --salto-panel-shadow: 0 4px 8px lch(9.894% 0 282 / 0.2);
   --salto-trigger-shadow: 0 3px 8px lch(9.894% 0 282 / 0.24);
   --salto-trigger-shadow-hover: 0 4px 8px lch(9.894% 0 282 / 0.28);

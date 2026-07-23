@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 type Rgb = readonly [number, number, number];
 
 const themeCss = readFileSync(new URL("./linear-theme.css", import.meta.url), "utf8");
+const selectionPopupCss = readFileSync(new URL("../selection/selection-popup.css", import.meta.url), "utf8");
 const rootTokens = tokenBlock(/:where\(:root, \.salto-theme-scope\) \{([\s\S]*?)\n\}/);
 const darkTokens = tokenBlock(/\[data-theme="dark"\] \{([\s\S]*?)\n\}/);
 
@@ -78,6 +79,26 @@ function contrast(foreground: string, background: string): number {
 }
 
 describe("theme accessibility contract", () => {
+  it("defines the spacing and radius primitives used by extension UI", () => {
+    expect(rootTokens.get("--salto-space-xs")).toBe("4px");
+    expect(rootTokens.get("--salto-space-sm")).toBe("8px");
+    expect(rootTokens.get("--salto-space-md")).toBe("12px");
+    expect(rootTokens.get("--salto-space-lg")).toBe("16px");
+    expect(rootTokens.get("--salto-radius-sm")).toBe("4px");
+    expect(rootTokens.get("--salto-radius-md")).toBe("6px");
+    expect(rootTokens.get("--salto-radius-panel")).toBe("8px");
+    expect(rootTokens.get("--salto-radius-max")).toBe("12px");
+    expect(rootTokens.get("--salto-radius-pill")).toBe("999px");
+  });
+
+  it("does not leave selection popup Salto variables undefined", () => {
+    const missing = [...new Set(
+      [...selectionPopupCss.matchAll(/var\((--salto-[\w-]+)/g)].map((match) => match[1]),
+    )].filter((name) => !rootTokens.has(name));
+
+    expect(missing).toEqual([]);
+  });
+
   it.each(["light", "dark"] as const)("keeps %s text tokens at WCAG AA contrast", (theme) => {
     const surface = themeToken("--salto-surface", theme);
     const cases = [
