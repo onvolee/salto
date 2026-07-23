@@ -315,7 +315,7 @@ export function SelectionPopupApp({
             const schema = template.fields
               .filter((field) => field.enabled)
               .toSorted((left, right) => left.order - right.order)
-              .map(({ id, label }) => ({ id, label }));
+              .map(({ id, content }) => ({ id, label: content.label }));
             return {
               status: "streaming" as const,
               templateId: template.id,

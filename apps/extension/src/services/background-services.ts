@@ -6,6 +6,7 @@ import {
   isValidExtensionSettings,
   isValidQueryTemplate,
   isValidQueryTemplateInput,
+  isValidTemplateFieldDefinitionInput,
   LlmConfigError,
   normalizeLlmPublicConfig,
   type ExtensionErrorCode,
@@ -23,7 +24,10 @@ import {
 
 import type { SaveVocabularyService } from "@salto/core";
 import type { LocalRepositories } from "../repositories";
-import { QueryTemplateRepositoryError } from "../repositories";
+import {
+  QueryTemplateRepositoryError,
+  TemplateFieldDefinitionRepositoryError,
+} from "../repositories";
 import type { EnrichmentQueue } from "../enrichment/enrichment-queue";
 
 export interface QueryExecutor {
@@ -140,21 +144,15 @@ function publicQueryTemplateSnapshot(template: QueryTemplate): QueryTemplate {
     createdAt: template.createdAt,
     updatedAt: template.updatedAt,
     fields: template.fields.map((field) => {
-      const common = {
+      return {
         id: field.id,
-        label: field.label,
-        source: field.source,
-        type: field.type,
+        definitionId: field.definitionId,
+        content: { ...field.content },
         order: field.order,
         enabled: field.enabled,
+        ...(field.keyCss !== undefined ? { keyCss: field.keyCss } : {}),
+        ...(field.valueCss !== undefined ? { valueCss: field.valueCss } : {}),
       };
-      return field.source === "llm"
-        ? { ...common, source: "llm" as const, instruction: field.instruction }
-        : {
-            ...common,
-            source: "dictionary" as const,
-            dictionaryField: field.dictionaryField,
-          } as QueryTemplate["fields"][number];
     }),
   };
 }
@@ -202,7 +200,11 @@ export function parseExtensionRequest(
       ? { type: value.type, payload: { term: value.payload.term, language: value.payload.language } }
       : null;
   }
-  if (value.type === "list-query-templates" || value.type === "get-extension-settings") {
+  if (
+    value.type === "list-query-templates"
+    || value.type === "list-template-field-definitions"
+    || value.type === "get-extension-settings"
+  ) {
     return { type: value.type };
   }
   if (value.type === "create-query-template") {
@@ -219,6 +221,32 @@ export function parseExtensionRequest(
   if (value.type === "update-query-template") {
     return isRecord(value.payload) && isValidQueryTemplate(value.payload.template)
       ? { type: value.type, payload: { template: value.payload.template } }
+      : null;
+  }
+  if (value.type === "create-template-field-definition") {
+    return isValidTemplateFieldDefinitionInput(value.payload)
+      ? { type: value.type, payload: value.payload }
+      : null;
+  }
+  if (value.type === "update-template-field-definition") {
+    return isRecord(value.payload)
+      && typeof value.payload.definitionId === "string"
+      && value.payload.definitionId.trim().length > 0
+      && isValidTemplateFieldDefinitionInput(value.payload.input)
+      ? {
+        type: value.type,
+        payload: {
+          definitionId: value.payload.definitionId,
+          input: value.payload.input,
+        },
+      }
+      : null;
+  }
+  if (value.type === "delete-template-field-definition") {
+    return isRecord(value.payload)
+      && typeof value.payload.definitionId === "string"
+      && value.payload.definitionId.trim().length > 0
+      ? { type: value.type, payload: { definitionId: value.payload.definitionId } }
       : null;
   }
   if (value.type === "save-extension-settings") {
@@ -287,7 +315,7 @@ function isValidFieldResult(
     return false;
   }
   if (value.status === "ready") {
-    if (value.type !== field.type) {
+    if (value.type !== field.content.type) {
       return false;
     }
     return value.type === "text"
@@ -332,6 +360,9 @@ function mapUnknownError(error: unknown): ExtensionResponse {
     return errorResponse("configuration-invalid", error.message);
   }
   if (error instanceof QueryTemplateRepositoryError) {
+    return errorResponse(error.code, error.message);
+  }
+  if (error instanceof TemplateFieldDefinitionRepositoryError) {
     return errorResponse(error.code, error.message);
   }
   if (error instanceof DictionaryLookupError) {
@@ -478,7 +509,7 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
               data: {
                 templateId: template.id,
                 templateName: template.name,
-                schema: activeFields.map(({ id, label }) => ({ id, label })),
+                schema: activeFields.map(({ id, content }) => ({ id, label: content.label })),
                 fields: [...fields, ...unexpectedFields],
               },
             };
@@ -561,7 +592,7 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
             dependencies.repositories.settings.getActive(),
           ]);
           const llmFields = template.fields.filter((field): field is LlmQuerySchemaField => (
-            field.enabled && field.source === "llm"
+            field.enabled && field.content.source === "llm"
           ));
           return {
             ok: true,
@@ -629,6 +660,48 @@ export function createBackgroundServices(dependencies: BackgroundServiceDependen
               deletedTemplateId: request.payload.templateId,
               activeQueryTemplateId: settings.activeQueryTemplateId
             }
+          };
+        }
+
+        if (request.type === "list-template-field-definitions") {
+          assertExtensionPage(context);
+          return {
+            ok: true,
+            type: request.type,
+            data: {
+              definitions: await dependencies.repositories.fieldDefinitions.list(),
+            },
+          };
+        }
+
+        if (request.type === "create-template-field-definition") {
+          assertExtensionPage(context);
+          return {
+            ok: true,
+            type: request.type,
+            data: await dependencies.repositories.fieldDefinitions.create(request.payload),
+          };
+        }
+
+        if (request.type === "update-template-field-definition") {
+          assertExtensionPage(context);
+          return {
+            ok: true,
+            type: request.type,
+            data: await dependencies.repositories.fieldDefinitions.update(
+              request.payload.definitionId,
+              request.payload.input,
+            ),
+          };
+        }
+
+        if (request.type === "delete-template-field-definition") {
+          assertExtensionPage(context);
+          await dependencies.repositories.fieldDefinitions.delete(request.payload.definitionId);
+          return {
+            ok: true,
+            type: request.type,
+            data: { deletedDefinitionId: request.payload.definitionId },
           };
         }
 

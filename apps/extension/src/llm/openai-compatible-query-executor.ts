@@ -1,6 +1,7 @@
 import {
   normalizeLlmPublicConfig,
   renderLlmQueryFields,
+  type LlmQuerySchemaField,
   type PromptContext,
   type QueryFieldResult,
   type QueryTemplate,
@@ -47,7 +48,7 @@ function resultForValue(
       "The provider did not return this field",
     );
   }
-  if (field.type === "text") {
+  if (field.content.type === "text") {
     return typeof value === "string" && value.trim()
       ? { fieldId: field.id, status: "ready", type: "text", value }
       : failedField(
@@ -78,9 +79,11 @@ export function createOpenAiCompatibleQueryExecutor(
       const activeFields = template.fields
         .filter((field) => field.enabled)
         .toSorted((left, right) => left.order - right.order);
-      const llmFields = activeFields.filter((field) => field.source === "llm");
+      const llmFields = activeFields.filter(
+        (field): field is LlmQuerySchemaField => field.content.source === "llm",
+      );
       const dictionaryResults: QueryFieldResult[] = activeFields
-        .filter((field) => field.source === "dictionary")
+        .filter((field) => field.content.source === "dictionary")
         .map((field) => ({
           fieldId: field.id,
           status: "unavailable",

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { SETTINGS_SECTIONS, type SettingsSectionId } from "../types";
+import {
+  SETTINGS_SECTIONS,
+  type SelectionView,
+  type SettingsSectionId,
+} from "../types";
 
 const DEFAULT_SECTION_ID: SettingsSectionId = "general";
 
@@ -14,14 +18,24 @@ function sectionIdFromHash(hash: string): SettingsSectionId {
   return DEFAULT_SECTION_ID;
 }
 
+function selectionViewFromHash(hash: string): SelectionView {
+  return hash.trim().toLowerCase() === "#/translate-template/fields"
+    ? "fields"
+    : "templates";
+}
+
 export function useSettingsRouter() {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     sectionIdFromHash(window.location.hash),
+  );
+  const [selectionView, setSelectionView] = useState<SelectionView>(() =>
+    selectionViewFromHash(window.location.hash),
   );
 
   useEffect(() => {
     const handleHashChange = () => {
       setActiveSection(sectionIdFromHash(window.location.hash));
+      setSelectionView(selectionViewFromHash(window.location.hash));
     };
 
     window.addEventListener("hashchange", handleHashChange);
@@ -35,8 +49,17 @@ export function useSettingsRouter() {
     }
   };
 
+  const navigateToSelectionView = (view: SelectionView) => {
+    const hash = view === "fields"
+      ? "#/translate-template/fields"
+      : "#/translate-template";
+    if (window.location.hash !== hash) window.location.hash = hash;
+  };
+
   return {
     activeSection,
     navigateToSection,
+    navigateToSelectionView,
+    selectionView,
   };
 }

@@ -5,6 +5,8 @@ import {
   isValidExtensionSettings,
   isValidQueryTemplate,
   isValidQueryTemplateInput,
+  isValidTemplateFieldDefinition,
+  isValidTemplateFieldDefinitionInput,
   normalizeLlmPublicConfig,
   normalizeVocabularyText,
   type ActiveQueryTemplateResolution,
@@ -21,6 +23,8 @@ import {
   type LlmSecret,
   type QueryTemplate,
   type QueryTemplateInput,
+  type TemplateFieldDefinition,
+  type TemplateFieldDefinitionInput,
   type RemoteVocabularyFieldKey,
   type SaveVocabularyInput,
   type SaveVocabularyResult,
@@ -91,6 +95,28 @@ export interface QueryTemplateRepository {
   setDefault(id: string): Promise<{ readonly template: QueryTemplate; readonly activeQueryTemplateId: string }>;
 }
 
+export type TemplateFieldDefinitionRepositoryErrorCode =
+  | "field-definition-not-found"
+  | "field-definition-invalid";
+
+export class TemplateFieldDefinitionRepositoryError extends Error {
+  constructor(
+    readonly code: TemplateFieldDefinitionRepositoryErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "TemplateFieldDefinitionRepositoryError";
+  }
+}
+
+export interface TemplateFieldDefinitionRepository {
+  list(): Promise<readonly TemplateFieldDefinition[]>;
+  get(id: string): Promise<TemplateFieldDefinition | undefined>;
+  create(input: TemplateFieldDefinitionInput): Promise<TemplateFieldDefinition>;
+  update(id: string, input: TemplateFieldDefinitionInput): Promise<TemplateFieldDefinition>;
+  delete(id: string): Promise<void>;
+}
+
 export interface HighlightTermRepository {
   list(): Promise<{
     readonly terms: readonly string[];
@@ -131,6 +157,7 @@ export type LocalRepositories = {
   readonly settings: SettingsRepository;
   readonly templates: QueryTemplateRepository;
   readonly queryTemplates: QueryTemplateRepository;
+  readonly fieldDefinitions: TemplateFieldDefinitionRepository;
   readonly highlightTerms: HighlightTermRepository;
   readonly llmSettings: LlmSettingsRepository;
   readonly enrichmentJobs: EnrichmentJobRepository;
@@ -430,7 +457,7 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
   }> {
     return this.database.transaction(
       "rw",
-      [this.database.settings, this.database.queryTemplates],
+      [this.database.settings, this.database.queryTemplates, this.database.templateFieldDefinitions],
       async () => this.ensureDefaultsInTransaction()
     );
   }
@@ -479,7 +506,7 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
     }
     return this.database.transaction(
       "rw",
-      [this.database.settings, this.database.queryTemplates],
+      [this.database.settings, this.database.queryTemplates, this.database.templateFieldDefinitions],
       async () => {
         await this.ensureDefaultsInTransaction();
         const template = await this.validTemplate(settings.activeQueryTemplateId);
@@ -539,7 +566,7 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
     }
     return this.database.transaction(
       "rw",
-      [this.database.settings, this.database.queryTemplates],
+      [this.database.settings, this.database.queryTemplates, this.database.templateFieldDefinitions],
       async () => {
         await this.ensureDefaultsInTransaction();
         const id = await this.nextTemplateId();
@@ -559,7 +586,7 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
   async copy(id: string): Promise<QueryTemplate> {
     return this.database.transaction(
       "rw",
-      [this.database.settings, this.database.queryTemplates],
+      [this.database.settings, this.database.queryTemplates, this.database.templateFieldDefinitions],
       async () => {
         await this.ensureDefaultsInTransaction();
         const source = await this.validTemplate(id);
@@ -567,10 +594,21 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
           throw new QueryTemplateRepositoryError("template-not-found", "Query template was not found");
         }
         const timestamp = this.dependencies.clock();
+        const copyId = await this.nextTemplateId();
+        const resultIds = new Set<string>();
+        const fields = source.fields.map((field) => {
+          let resultId = this.dependencies.createId();
+          while (!isNonEmptyString(resultId) || resultIds.has(resultId)) {
+            resultId = this.dependencies.createId();
+          }
+          resultIds.add(resultId);
+          return { ...field, id: resultId };
+        });
         const copy = {
           ...source,
-          id: await this.nextTemplateId(),
+          id: copyId,
           name: `${source.name} copy`,
+          fields,
           createdAt: timestamp,
           updatedAt: timestamp
         } as QueryTemplate;
@@ -586,7 +624,7 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
     }
     return this.database.transaction(
       "rw",
-      [this.database.settings, this.database.queryTemplates],
+      [this.database.settings, this.database.queryTemplates, this.database.templateFieldDefinitions],
       async () => {
         await this.ensureDefaultsInTransaction();
         if (template.id === "system-default") {
@@ -611,7 +649,7 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
   async delete(id: string): Promise<void> {
     return this.database.transaction(
       "rw",
-      [this.database.settings, this.database.queryTemplates],
+      [this.database.settings, this.database.queryTemplates, this.database.templateFieldDefinitions],
       async () => {
         const { settings } = await this.ensureDefaultsInTransaction();
         if (id === "system-default") {
@@ -643,7 +681,7 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
   async setDefault(id: string): Promise<{ readonly template: QueryTemplate; readonly activeQueryTemplateId: string }> {
     return this.database.transaction(
       "rw",
-      [this.database.settings, this.database.queryTemplates],
+      [this.database.settings, this.database.queryTemplates, this.database.templateFieldDefinitions],
       async () => {
         await this.ensureDefaultsInTransaction();
         const template = await this.validTemplate(id);
@@ -709,6 +747,119 @@ class DexieQueryTemplateRepository implements QueryTemplateRepository, SettingsR
     }
     return id;
   }
+}
+
+class DexieTemplateFieldDefinitionRepository implements TemplateFieldDefinitionRepository {
+  constructor(
+    private readonly database: SaltoDatabase,
+    private readonly dependencies: RepositoryDependencies,
+  ) {}
+
+  async list(): Promise<readonly TemplateFieldDefinition[]> {
+    const definitions = await this.database.templateFieldDefinitions.toArray();
+    return definitions.filter(isValidTemplateFieldDefinition);
+  }
+
+  async get(id: string): Promise<TemplateFieldDefinition | undefined> {
+    if (!isNonEmptyString(id)) return undefined;
+    const definition = await this.database.templateFieldDefinitions.get(id);
+    return isValidTemplateFieldDefinition(definition) ? definition : undefined;
+  }
+
+  async create(input: TemplateFieldDefinitionInput): Promise<TemplateFieldDefinition> {
+    if (!isValidTemplateFieldDefinitionInput(input)) {
+      throw new TemplateFieldDefinitionRepositoryError(
+        "field-definition-invalid",
+        "Invalid template field definition",
+      );
+    }
+    return this.database.transaction(
+      "rw",
+      this.database.templateFieldDefinitions,
+      async () => {
+        const timestamp = this.dependencies.clock();
+        const definition = {
+          ...normalizeTemplateFieldDefinitionInput(input),
+          id: await this.nextId(),
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        } as TemplateFieldDefinition;
+        await this.database.templateFieldDefinitions.add(definition);
+        return definition;
+      },
+    );
+  }
+
+  async update(
+    id: string,
+    input: TemplateFieldDefinitionInput,
+  ): Promise<TemplateFieldDefinition> {
+    if (!isValidTemplateFieldDefinitionInput(input)) {
+      throw new TemplateFieldDefinitionRepositoryError(
+        "field-definition-invalid",
+        "Invalid template field definition",
+      );
+    }
+    return this.database.transaction(
+      "rw",
+      this.database.templateFieldDefinitions,
+      async () => {
+        const existing = await this.database.templateFieldDefinitions.get(id);
+        if (!isValidTemplateFieldDefinition(existing)) {
+          throw new TemplateFieldDefinitionRepositoryError(
+            "field-definition-not-found",
+            "Template field definition was not found",
+          );
+        }
+        const updated = {
+          ...normalizeTemplateFieldDefinitionInput(input),
+          id: existing.id,
+          createdAt: existing.createdAt,
+          updatedAt: this.dependencies.clock(),
+        } as TemplateFieldDefinition;
+        await this.database.templateFieldDefinitions.put(updated);
+        return updated;
+      },
+    );
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.database.transaction(
+      "rw",
+      this.database.templateFieldDefinitions,
+      async () => {
+        const existing = await this.database.templateFieldDefinitions.get(id);
+        if (!isValidTemplateFieldDefinition(existing)) {
+          throw new TemplateFieldDefinitionRepositoryError(
+            "field-definition-not-found",
+            "Template field definition was not found",
+          );
+        }
+        await this.database.templateFieldDefinitions.delete(id);
+      },
+    );
+  }
+
+  private async nextId(): Promise<string> {
+    let id = this.dependencies.createId();
+    while (!isNonEmptyString(id) || await this.database.templateFieldDefinitions.get(id)) {
+      id = this.dependencies.createId();
+    }
+    return id;
+  }
+}
+
+function normalizeTemplateFieldDefinitionInput(
+  input: TemplateFieldDefinitionInput,
+): TemplateFieldDefinitionInput {
+  return {
+    ...input,
+    label: input.label.trim(),
+    ...(input.description?.trim()
+      ? { description: input.description.trim() }
+      : { description: undefined }),
+    ...(input.source === "llm" ? { instruction: input.instruction.trim() } : {}),
+  } as TemplateFieldDefinitionInput;
 }
 
 class DexieLlmSettingsRepository implements LlmSettingsRepository {
@@ -873,11 +1024,13 @@ export function createLocalRepositories(
   dependencies: RepositoryDependencies
 ): LocalRepositories {
   const templateRepository = new DexieQueryTemplateRepository(database, dependencies);
+  const fieldDefinitionRepository = new DexieTemplateFieldDefinitionRepository(database, dependencies);
   return {
     vocabulary: new DexieVocabularyRepository(database),
     settings: templateRepository,
     templates: templateRepository,
     queryTemplates: templateRepository,
+    fieldDefinitions: fieldDefinitionRepository,
     llmSettings: new DexieLlmSettingsRepository(database),
     enrichmentJobs: new DexieEnrichmentJobRepository(database),
     learning: new DexieLearningRepository(database),

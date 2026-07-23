@@ -14,10 +14,10 @@ export function createFakeQueryExecutor(): QueryExecutor {
 }
 
 function fakeFieldResult(field: QuerySchemaField, context: PromptContext): QueryFieldResult {
-  if (field.source === "dictionary") {
+  if (field.content.source === "dictionary") {
     return { fieldId: field.id, status: "unavailable", reason: "not-configured" };
   }
-  if (field.type === "list") {
+  if (field.content.type === "list") {
     return {
       fieldId: field.id,
       status: "ready",

@@ -20,10 +20,13 @@ const context: PromptContext = {
 function field(id: string, instruction: string): LlmQuerySchemaField {
   return {
     id,
-    label: id,
-    source: "llm",
-    type: "text",
-    instruction,
+    definitionId: `definition:${id}`,
+    content: {
+      label: id,
+      source: "llm",
+      type: "text",
+      instruction,
+    },
     order: 0,
     enabled: true,
   };
@@ -31,15 +34,10 @@ function field(id: string, instruction: string): LlmQuerySchemaField {
 
 describe("renderLlmQueryFields", () => {
   it("bounds every page-derived context value before rendering provider instructions", () => {
-    const fields = [{
-      id: "bounded",
-      label: "Bounded",
-      source: "llm" as const,
-      type: "text" as const,
-      instruction: "{{selection}}|{{sentence}}|{{paragraphs}}|{{webTitle}}|{{webUrl}}|{{webContent}}",
-      order: 0,
-      enabled: true,
-    }];
+    const fields = [field(
+      "bounded",
+      "{{selection}}|{{sentence}}|{{paragraphs}}|{{webTitle}}|{{webUrl}}|{{webContent}}",
+    )];
     const context = {
       selection: "s".repeat(501),
       sentence: "e".repeat(1001),

@@ -29,37 +29,29 @@ const template: QueryTemplate = {
   fields: [
     {
       id: "meaning",
-      label: "Meaning",
-      source: "dictionary",
-      dictionaryField: "meaning",
-      type: "text",
+      definitionId: "definition-meaning",
+      content: { label: "Meaning", source: "dictionary", dictionaryField: "meaning", type: "text" },
       order: 2,
       enabled: true,
     },
     {
       id: "translation",
-      label: "Translation",
-      source: "llm",
-      type: "text",
-      instruction: "Translate {{selection}}.",
+      definitionId: "definition-translation",
+      content: { label: "Translation", source: "llm", type: "text", instruction: "Translate {{selection}}." },
       order: 0,
       enabled: true,
     },
     {
       id: "synonyms",
-      label: "Synonyms",
-      source: "dictionary",
-      dictionaryField: "synonyms",
-      type: "list",
+      definitionId: "definition-synonyms",
+      content: { label: "Synonyms", source: "dictionary", dictionaryField: "synonyms", type: "list" },
       order: 1,
       enabled: true,
     },
     {
       id: "disabled-phonetic",
-      label: "Phonetic",
-      source: "dictionary",
-      dictionaryField: "phonetic",
-      type: "text",
+      definitionId: "definition-phonetic",
+      content: { label: "Phonetic", source: "dictionary", dictionaryField: "phonetic", type: "text" },
       order: 3,
       enabled: false,
     },
@@ -199,7 +191,7 @@ describe("dictionary query executor", () => {
     const llmOnlyTemplate: QueryTemplate = {
       ...template,
       fields: template.fields.map((field) => (
-        field.source === "dictionary" ? { ...field, enabled: false } : field
+        field.content.source === "dictionary" ? { ...field, enabled: false } : field
       )),
     };
 

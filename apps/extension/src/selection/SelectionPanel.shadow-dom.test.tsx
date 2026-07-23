@@ -20,10 +20,8 @@ const template: QueryTemplate = {
   updatedAt: "2026-07-20T00:00:00.000Z",
   fields: [{
     id: "translation",
-    label: "Translation",
-    source: "llm",
-    type: "text",
-    instruction: "Translate {{selection}}.",
+    definitionId: "definition-translation",
+    content: { label: "Translation", source: "llm", type: "text", instruction: "Translate {{selection}}." },
     order: 0,
     enabled: true,
   }],
@@ -89,6 +87,63 @@ describe("selection panel Shadow DOM focus", () => {
 
     fireEvent.keyDown(regenerate, { key: "Tab", shiftKey: true });
     expect(target.shadowRoot.activeElement).toBe(close);
+  });
+
+  it("applies each saved snapshot style without leaking invalid declarations", async () => {
+    const styledTemplate: QueryTemplate = {
+      ...template,
+      fields: [
+        {
+          ...template.fields[0],
+          keyCss: "color: rgb(1, 2, 3);",
+          valueCss: "font-weight: 700;",
+        },
+        {
+          ...template.fields[0],
+          id: "context",
+          content: { ...template.fields[0].content, label: "Context" },
+          keyCss: "not-a-declaration",
+          valueCss: "also invalid",
+          order: 1,
+        },
+      ],
+    };
+    const target = createShadowRootRenderTarget();
+    roots.push(target.root);
+    await act(async () => target.root.render(
+      <SelectionPanel
+        activeTemplate={{ status: "ready", template: styledTemplate, resolution: { status: "active" } }}
+        onClose={vi.fn()}
+        onPositionChange={vi.fn()}
+        onRegenerate={vi.fn()}
+        onSave={vi.fn()}
+        panelRef={createRef<HTMLElement>()}
+        position={{ x: 20, y: 20 }}
+        saveState="idle"
+        selectionText="unfamiliar"
+        translation={{
+          status: "complete",
+          data: {
+            templateId: styledTemplate.id,
+            templateName: styledTemplate.name,
+            schema: [
+              { id: "translation", label: "Translation" },
+              { id: "context", label: "Context" },
+            ],
+            fields: [
+              { fieldId: "translation", status: "ready", type: "text", value: "翻译" },
+              { fieldId: "context", status: "ready", type: "text", value: "上下文" },
+            ],
+          },
+        }}
+      />,
+    ));
+
+    const panel = within(target.container);
+    expect(panel.getByText("Translation")).toHaveStyle({ color: "rgb(1, 2, 3)" });
+    expect(panel.getByText("翻译").closest("dd")).toHaveStyle({ fontWeight: "700" });
+    expect(panel.getByText("Context")).not.toHaveAttribute("style");
+    expect(panel.getByText("上下文").closest("dd")).not.toHaveAttribute("style");
   });
 
   it("restores focus to the floating trigger after closing inside a shadow root", async () => {

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createDefaultQueryTemplate,
+  createDefaultTemplateFieldDefinitions,
   type ExtensionRequest,
   type ExtensionResponse,
   type QueryTemplate,
@@ -18,7 +19,6 @@ function createTemplate(): QueryTemplate {
     ...createDefaultQueryTemplate("2026-07-18T00:00:00.000Z"),
     id: "user-template",
     name: "Reading",
-    fields: createDefaultQueryTemplate("2026-07-18T00:00:00.000Z").fields,
   };
 }
 
@@ -31,6 +31,18 @@ function createClient(template: QueryTemplate): ExtensionMessageClient & {
         ok: true,
         type: request.type,
         data: { templates: [template], activeQueryTemplateId: template.id },
+      };
+    }
+    if (request.type === "create-query-template") {
+      return {
+        ok: true,
+        type: request.type,
+        data: {
+          ...request.payload,
+          id: "created-template",
+          createdAt: "2026-07-23T00:00:00.000Z",
+          updatedAt: "2026-07-23T00:00:00.000Z",
+        },
       };
     }
     if (request.type === "update-query-template") {
@@ -59,90 +71,104 @@ function createClient(template: QueryTemplate): ExtensionMessageClient & {
 }
 
 describe("useQueryTemplates", () => {
-  it("keeps source-specific values when switching is cancelled and clears them after confirmation", async () => {
+  it("adds the same definition as independent snapshots", async () => {
     const template = createTemplate();
+    const definition = createDefaultTemplateFieldDefinitions("2026-07-23T00:00:00.000Z")[0];
     const client = createClient(template);
-    const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
-    const { result } = renderHook(() => useQueryTemplates({ client, confirm }));
-
+    const { result } = renderHook(() => useQueryTemplates({ client }));
     await waitFor(() => expect(result.current.selectedTemplateId).toBe(template.id));
-    const fieldId = template.fields[0].id;
-    const instruction = result.current.draft?.fields[0].instruction;
 
-    act(() => { result.current.changeFieldSource(fieldId, "dictionary"); });
-    expect(result.current.draft?.fields[0].source).toBe("llm");
-    expect(result.current.draft?.fields[0].instruction).toBe(instruction);
-
-    act(() => { result.current.changeFieldSource(fieldId, "dictionary"); });
-    expect(result.current.draft?.fields[0]).toMatchObject({
-      source: "dictionary",
-      dictionaryField: "phonetic",
-      instruction: "",
-      type: "text",
+    act(() => {
+      result.current.startNewTemplate();
+      result.current.addField(definition);
+      result.current.addField(definition);
     });
-    expect(confirm).toHaveBeenCalledTimes(2);
+
+    expect(result.current.draft?.fields).toHaveLength(2);
+    expect(new Set(result.current.draft?.fields.map(({ id }) => id)).size).toBe(2);
+    expect(result.current.draft?.fields.map(({ definitionId }) => definitionId))
+      .toEqual([definition.id, definition.id]);
   });
 
-  it("blocks invalid saves, normalizes order, and restores the selected template on cancel", async () => {
+  it("avoids result id collisions after reloading an existing template", async () => {
+    const definition = createDefaultTemplateFieldDefinitions("2026-07-23T00:00:00.000Z")[0];
+    const template = {
+      ...createTemplate(),
+      fields: [{
+        ...createTemplate().fields[0],
+        id: "user-template-field-1",
+      }],
+    };
+    const client = createClient(template);
+    const createId = vi.fn()
+      .mockReturnValueOnce("user-template-field-1")
+      .mockReturnValueOnce("globally-unique-result");
+    const { result } = renderHook(() => useQueryTemplates({ client, createId }));
+    await waitFor(() => expect(result.current.selectedTemplateId).toBe(template.id));
+
+    act(() => result.current.addField(definition));
+
+    expect(result.current.draft?.fields.map(({ id }) => id)).toEqual([
+      "user-template-field-1",
+      "globally-unique-result",
+    ]);
+    expect(createId).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps appearance changes in the draft and persists them only on template save", async () => {
+    const template = createTemplate();
+    const client = createClient(template);
+    const { result } = renderHook(() => useQueryTemplates({ client }));
+    await waitFor(() => expect(result.current.selectedTemplateId).toBe(template.id));
+    const fieldId = template.fields[0].id;
+
+    act(() => result.current.updateField(fieldId, {
+      keyCss: "font-weight: 700;",
+      valueCss: "color: tomato;",
+    }));
+    expect(client.send).toHaveBeenCalledTimes(1);
+
+    await act(() => result.current.saveDraft());
+    expect(client.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: "update-query-template",
+      payload: {
+        template: expect.objectContaining({
+          fields: expect.arrayContaining([expect.objectContaining({
+            id: fieldId,
+            keyCss: "font-weight: 700;",
+            valueCss: "color: tomato;",
+          })]),
+        }),
+      },
+    }));
+  });
+
+  it("rejects a template with no enabled fields and restores saved state on cancel", async () => {
     const template = createTemplate();
     const client = createClient(template);
     const { result } = renderHook(() => useQueryTemplates({ client }));
     await waitFor(() => expect(result.current.selectedTemplateId).toBe(template.id));
 
     act(() => {
-      result.current.updateField(template.fields[0].id, { instruction: " " });
-      result.current.moveField(0, 1);
+      for (const field of template.fields) result.current.toggleField(field.id);
     });
     let saved = true;
     await act(async () => { saved = await result.current.saveDraft(); });
     expect(saved).toBe(false);
+    expect(result.current.errors.fields).toBe("模板至少需要一个启用字段");
     expect(client.send).toHaveBeenCalledTimes(1);
-    expect(result.current.errors.field[template.fields[0].id]).toEqual({
-      instruction: "Instruction 不能为空",
-    });
 
-    act(() => { result.current.cancelDraft(); });
-    expect(result.current.draft?.fields.map((field) => field.order)).toEqual([0, 1]);
-    expect(result.current.draft?.fields[0].instruction).toBe(template.fields[0].instruction);
+    act(() => result.current.cancelDraft());
+    expect(result.current.draft?.fields.every(({ enabled }) => enabled)).toBe(true);
   });
 
-  it("saves unknown and malformed prompt variables as non-blocking warnings", async () => {
-    const template = createTemplate();
-    const client = createClient(template);
-    const { result } = renderHook(() => useQueryTemplates({ client }));
-    await waitFor(() => expect(result.current.selectedTemplateId).toBe(template.id));
-
-    act(() => {
-      result.current.updateField(template.fields[0].id, {
-        instruction: "Use {{pageText}} and {{ }}.",
-      });
-    });
-
-    let saved = false;
-    await act(async () => { saved = await result.current.saveDraft(); });
-
-    expect(saved).toBe(true);
-    expect(result.current.message).toBe("模板已保存");
-    expect(client.send).toHaveBeenLastCalledWith(expect.objectContaining({
-      type: "update-query-template",
-      payload: expect.objectContaining({
-        template: expect.objectContaining({
-          fields: expect.arrayContaining([
-            expect.objectContaining({ instruction: "Use {{pageText}} and {{ }}." }),
-          ]),
-        }),
-      }),
-    }));
-  });
-
-  it("keeps the settings draft aligned when copy or delete changes the selected template", async () => {
+  it("keeps settings callbacks aligned when copy or delete changes selection", async () => {
     const template = createTemplate();
     const client = createClient(template);
     const onActiveTemplateChange = vi.fn();
     const onTemplateDeleted = vi.fn();
     const { result } = renderHook(() => useQueryTemplates({
       client,
-      confirm: () => true,
       onActiveTemplateChange,
       onTemplateDeleted,
     }));
@@ -152,9 +178,6 @@ describe("useQueryTemplates", () => {
     expect(onActiveTemplateChange).toHaveBeenCalledWith("copied-template");
 
     await act(() => result.current.deleteTemplate("copied-template"));
-    expect(onTemplateDeleted).toHaveBeenCalledWith(
-      "copied-template",
-      "system-default",
-    );
+    expect(onTemplateDeleted).toHaveBeenCalledWith("copied-template", "system-default");
   });
 });

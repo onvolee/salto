@@ -147,12 +147,12 @@ export function analyzeLlmPromptFields(
   const warnings: PromptTemplateAnalysis["warnings"][number][] = [];
 
   for (const field of fields) {
-    const variables = instructionVariables(field.instruction);
+    const variables = instructionVariables(field.content.instruction);
     variables.known.forEach((variable) => referenced.add(variable));
     if (variables.unknown.length > 0 || variables.malformed.length > 0) {
       warnings.push({
         fieldId: field.id,
-        fieldLabel: field.label,
+        fieldLabel: field.content.label,
         unknownVariables: variables.unknown,
         malformedTokens: variables.malformed,
       });
@@ -175,7 +175,7 @@ export function renderLlmQueryFields(
   const referenced = new Set<PromptContextVariable>();
 
   for (const field of fields) {
-    const parsed = parsePromptTemplate(field.instruction);
+    const parsed = parsePromptTemplate(field.content.instruction);
     const blockingDiagnostic = parsed.diagnostics.find(
       (diagnostic) => diagnostic.kind !== "known",
     );
@@ -209,7 +209,7 @@ export function renderLlmQueryFields(
       referenced.add(variable);
       return boundedContext[variable];
     }).join("");
-    renderedFields.push({ id: field.id, type: field.type, instruction });
+    renderedFields.push({ id: field.id, type: field.content.type, instruction });
   }
 
   return {
