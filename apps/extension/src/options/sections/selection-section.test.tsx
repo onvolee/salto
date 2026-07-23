@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultQueryTemplate,
   createDefaultTemplateFieldDefinitions,
+  PROMPT_CONTEXT_VARIABLES,
 } from "@salto/core";
 
 import type { useQueryTemplates } from "../hooks/use-query-templates";
@@ -35,6 +36,7 @@ describe("selection settings", () => {
     const userTemplate = { ...systemTemplate, id: "reading", name: "Reading" };
     const selectTemplate = vi.fn();
     const onActiveTemplateChange = vi.fn();
+    const definitions = definitionEditor();
     const editor = {
       activeTemplateId: systemTemplate.id,
       draft: templateDraftFromQueryTemplate(systemTemplate),
@@ -49,7 +51,7 @@ describe("selection settings", () => {
     render(
       <SelectionSection
         activeTemplateId={systemTemplate.id}
-        definitions={definitionEditor()}
+        definitions={definitions}
         editor={editor}
         onActiveTemplateChange={onActiveTemplateChange}
         onViewChange={vi.fn()}
@@ -59,11 +61,54 @@ describe("selection settings", () => {
     const user = userEvent.setup();
 
     const templateSelect = screen.getByRole("combobox", { name: "当前翻译模板" });
+    expect(templateSelect).toHaveTextContent(systemTemplate.name);
+    expect(templateSelect).not.toHaveTextContent(systemTemplate.id);
     templateSelect.focus();
     await user.keyboard("{Enter}{ArrowDown}{Enter}");
 
     expect(selectTemplate).toHaveBeenCalledWith("reading");
     expect(onActiveTemplateChange).toHaveBeenCalledWith("reading");
+  });
+
+  it("displays field definition labels while retaining UUID values", async () => {
+    const template = createDefaultQueryTemplate("2026-07-19T00:00:00.000Z");
+    const definitions = definitionEditor();
+    const addField = vi.fn();
+    const editor = {
+      activeTemplateId: template.id,
+      addField,
+      draft: templateDraftFromQueryTemplate(template),
+      errors: { field: {} },
+      isSystemTemplate: false,
+      message: null,
+      selectedTemplateId: template.id,
+      status: "idle" as const,
+      templates: [template],
+    } as unknown as ReturnType<typeof useQueryTemplates>;
+    render(
+      <SelectionSection
+        activeTemplateId={template.id}
+        definitions={definitions}
+        editor={editor}
+        onActiveTemplateChange={vi.fn()}
+        onViewChange={vi.fn()}
+        view="templates"
+      />,
+    );
+    const user = userEvent.setup();
+
+    const fieldDefinitionSelect = screen.getByRole("combobox", { name: "添加字段快照" });
+    const firstDefinition = definitions.definitions[0]!;
+    const secondDefinition = definitions.definitions[1]!;
+    expect(fieldDefinitionSelect).toHaveTextContent(firstDefinition.label);
+    expect(fieldDefinitionSelect).not.toHaveTextContent(firstDefinition.id);
+    fieldDefinitionSelect.focus();
+    await user.keyboard("{Enter}{ArrowDown}{Enter}");
+    expect(fieldDefinitionSelect).toHaveTextContent(secondDefinition.label);
+    expect(fieldDefinitionSelect).not.toHaveTextContent(secondDefinition.id);
+
+    await user.click(screen.getByRole("button", { name: "添加字段" }));
+    expect(addField).toHaveBeenCalledWith(secondDefinition);
   });
 
   it("restores the requested tab and routes tab changes", async () => {
@@ -83,6 +128,85 @@ describe("selection settings", () => {
     expect(screen.getByRole("heading", { name: "Template fields" })).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("tab", { name: "Templates" }));
     expect(onViewChange).toHaveBeenCalledWith("templates");
+  });
+
+  it("lists every built-in instruction variable and inserts at the cursor", async () => {
+    const template = createDefaultQueryTemplate("2026-07-19T00:00:00.000Z");
+    render(
+      <SelectionSection
+        activeTemplateId={template.id}
+        definitions={definitionEditor()}
+        editor={{} as ReturnType<typeof useQueryTemplates>}
+        onActiveTemplateChange={vi.fn()}
+        onViewChange={vi.fn()}
+        view="fields"
+      />,
+    );
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "新建字段定义" }));
+    const instruction = screen.getByRole<HTMLTextAreaElement>(
+      "textbox",
+      { name: "Instruction" },
+    );
+    await user.type(instruction, "Translate this.");
+    instruction.setSelectionRange(10, 10);
+
+    for (const variable of PROMPT_CONTEXT_VARIABLES) {
+      expect(screen.getByRole("button", { name: `插入 {{${variable}}}` }))
+        .toBeInTheDocument();
+    }
+
+    await user.click(screen.getByRole("button", { name: "插入 {{selection}}" }));
+
+    expect(instruction).toHaveValue("Translate {{selection}}this.");
+    expect(instruction).toHaveFocus();
+    expect(instruction).toHaveProperty("selectionStart", 23);
+    expect(instruction).toHaveProperty("selectionEnd", 23);
+  });
+
+  it("displays Chinese select labels while saving English values", async () => {
+    const template = createDefaultQueryTemplate("2026-07-19T00:00:00.000Z");
+    const definitions = definitionEditor();
+    definitions.createDefinition = vi.fn().mockResolvedValue({});
+    render(
+      <SelectionSection
+        activeTemplateId={template.id}
+        definitions={definitions}
+        editor={{} as ReturnType<typeof useQueryTemplates>}
+        onActiveTemplateChange={vi.fn()}
+        onViewChange={vi.fn()}
+        view="fields"
+      />,
+    );
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "新建字段定义" }));
+    await user.type(screen.getByRole("textbox", { name: "字段名称" }), "音标");
+
+    const sourceSelect = screen.getByRole("combobox", { name: "来源" });
+    expect(sourceSelect).toHaveTextContent("大语言模型");
+    expect(sourceSelect).not.toHaveTextContent("llm");
+    sourceSelect.focus();
+    await user.keyboard("{Enter}{ArrowDown}{Enter}");
+    expect(sourceSelect).toHaveTextContent("词典");
+    expect(sourceSelect).not.toHaveTextContent("dictionary");
+
+    const dictionaryFieldSelect = screen.getByRole("combobox", { name: "词典字段" });
+    expect(dictionaryFieldSelect).toHaveTextContent("释义");
+    expect(dictionaryFieldSelect).not.toHaveTextContent("meaning");
+    dictionaryFieldSelect.focus();
+    await user.keyboard("{Enter}{Home}{Enter}");
+    expect(dictionaryFieldSelect).toHaveTextContent("音标");
+    expect(dictionaryFieldSelect).not.toHaveTextContent("phonetic");
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(definitions.createDefinition).toHaveBeenCalledWith({
+      dictionaryField: "phonetic",
+      label: "音标",
+      source: "dictionary",
+      type: "text",
+    });
   });
 
   it("reorders snapshots with keyboard controls and edits appearance in the draft", async () => {

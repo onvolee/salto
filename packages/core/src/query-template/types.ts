@@ -122,6 +122,8 @@ export interface ExtensionSettings {
   readonly highlightSameWords: boolean;
   readonly themeMode: "system" | "light" | "dark";
   readonly activeDictionaryProvider: "youdao-web";
+  readonly panelWidth: number;
+  readonly panelHeight: number;
 }
 
 export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
@@ -130,7 +132,9 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   highlightEnabled: true,
   highlightSameWords: false,
   themeMode: "system",
-  activeDictionaryProvider: "youdao-web"
+  activeDictionaryProvider: "youdao-web",
+  panelWidth: 360,
+  panelHeight: 220,
 };
 
 export function isValidQueryTemplate(value: unknown): value is QueryTemplate {
@@ -194,13 +198,14 @@ export function isValidTemplateFieldDefinitionInput(value: unknown): value is Te
 
 export function isValidExtensionSettings(value: unknown): value is ExtensionSettings {
   return isRecord(value)
-    && Object.keys(value).length === 6
     && isNonEmptyString(value.activeQueryTemplateId)
     && isNonEmptyString(value.targetLanguage)
     && typeof value.highlightEnabled === "boolean"
     && typeof value.highlightSameWords === "boolean"
     && (value.themeMode === "system" || value.themeMode === "light" || value.themeMode === "dark")
-    && value.activeDictionaryProvider === "youdao-web";
+    && value.activeDictionaryProvider === "youdao-web"
+    && typeof value.panelWidth === "number"
+    && typeof value.panelHeight === "number";
 }
 
 function isValidQuerySchemaField(value: unknown): value is QuerySchemaField {
