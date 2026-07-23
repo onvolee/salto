@@ -26,12 +26,20 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useEffect, useState, type CSSProperties } from "react";
-import type {
-  DictionaryQueryField,
-  QuerySchemaFieldType,
-  TemplateFieldDefinition,
-  TemplateFieldDefinitionInput,
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import {
+  PROMPT_CONTEXT_VARIABLES,
+  type DictionaryQueryField,
+  type PromptContextVariable,
+  type QuerySchemaFieldType,
+  type TemplateFieldDefinition,
+  type TemplateFieldDefinitionInput,
 } from "@salto/core";
 
 import {
@@ -112,6 +120,16 @@ const DICTIONARY_FIELDS: readonly {
   { value: "wordForms", label: "词形", type: "list" },
 ];
 
+const DEFINITION_SOURCE_LABELS = {
+  llm: "llm",
+  dictionary: "词典",
+} as const;
+
+const DEFINITION_TYPE_LABELS = {
+  text: "文本",
+  list: "列表",
+} as const satisfies Record<QuerySchemaFieldType, string>;
+
 type DefinitionFormState = {
   readonly label: string;
   readonly description: string;
@@ -183,6 +201,8 @@ function DefinitionDialog({
   const [open, setOpen] = useState(false);
   const [state, setState] = useState(() => formStateFromDefinition(definition));
   const [submitted, setSubmitted] = useState(false);
+  const instructionRef = useRef<HTMLTextAreaElement>(null);
+  const pendingInstructionCursorRef = useRef<number | null>(null);
   const labelError = submitted && !state.label.trim() ? "字段名称不能为空" : undefined;
   const instructionError = submitted
     && state.source === "llm"
@@ -194,6 +214,28 @@ function DefinitionDialog({
     key: K,
     value: DefinitionFormState[K],
   ) => setState((current) => ({ ...current, [key]: value }));
+
+  useLayoutEffect(() => {
+    const cursor = pendingInstructionCursorRef.current;
+    if (cursor === null) return;
+    pendingInstructionCursorRef.current = null;
+    instructionRef.current?.focus();
+    instructionRef.current?.setSelectionRange(cursor, cursor);
+  }, [state.instruction]);
+
+  const insertInstructionVariable = (variable: PromptContextVariable) => {
+    const token = `{{${variable}}}`;
+    const textarea = instructionRef.current;
+    const selectionStart = textarea?.selectionStart ?? state.instruction.length;
+    const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+    pendingInstructionCursorRef.current = selectionStart + token.length;
+    update(
+      "instruction",
+      state.instruction.slice(0, selectionStart)
+        + token
+        + state.instruction.slice(selectionEnd),
+    );
+  };
 
   const submit = async () => {
     setSubmitted(true);
@@ -226,93 +268,119 @@ function DefinitionDialog({
           </Button>
         )}
       />
-      <DialogContent className="max-h-[min(42rem,calc(100vh-2rem))] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[min(42rem,calc(100dvh-2rem))] sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{definition ? "编辑字段定义" : "新建字段定义"}</DialogTitle>
-          <DialogDescription>字段内容会在加入模板时复制为独立快照。</DialogDescription>
+          <DialogTitle>{definition ? "编辑字段" : "新建字段"}</DialogTitle>
         </DialogHeader>
-        <FieldGroup>
-          <Field data-invalid={Boolean(labelError)}>
-            <FieldLabel htmlFor="definition-label">字段名称</FieldLabel>
-            <Input
-              aria-invalid={Boolean(labelError)}
-              id="definition-label"
-              onChange={(event) => update("label", event.target.value)}
-              value={state.label}
-            />
-            <FieldError>{labelError}</FieldError>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="definition-description">描述（可选）</FieldLabel>
-            <Input
-              id="definition-description"
-              onChange={(event) => update("description", event.target.value)}
-              value={state.description}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="definition-source">来源</FieldLabel>
-            <Select
-              onValueChange={(value) => update("source", value as DefinitionFormState["source"])}
-              value={state.source}
-            >
-              <SelectTrigger className="w-full" id="definition-source">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent><SelectGroup>
-                <SelectItem value="llm">LLM</SelectItem>
-                <SelectItem value="dictionary">词典</SelectItem>
-              </SelectGroup></SelectContent>
-            </Select>
-          </Field>
-          {state.source === "llm" ? (
-            <>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <FieldGroup className="gap-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field data-invalid={Boolean(labelError)}>
+                <FieldLabel htmlFor="definition-label">字段名称</FieldLabel>
+                <Input
+                  aria-invalid={Boolean(labelError)}
+                  id="definition-label"
+                  onChange={(event) => update("label", event.target.value)}
+                  value={state.label}
+                />
+                <FieldError>{labelError}</FieldError>
+              </Field>
               <Field>
-                <FieldLabel htmlFor="definition-type">结果类型</FieldLabel>
+                <FieldLabel htmlFor="definition-description">描述（可选）</FieldLabel>
+                <Input
+                  id="definition-description"
+                  onChange={(event) => update("description", event.target.value)}
+                  value={state.description}
+                />
+              </Field>
+            </div>
+            <div className="grid gap-4 border-t pt-5 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="definition-source">来源</FieldLabel>
                 <Select
-                  onValueChange={(value) => update("type", value as QuerySchemaFieldType)}
-                  value={state.type}
+                  items={DEFINITION_SOURCE_LABELS}
+                  onValueChange={(value) => update("source", value as DefinitionFormState["source"])}
+                  value={state.source}
                 >
-                  <SelectTrigger className="w-full" id="definition-type"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full" id="definition-source">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent><SelectGroup>
-                    <SelectItem value="text">文本</SelectItem>
-                    <SelectItem value="list">列表</SelectItem>
+                    <SelectItem value="llm">{DEFINITION_SOURCE_LABELS.llm}</SelectItem>
+                    <SelectItem value="dictionary">{DEFINITION_SOURCE_LABELS.dictionary}</SelectItem>
                   </SelectGroup></SelectContent>
                 </Select>
               </Field>
+              {state.source === "llm" ? (
+                <Field>
+                  <FieldLabel htmlFor="definition-type">结果类型</FieldLabel>
+                  <Select
+                    items={DEFINITION_TYPE_LABELS}
+                    onValueChange={(value) => update("type", value as QuerySchemaFieldType)}
+                    value={state.type}
+                  >
+                    <SelectTrigger className="w-full" id="definition-type"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectGroup>
+                      <SelectItem value="text">{DEFINITION_TYPE_LABELS.text}</SelectItem>
+                      <SelectItem value="list">{DEFINITION_TYPE_LABELS.list}</SelectItem>
+                    </SelectGroup></SelectContent>
+                  </Select>
+                </Field>
+              ) : (
+                <Field>
+                  <FieldLabel htmlFor="definition-dictionary-field">词典字段</FieldLabel>
+                  <Select
+                    items={DICTIONARY_FIELDS}
+                    onValueChange={(value) => update("dictionaryField", value as DictionaryQueryField)}
+                    value={state.dictionaryField}
+                  >
+                    <SelectTrigger className="w-full" id="definition-dictionary-field"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectGroup>
+                      {DICTIONARY_FIELDS.map((field) => (
+                        <SelectItem key={field.value} value={field.value}>{field.label}</SelectItem>
+                      ))}
+                    </SelectGroup></SelectContent>
+                  </Select>
+                </Field>
+              )}
+            </div>
+            {state.source === "llm" ? (
               <Field data-invalid={Boolean(instructionError)}>
                 <FieldLabel htmlFor="definition-instruction">Instruction</FieldLabel>
                 <Textarea
                   aria-invalid={Boolean(instructionError)}
                   id="definition-instruction"
                   onChange={(event) => update("instruction", event.target.value)}
-                  rows={5}
+                  ref={instructionRef}
+                  rows={6}
                   value={state.instruction}
                 />
-                <FieldDescription>可使用模板变量，例如 {"{{selection}}"}。</FieldDescription>
+                <FieldDescription>内置变量</FieldDescription>
+                <div
+                  aria-label="Instruction 内置变量"
+                  className="flex flex-wrap gap-1.5"
+                  role="group"
+                >
+                  {PROMPT_CONTEXT_VARIABLES.map((variable) => (
+                    <Badge
+                      aria-label={`插入 {{${variable}}}`}
+                      className="font-mono cursor-pointer"
+                      key={variable}
+                      onClick={() => insertInstructionVariable(variable)}
+                      variant="outline"
+                    >
+                      {`{{${variable}}}`}
+                    </Badge>
+                  ))}
+                </div>
                 <FieldError>{instructionError}</FieldError>
               </Field>
-            </>
-          ) : (
-            <Field>
-              <FieldLabel htmlFor="definition-dictionary-field">词典字段</FieldLabel>
-              <Select
-                onValueChange={(value) => update("dictionaryField", value as DictionaryQueryField)}
-                value={state.dictionaryField}
-              >
-                <SelectTrigger className="w-full" id="definition-dictionary-field"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {DICTIONARY_FIELDS.map((field) => (
-                    <SelectItem key={field.value} value={field.value}>{field.label}</SelectItem>
-                  ))}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-          )}
-        </FieldGroup>
+            ) : null}
+          </FieldGroup>
+        </div>
         <DialogFooter>
           <DialogClose render={<Button type="button" variant="outline" />}>取消</DialogClose>
-          <Button disabled={disabled} onClick={() => void submit()} type="button">保存字段定义</Button>
+          <Button disabled={disabled} onClick={() => void submit()} type="button">保存</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -457,43 +525,49 @@ function AppearanceDialog({
       }>
         <HugeiconsIcon data-icon="inline-start" icon={PencilEdit02Icon} strokeWidth={2} />
       </DialogTrigger>
-      <DialogContent className="max-h-[min(44rem,calc(100vh-2rem))] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="max-h-[min(48rem,calc(100dvh-2rem))] sm:max-w-4xl lg:max-w-5xl">
         <DialogHeader>
           <DialogTitle>{field.content.label} 外观</DialogTitle>
           <DialogDescription>样式保存在当前模板快照中，保存模板后才会持久化。</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(16rem,1fr)]">
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor={`${field.id}-key-css`}>Key CSS</FieldLabel>
-              <Textarea
-                id={`${field.id}-key-css`}
-                onChange={(event) => onUpdate(field.id, { keyCss: event.target.value })}
-                placeholder="font-weight: 600; color: #111827;"
-                rows={7}
-                value={field.keyCss}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor={`${field.id}-value-css`}>Value CSS</FieldLabel>
-              <Textarea
-                id={`${field.id}-value-css`}
-                onChange={(event) => onUpdate(field.id, { valueCss: event.target.value })}
-                placeholder="line-height: 1.7;"
-                rows={7}
-                value={field.valueCss}
-              />
-            </Field>
-            <Button
-              onClick={() => onUpdate(field.id, { keyCss: "", valueCss: "" })}
-              type="button"
-              variant="outline"
-            >
-              <HugeiconsIcon data-icon="inline-start" icon={Refresh01Icon} strokeWidth={2} />
-              重置当前字段样式
-            </Button>
-          </FieldGroup>
-          <TemplatePreview fields={fields} templateName={templateName} />
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] lg:items-start">
+            <FieldGroup className="gap-5">
+              <Field>
+                <FieldLabel htmlFor={`${field.id}-key-css`}>Key CSS</FieldLabel>
+                <Textarea
+                  className="min-h-40 font-mono"
+                  id={`${field.id}-key-css`}
+                  onChange={(event) => onUpdate(field.id, { keyCss: event.target.value })}
+                  placeholder="font-weight: 600; color: #111827;"
+                  rows={9}
+                  value={field.keyCss}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`${field.id}-value-css`}>Value CSS</FieldLabel>
+                <Textarea
+                  className="min-h-40 font-mono"
+                  id={`${field.id}-value-css`}
+                  onChange={(event) => onUpdate(field.id, { valueCss: event.target.value })}
+                  placeholder="line-height: 1.7;"
+                  rows={9}
+                  value={field.valueCss}
+                />
+              </Field>
+              <Button
+                onClick={() => onUpdate(field.id, { keyCss: "", valueCss: "" })}
+                type="button"
+                variant="outline"
+              >
+                <HugeiconsIcon data-icon="inline-start" icon={Refresh01Icon} strokeWidth={2} />
+                重置当前字段样式
+              </Button>
+            </FieldGroup>
+            <div className="min-w-0 lg:sticky lg:top-0">
+              <TemplatePreview fields={fields} templateName={templateName} />
+            </div>
+          </div>
         </div>
         <DialogFooter><DialogClose render={<Button type="button" />}>完成</DialogClose></DialogFooter>
       </DialogContent>
@@ -657,6 +731,7 @@ function TemplateComposer({
         <Field className="min-w-56 flex-1">
           <FieldLabel htmlFor="query-template">当前模板</FieldLabel>
           <Select
+            items={editor.templates.map(({ id, name }) => ({ label: name, value: id }))}
             onValueChange={(value) => {
               if (!value) return;
               editor.selectTemplate(value);
@@ -699,7 +774,11 @@ function TemplateComposer({
           <div className="flex flex-wrap items-end gap-2">
             <Field className="min-w-56 flex-1" data-disabled={readOnly}>
               <FieldLabel htmlFor="template-field-definition">添加字段快照</FieldLabel>
-              <Select onValueChange={setDefinitionId} value={definitionId}>
+              <Select
+                items={definitions.map(({ id, label }) => ({ label, value: id }))}
+                onValueChange={setDefinitionId}
+                value={definitionId}
+              >
                 <SelectTrigger className="w-full" disabled={readOnly} id="template-field-definition"><SelectValue placeholder="选择字段定义" /></SelectTrigger>
                 <SelectContent><SelectGroup>
                   {definitions.map((definition) => (
@@ -780,10 +859,10 @@ export function SelectionSection({
   readonly view: SelectionView;
 }) {
   return (
-    <Tabs onValueChange={(value) => onViewChange(value as SelectionView)} value={view}>
-      <TabsList aria-label="划词翻译设置" variant="line">
-        <TabsTrigger value="templates">Templates</TabsTrigger>
-        <TabsTrigger value="fields">Template fields</TabsTrigger>
+    <Tabs onValueChange={(value) => onViewChange(value as SelectionView)} value={view} className="pt-2">
+      <TabsList aria-label="划词翻译设置">
+        <TabsTrigger value="templates" className="px-6">翻译模板</TabsTrigger>
+        <TabsTrigger value="fields" className="px-6">模板字段</TabsTrigger>
       </TabsList>
       <TabsContent value="templates">
         <TemplateComposer
