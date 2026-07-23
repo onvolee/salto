@@ -56,6 +56,7 @@ describe("OptionsApp", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    window.location.hash = "";
   });
 
   it("switches sections and protects the system template from field edits", async () => {
@@ -301,8 +302,12 @@ describe("OptionsApp", () => {
     await user.click(screen.getByRole("button", { name: "AI 服务" }));
     await user.click(screen.getByRole("button", { name: "保存并测试连接" }));
 
-    const status = await screen.findByText("连接成功");
-    expect(status.closest("p")).toHaveClass("text-success");
+    await waitFor(() => {
+      const statusElements = screen.getAllByText("连接成功");
+      const pStatus = statusElements.find(el => el.closest("p"));
+      expect(pStatus).toBeInTheDocument();
+      expect(pStatus?.closest("p")).toHaveClass("text-success");
+    });
   });
 
   it("renders connection failures as destructive alerts", async () => {

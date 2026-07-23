@@ -3,26 +3,31 @@ import type { SaltoSettings } from "salto-src/theme/theme-settings";
 export const SETTINGS_SECTIONS = [
   {
     id: "general",
+    hash: "#/general",
     label: "通用",
     description: "调整界面外观、语言和隐私偏好。",
   },
   {
     id: "selection",
+    hash: "#/translate-template",
     label: "划词翻译",
     description: "配置划词结果的模板和字段顺序。",
   },
   {
     id: "sources",
+    hash: "#/translation-sources",
     label: "翻译源",
     description: "管理词典和翻译服务的启用状态。",
   },
   {
     id: "vocabulary",
+    hash: "#/vocabulary",
     label: "词汇",
     description: "查看失败的富集字段并重试。",
   },
   {
     id: "ai-provider",
+    hash: "#/api-providers",
     label: "AI 服务",
     description: "配置兼容服务地址、密钥和模型。",
   },

@@ -36,17 +36,17 @@ const SECTION_ICONS = {
 
 type SettingsSidebarProps = {
   activeSection: SettingsSectionId;
-  onSectionChange: (section: SettingsSectionId) => void;
+  onNavigate: (section: SettingsSectionId) => void;
 };
 
 export function SettingsSidebar({
   activeSection,
-  onSectionChange,
+  onNavigate,
 }: SettingsSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar();
 
   const selectSection = (section: SettingsSectionId) => {
-    onSectionChange(section);
+    onNavigate(section);
     if (isMobile) setOpenMobile(false);
   };
 

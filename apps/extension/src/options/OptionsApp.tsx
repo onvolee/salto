@@ -17,10 +17,11 @@ import {
 import { TooltipProvider } from "salto-src/components/ui/tooltip";
 
 import { SettingsActions } from "./components/settings-actions";
-import { SettingsHeader } from "./components/settings-header";
+import { SettingsHeader, type StatusSummary } from "./components/settings-header";
 import { SettingsLoading } from "./components/settings-loading";
 import { SettingsSidebar } from "./components/settings-sidebar";
 import { useOptionsSettings } from "./hooks/use-options-settings";
+import { useSettingsRouter } from "./hooks/use-settings-router";
 import { useQueryTemplates } from "./hooks/use-query-templates";
 import { AiProviderSection } from "./sections/ai-provider-section";
 import { GeneralSection } from "./sections/general-section";
@@ -28,12 +29,16 @@ import { SelectionSection } from "./sections/selection-section";
 import { SourcesSection } from "./sections/sources-section";
 import type { YoudaoTestPreview } from "./dictionary-client";
 import { VocabularySection } from "./sections/vocabulary-section";
-import { SETTINGS_SECTIONS, type SettingsSectionId } from "./types";
+import { SETTINGS_SECTIONS } from "./types";
 
 export function OptionsApp() {
-  const [activeSection, setActiveSection] =
-    useState<SettingsSectionId>("general");
+  const { activeSection, navigateToSection } = useSettingsRouter();
   const [youdaoPreview, setYoudaoPreview] = useState<YoudaoTestPreview | null>(null);
+  const [dictionaryTestStatus, setDictionaryTestStatus] = useState<
+    "idle" | "testing" | "success" | "error"
+  >("idle");
+  const [dictionaryTestMessage, setDictionaryTestMessage] = useState<string | undefined>();
+  const [vocabularyFailedCount, setVocabularyFailedCount] = useState(0);
   const {
     connectionStatus,
     llm,
@@ -102,6 +107,34 @@ export function OptionsApp() {
 
   const section = SETTINGS_SECTIONS.find(({ id }) => id === activeSection)!;
 
+  const activeTemplateName = queryTemplates.templates.find(
+    (t) => t.id === settings.activeQueryTemplateId,
+  )?.name ?? "默认";
+
+  function getStatusSummary(): StatusSummary {
+    switch (activeSection) {
+      case "general":
+        return { type: "save", status: saveStatus };
+      case "selection":
+        return { type: "template", name: activeTemplateName };
+      case "sources":
+        return {
+          type: "dictionary",
+          status: dictionaryTestStatus,
+          message: dictionaryTestMessage,
+        };
+      case "vocabulary":
+        return { type: "vocabulary", failedCount: vocabularyFailedCount };
+      case "ai-provider":
+        return {
+          type: "ai",
+          configured: llm.hasApiKey || llm.apiKey.trim().length > 0,
+          connectionStatus: connectionStatus.status,
+          message: connectionStatus.message || undefined,
+        };
+    }
+  }
+
   return (
     <TooltipProvider>
       <SidebarProvider
@@ -117,7 +150,7 @@ export function OptionsApp() {
       >
         <SettingsSidebar
           activeSection={activeSection}
-          onSectionChange={setActiveSection}
+          onNavigate={navigateToSection}
         />
         <SidebarInset
           className="min-w-0"
@@ -134,7 +167,7 @@ export function OptionsApp() {
             <div className="mx-auto max-w-3xl pt-6">
               <SettingsHeader
                 description={section.description}
-                saveStatus={saveStatus}
+                status={getStatusSummary()}
                 title={section.label}
               />
               <Separator className="mt-5" />
@@ -163,10 +196,18 @@ export function OptionsApp() {
                 {activeSection === "sources" ? (
                   <SourcesSection
                     onPreviewChange={setYoudaoPreview}
+                    onTestStatusChange={(status, message) => {
+                      setDictionaryTestStatus(status);
+                      setDictionaryTestMessage(message);
+                    }}
                     preview={youdaoPreview}
                   />
                 ) : null}
-                {activeSection === "vocabulary" ? <VocabularySection /> : null}
+                {activeSection === "vocabulary" ? (
+                  <VocabularySection
+                    onFailedCountChange={setVocabularyFailedCount}
+                  />
+                ) : null}
                 {activeSection === "ai-provider" ? (
                   <AiProviderSection
                     connectionStatus={connectionStatus}

@@ -1,4 +1,5 @@
 import {
+  AlertCircleIcon,
   CheckmarkCircle02Icon,
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
@@ -8,7 +9,7 @@ import { Badge } from "salto-src/components/ui/badge";
 
 import type { SaveStatus } from "../types";
 
-const STATUS_CONTENT: Record<
+const SAVE_STATUS_CONTENT: Record<
   SaveStatus,
   { label: string; variant: "destructive" | "outline" | "secondary" | "success" }
 > = {
@@ -19,22 +20,141 @@ const STATUS_CONTENT: Record<
   error: { label: "保存失败", variant: "destructive" },
 };
 
+export type StatusSummary =
+  | { type: "save"; status: SaveStatus }
+  | { type: "template"; name: string }
+  | { type: "dictionary"; status: "idle" | "testing" | "success" | "error"; message?: string }
+  | { type: "vocabulary"; failedCount: number }
+  | { type: "ai"; configured: boolean; connectionStatus: "idle" | "testing" | "success" | "error"; message?: string };
+
 type SettingsHeaderProps = {
   description: string;
-  saveStatus: SaveStatus;
+  status: StatusSummary;
   title: string;
 };
 
 export function SettingsHeader({
   description,
-  saveStatus,
+  status,
   title,
 }: SettingsHeaderProps) {
-  const status = STATUS_CONTENT[saveStatus];
-  const statusIcon =
-    saveStatus === "synced" || saveStatus === "saved"
-      ? CheckmarkCircle02Icon
-      : InformationCircleIcon;
+  function renderStatus() {
+    switch (status.type) {
+      case "save": {
+        const statusConfig = SAVE_STATUS_CONTENT[status.status];
+        const statusIcon =
+          status.status === "synced" || status.status === "saved"
+            ? CheckmarkCircle02Icon
+            : InformationCircleIcon;
+        return (
+          <Badge aria-live="polite" role="status" variant={statusConfig.variant}>
+            <HugeiconsIcon
+              aria-hidden="true"
+              data-icon="inline-start"
+              icon={statusIcon}
+              strokeWidth={2}
+            />
+            {statusConfig.label}
+          </Badge>
+        );
+      }
+      case "template":
+        return (
+          <Badge aria-live="polite" role="status" variant="secondary">
+            <HugeiconsIcon
+              aria-hidden="true"
+              data-icon="inline-start"
+              icon={CheckmarkCircle02Icon}
+              strokeWidth={2}
+            />
+            当前：{status.name}
+          </Badge>
+        );
+      case "dictionary": {
+        const variant =
+          status.status === "success"
+            ? "success"
+            : status.status === "error"
+              ? "destructive"
+              : "secondary";
+        const icon =
+          status.status === "success"
+            ? CheckmarkCircle02Icon
+            : status.status === "error"
+              ? AlertCircleIcon
+              : InformationCircleIcon;
+        const label =
+          status.status === "idle"
+            ? "连接就绪"
+            : status.status === "testing"
+              ? "测试中"
+              : status.message ?? "连接就绪";
+        return (
+          <Badge aria-live="polite" role="status" variant={variant}>
+            <HugeiconsIcon
+              aria-hidden="true"
+              data-icon="inline-start"
+              icon={icon}
+              strokeWidth={2}
+            />
+            {label}
+          </Badge>
+        );
+      }
+      case "vocabulary": {
+        const variant = status.failedCount > 0 ? "destructive" : "success";
+        const icon = status.failedCount > 0 ? AlertCircleIcon : CheckmarkCircle02Icon;
+        const label =
+          status.failedCount === 0
+            ? "全部完成"
+            : `${status.failedCount} 项失败`;
+        return (
+          <Badge aria-live="polite" role="status" variant={variant}>
+            <HugeiconsIcon
+              aria-hidden="true"
+              data-icon="inline-start"
+              icon={icon}
+              strokeWidth={2}
+            />
+            {label}
+          </Badge>
+        );
+      }
+      case "ai": {
+        const variant =
+          status.connectionStatus === "success"
+            ? "success"
+            : status.connectionStatus === "error"
+              ? "destructive"
+              : "secondary";
+        const icon =
+          status.connectionStatus === "success"
+            ? CheckmarkCircle02Icon
+            : status.connectionStatus === "error"
+              ? AlertCircleIcon
+              : InformationCircleIcon;
+        const statusLabel =
+          status.connectionStatus === "idle"
+            ? status.configured
+              ? "已配置"
+              : "未配置"
+            : status.connectionStatus === "testing"
+              ? "测试中"
+              : status.message ?? (status.configured ? "已配置" : "未配置");
+        return (
+          <Badge aria-live="polite" role="status" variant={variant}>
+            <HugeiconsIcon
+              aria-hidden="true"
+              data-icon="inline-start"
+              icon={icon}
+              strokeWidth={2}
+            />
+            {statusLabel}
+          </Badge>
+        );
+      }
+    }
+  }
 
   return (
     <header className="flex items-start justify-between gap-4">
@@ -50,20 +170,9 @@ export function SettingsHeader({
           {description}
         </p>
       </div>
-      <Badge
-        aria-live="polite"
-        className="mt-1 shrink-0"
-        role="status"
-        variant={status.variant}
-      >
-        <HugeiconsIcon
-          aria-hidden="true"
-          data-icon="inline-start"
-          icon={statusIcon}
-          strokeWidth={2}
-        />
-        {status.label}
-      </Badge>
+      <div className="mt-1 shrink-0">
+        {renderStatus()}
+      </div>
     </header>
   );
 }
