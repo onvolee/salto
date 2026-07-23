@@ -17,10 +17,9 @@ describe("Switch", () => {
         <Switch checked={checked} aria-label="Theme-independent switch" />,
       );
 
-      expect(screen.getByRole("switch")).toHaveAttribute(
-        "aria-checked",
-        String(checked),
-      );
+      const root = screen.getByRole("switch");
+      expect(root).toHaveAttribute("aria-checked", String(checked));
+      expect(root.className).not.toContain("dark:");
 
       const thumb = container.querySelector('[data-slot="switch-thumb"]');
       expect(thumb).toHaveClass("bg-primary-foreground");
