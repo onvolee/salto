@@ -116,7 +116,11 @@ describe("local vertical slice", () => {
         if (!response.ok || response.type !== "list-highlight-terms") {
           throw new Error("Highlight snapshot unavailable");
         }
-        return { enabled: response.data.enabled, terms: response.data.terms };
+        return {
+          enabled: response.data.enabled,
+          terms: response.data.terms,
+          paths: response.data.paths,
+        };
       },
       subscribeSettings: () => () => undefined,
       createScanner(options) {
@@ -139,7 +143,8 @@ describe("local vertical slice", () => {
     );
 
     selectFixtureTerm();
-    expect(send).not.toHaveBeenCalled();
+    expect(send.mock.calls.some(([request]) => request.type === "translate-selection"))
+      .toBe(false);
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Open selection panel" }));
     expect(await screen.findByText("Default")).toBeInTheDocument();
