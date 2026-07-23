@@ -10,7 +10,8 @@
 
 @theme inline {
   --font-sans:
-    var(--salto-font-family);
+    "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
   --color-background: var(--salto-background);
   --color-foreground: var(--salto-foreground);
   --color-card: var(--salto-surface);
@@ -44,7 +45,7 @@
 }
 
 :root {
-  --radius: var(--salto-radius-panel);
+  --radius: 0.5rem;
 }
 
 @layer base {
