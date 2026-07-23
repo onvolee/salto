@@ -63,8 +63,11 @@ const EXTENSION_SETTINGS_SCHEMA = z.object({
   activeQueryTemplateId: z.string().trim().min(1),
   targetLanguage: z.string().trim().min(1),
   highlightEnabled: z.boolean(),
+  highlightSameWords: z.boolean(),
   themeMode: z.enum(["system", "light", "dark"]),
   activeDictionaryProvider: z.literal("youdao-web"),
+  panelWidth: z.number(),
+  panelHeight: z.number(),
 }).strict();
 
 function draftFromConfig(

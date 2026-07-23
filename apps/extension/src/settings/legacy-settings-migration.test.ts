@@ -64,8 +64,11 @@ describe("legacy extension settings migration", () => {
         activeQueryTemplateId: "system-default",
         targetLanguage: "en-US",
         highlightEnabled: true,
+        highlightSameWords: false,
         themeMode: "dark",
         activeDictionaryProvider: "youdao-web",
+        panelWidth: 360,
+        panelHeight: 220,
       });
       expect(await database.queryTemplates.count()).toBe(1);
       expect(await database.vocabularyItems.get("kept-item")).toEqual(
@@ -112,8 +115,11 @@ describe("legacy extension settings migration", () => {
       activeQueryTemplateId: "system-default",
       targetLanguage: "en-US",
       highlightEnabled: true,
+      highlightSameWords: false,
       themeMode: "dark",
       activeDictionaryProvider: "youdao-web",
+      panelWidth: 360,
+      panelHeight: 220,
     });
     expect(await database.settings.get("extension")).toEqual(expect.objectContaining({
       legacySettingsMigrationCompleted: true,
@@ -125,8 +131,11 @@ describe("legacy extension settings migration", () => {
       activeQueryTemplateId: "system-default",
       targetLanguage: "zh-CN",
       highlightEnabled: false,
+      highlightSameWords: false,
       themeMode: "light" as const,
       activeDictionaryProvider: "youdao-web" as const,
+      panelWidth: 360,
+      panelHeight: 220,
     };
     await repositories.settings.save(userSettings);
     expect(await database.settings.get("extension")).toEqual(expect.objectContaining({

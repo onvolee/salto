@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  ExtensionSettings,
   PromptContext,
   QueryTemplate,
 } from "@salto/core";
@@ -93,6 +94,7 @@ export function SelectionPopupApp({
   const [translation, setTranslation] = useState<TranslationState>({ status: "loading" });
   const [activeTemplate, setActiveTemplate] = useState<ActiveTemplateState>({ status: "loading" });
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [panelSize, setPanelSize] = useState<Size>(getPanelSize(getViewportSize()));
 
   const refreshTrigger = useCallback(() => {
     const snapshot = readSelectionSnapshot(window.getSelection());
@@ -184,6 +186,23 @@ export function SelectionPopupApp({
     });
   }, [createRequestId, messageClient]);
 
+  const savePanelSize = useCallback((size: Size) => {
+    void messageClient.send({ type: "get-extension-settings" }).then((response) => {
+      if (!response.ok || response.type !== "get-extension-settings") {
+        return;
+      }
+      const settings = response.data;
+      void messageClient.send({
+        type: "save-extension-settings",
+        payload: {
+          ...settings,
+          panelWidth: size.width,
+          panelHeight: size.height,
+        },
+      });
+    });
+  }, [messageClient]);
+
   const openPanel = useCallback((requestedSession?: SelectionSnapshot) => {
     const nextSession = requestedSession ?? session;
     if (!nextSession) {
@@ -200,7 +219,7 @@ export function SelectionPopupApp({
     setSession(nextSession);
     setTriggerPosition(nextTriggerPosition);
     setPanelPosition(
-      getInitialPanelPosition(nextTriggerPosition, TRIGGER_SIZE, getPanelSize(viewport), viewport),
+      getInitialPanelPosition(nextTriggerPosition, TRIGGER_SIZE, panelSize, viewport),
     );
     const context = extractPromptContext(nextSession.range, "");
     saveRequestRef.current += 1;
@@ -254,7 +273,18 @@ export function SelectionPopupApp({
         });
       }
     });
-  }, [messageClient, requestTranslation, session, triggerPosition]);
+  }, [messageClient, panelSize, requestTranslation, session, triggerPosition]);
+
+  useEffect(() => {
+    void messageClient.send({ type: "get-extension-settings" }).then((response) => {
+      if (!response.ok || response.type !== "get-extension-settings") {
+        return;
+      }
+      const settings = response.data as ExtensionSettings;
+      const viewport = getViewportSize();
+      setPanelSize(getPanelSize(viewport, { width: settings.panelWidth, height: settings.panelHeight }));
+    });
+  }, [messageClient]);
 
   useEffect(() => subscribePanelOpen(() => {
     if (mode === "panel-open") return;
@@ -483,10 +513,11 @@ export function SelectionPopupApp({
 
     const handleResize = () => {
       const viewport = getViewportSize();
+      setPanelSize((prevSize) => getPanelSize(viewport, prevSize));
       if (mode === "trigger-visible") {
         handleScroll();
       } else if (mode === "panel-open") {
-        setPanelPosition((position) => clampToViewport(position, getPanelSize(viewport), viewport));
+        setPanelPosition((position) => clampToViewport(position, getPanelSize(viewport, panelSize), viewport));
       }
     };
 
@@ -497,7 +528,7 @@ export function SelectionPopupApp({
       document.removeEventListener("scroll", handleScroll, true);
       window.removeEventListener("resize", handleResize);
     };
-  }, [mode, session]);
+  }, [mode, panelSize, session]);
 
   const preserveSelection = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -523,8 +554,10 @@ export function SelectionPopupApp({
         onPositionChange={setPanelPosition}
         onRegenerate={regenerateTranslation}
         onSave={saveSelection}
+        onSizeChange={savePanelSize}
         panelRef={panelRef}
         position={panelPosition}
+        size={panelSize}
         selectionText={session.text}
         saveState={saveState}
         translation={translation}

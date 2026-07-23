@@ -12,13 +12,31 @@ export type Size = {
 
 export const VIEWPORT_MARGIN = 8;
 export const SURFACE_GAP = 8;
-export const PANEL_PREFERRED_SIZE: Size = { width: 360, height: 220 };
+export const PANEL_MIN_SIZE: Size = { width: 360, height: 220 };
 
-export function getPanelSize(viewport: Size): Size {
+export function clampPanelSize(size: Size, viewport: Size): Size {
+  const maxWidth = Math.max(0, viewport.width - VIEWPORT_MARGIN * 2);
+  const maxHeight = Math.max(0, viewport.height - VIEWPORT_MARGIN * 2);
+
   return {
-    width: Math.min(PANEL_PREFERRED_SIZE.width, Math.max(0, viewport.width - VIEWPORT_MARGIN * 2)),
-    height: Math.min(PANEL_PREFERRED_SIZE.height, Math.max(0, viewport.height - VIEWPORT_MARGIN * 2)),
+    width: Math.min(size.width, maxWidth),
+    height: Math.min(size.height, maxHeight),
   };
+}
+
+export function clampResizeSize(size: Size, viewport: Size): Size {
+  const maxWidth = Math.max(0, viewport.width - VIEWPORT_MARGIN * 2);
+  const maxHeight = Math.max(0, viewport.height - VIEWPORT_MARGIN * 2);
+
+  return {
+    width: Math.max(PANEL_MIN_SIZE.width, Math.min(size.width, maxWidth)),
+    height: Math.max(PANEL_MIN_SIZE.height, Math.min(size.height, maxHeight)),
+  };
+}
+
+export function getPanelSize(viewport: Size, preferredSize?: Size): Size {
+  const baseSize = preferredSize ?? PANEL_MIN_SIZE;
+  return clampPanelSize(baseSize, viewport);
 }
 
 export function clampToViewport(

@@ -189,7 +189,9 @@ describe("local repositories", () => {
       highlightEnabled: true,
       highlightSameWords: false,
       themeMode: "system",
-      activeDictionaryProvider: "youdao-web"
+      activeDictionaryProvider: "youdao-web",
+      panelWidth: 360,
+      panelHeight: 220,
     })).rejects.toMatchObject({ code: "template-not-found" });
   });
 
@@ -244,7 +246,9 @@ describe("local repositories", () => {
       highlightEnabled: false,
       highlightSameWords: false,
       themeMode: "dark",
-      activeDictionaryProvider: "youdao-web"
+      activeDictionaryProvider: "youdao-web",
+      panelWidth: 360,
+      panelHeight: 220,
     });
     await first.database.settings.update("extension", {
       extraSetting: "internal-only"
@@ -260,6 +264,8 @@ describe("local repositories", () => {
       highlightSameWords: false,
       themeMode: "dark",
       activeDictionaryProvider: "youdao-web",
+      panelWidth: 360,
+      panelHeight: 220,
     });
   });
 
@@ -407,7 +413,9 @@ describe("local repositories", () => {
       highlightEnabled: true,
       highlightSameWords: false,
       themeMode: "system",
-      activeDictionaryProvider: "youdao-web"
+      activeDictionaryProvider: "youdao-web",
+      panelWidth: 360,
+      panelHeight: 220,
     });
     expect(await database.vocabularyItems.get("kept-item")).toEqual(expect.objectContaining({
       term: "Kept"

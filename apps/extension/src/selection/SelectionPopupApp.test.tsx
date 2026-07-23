@@ -56,6 +56,38 @@ function withActiveTemplate(
           data: { exists: false },
         });
       }
+      if (request.type === "get-extension-settings") {
+        return Promise.resolve({
+          ok: true,
+          type: "get-extension-settings",
+          data: {
+            activeQueryTemplateId: "system-default",
+            targetLanguage: "zh-CN",
+            highlightEnabled: true,
+            highlightSameWords: false,
+            themeMode: "system",
+            activeDictionaryProvider: "youdao-web",
+            panelWidth: 360,
+            panelHeight: 220,
+          },
+        });
+      }
+      if (request.type === "save-extension-settings") {
+        return Promise.resolve({
+          ok: true,
+          type: "save-extension-settings",
+          data: {
+            activeQueryTemplateId: "system-default",
+            targetLanguage: "zh-CN",
+            highlightEnabled: true,
+            highlightSameWords: false,
+            themeMode: "system",
+            activeDictionaryProvider: "youdao-web",
+            panelWidth: 360,
+            panelHeight: 220,
+          },
+        });
+      }
       return send(request);
     },
   };
@@ -98,11 +130,75 @@ describe("SelectionPopupApp", () => {
     vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([
       anchorRect,
     ] as unknown as DOMRectList);
+    vi.stubGlobal("browser", {
+      runtime: {
+        sendMessage: vi.fn((request: { type: string }) => {
+          if (request.type === "get-extension-settings") {
+            return Promise.resolve({
+              ok: true,
+              type: "get-extension-settings",
+              data: {
+                activeQueryTemplateId: "system-default",
+                targetLanguage: "zh-CN",
+                highlightEnabled: true,
+                highlightSameWords: false,
+                themeMode: "system",
+                activeDictionaryProvider: "youdao-web",
+                panelWidth: 360,
+                panelHeight: 220,
+              },
+            });
+          }
+          if (request.type === "save-extension-settings") {
+            return Promise.resolve({
+              ok: true,
+              type: "save-extension-settings",
+              data: undefined,
+            });
+          }
+          if (request.type === "get-active-query-template") {
+            return Promise.resolve({
+              ok: true,
+              type: "get-active-query-template",
+              data: {
+                template: defaultTemplate,
+                resolution: { status: "active" },
+              },
+            });
+          }
+          if (request.type === "check-vocabulary-exists") {
+            return Promise.resolve({
+              ok: true,
+              type: "check-vocabulary-exists",
+              data: { exists: false },
+            });
+          }
+          if (request.type === "translate-selection") {
+            return Promise.resolve({
+              ok: true,
+              type: "translate-selection",
+              data: {
+                templateId: "system-default",
+                templateName: "Default",
+                schema: [{ id: "translation", label: "Translation" }],
+                fields: [{ fieldId: "translation", status: "ready", type: "text", value: "陌生的" }],
+              },
+            });
+          }
+          return Promise.resolve({ ok: false });
+        }),
+        onMessage: {
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+        },
+      },
+    });
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("shows a trigger for a valid selection and opens only on click", async () => {
@@ -262,6 +358,29 @@ describe("SelectionPopupApp", () => {
           ok: true,
           type: "get-active-query-template",
           data: { template: stateTemplate, resolution: { status: "active" } },
+        });
+      }
+      if (request.type === "get-extension-settings") {
+        return Promise.resolve({
+          ok: true,
+          type: "get-extension-settings",
+          data: {
+            activeQueryTemplateId: "system-default",
+            targetLanguage: "zh-CN",
+            highlightEnabled: true,
+            highlightSameWords: false,
+            themeMode: "system",
+            activeDictionaryProvider: "youdao-web",
+            panelWidth: 360,
+            panelHeight: 220,
+          },
+        });
+      }
+      if (request.type === "check-vocabulary-exists") {
+        return Promise.resolve({
+          ok: true,
+          type: "check-vocabulary-exists",
+          data: { exists: false },
         });
       }
       return new Promise((resolve) => {

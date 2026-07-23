@@ -100,7 +100,9 @@ describe("@salto/core public contract", () => {
       highlightEnabled: true,
       highlightSameWords: false,
       themeMode: "system",
-      activeDictionaryProvider: "youdao-web"
+      activeDictionaryProvider: "youdao-web",
+      panelWidth: 360,
+      panelHeight: 220,
     });
     expect(createDefaultTemplateFieldDefinitions("2026-07-16T00:00:00.000Z")).toEqual([
       {

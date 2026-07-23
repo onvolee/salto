@@ -19,7 +19,7 @@ import { ScrollArea } from "salto-src/components/ui/scroll-area";
 import { Skeleton } from "salto-src/components/ui/skeleton";
 import { parseCssDeclarations } from "salto-src/query-template/css-declarations";
 
-import { clampToViewport, getPanelSize, type Point } from "./positioning";
+import { clampResizeSize, clampToViewport, getPanelSize, type Point, type Size } from "./positioning";
 import type {
   ActiveQueryTemplateResolution,
   ExtensionSuccessResponse,
@@ -59,6 +59,7 @@ export type SelectionPanelProps = {
   activeTemplate: ActiveTemplateState;
   panelRef: RefObject<HTMLElement | null>;
   position: Point;
+  size?: Size;
   selectionText: string;
   saveState: "idle" | "saving" | "saved" | "error";
   translation: TranslationState;
@@ -66,6 +67,7 @@ export type SelectionPanelProps = {
   onPositionChange: (position: Point) => void;
   onRegenerate: () => void;
   onSave: () => void;
+  onSizeChange?: (size: Size) => void;
 };
 
 type DragState = {
@@ -74,14 +76,28 @@ type DragState = {
   offsetY: number;
 };
 
+type ResizeHandle = "right" | "bottom" | "bottom-right";
+
+type ResizeState = {
+  pointerId: number;
+  handle: ResizeHandle;
+  startX: number;
+  startY: number;
+  startWidth: number;
+  startHeight: number;
+};
+
 function getViewportSize() {
   return { width: window.innerWidth, height: window.innerHeight };
 }
+
+const DEFAULT_PANEL_SIZE = { width: 360, height: 220 };
 
 export function SelectionPanel({
   activeTemplate,
   panelRef,
   position,
+  size = DEFAULT_PANEL_SIZE,
   selectionText,
   saveState,
   translation,
@@ -89,8 +105,10 @@ export function SelectionPanel({
   onPositionChange,
   onRegenerate,
   onSave,
+  onSizeChange,
 }: SelectionPanelProps) {
   const dragRef = useRef<DragState | null>(null);
+  const resizeRef = useRef<ResizeState | null>(null);
   const saveLabel =
     saveState === "saving"
       ? "Saving selection"
@@ -126,7 +144,7 @@ export function SelectionPanel({
     onPositionChange(
       clampToViewport(
         { x: event.clientX - drag.offsetX, y: event.clientY - drag.offsetY },
-        getPanelSize(viewport),
+        size,
         viewport,
       ),
     );
@@ -138,6 +156,56 @@ export function SelectionPanel({
     }
 
     dragRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const handleResizePointerDown = (event: PointerEvent<HTMLElement>, handle: ResizeHandle) => {
+    if (!event.isPrimary || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    resizeRef.current = {
+      pointerId: event.pointerId,
+      handle,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: size.width,
+      startHeight: size.height,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleResizePointerMove = (event: PointerEvent<HTMLElement>) => {
+    const resize = resizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const viewport = getViewportSize();
+    const deltaX = event.clientX - resize.startX;
+    const deltaY = event.clientY - resize.startY;
+
+    let newWidth = resize.startWidth;
+    let newHeight = resize.startHeight;
+
+    if (resize.handle === "right" || resize.handle === "bottom-right") {
+      newWidth = resize.startWidth + deltaX;
+    }
+    if (resize.handle === "bottom" || resize.handle === "bottom-right") {
+      newHeight = resize.startHeight + deltaY;
+    }
+
+    const newSize = clampResizeSize({ width: newWidth, height: newHeight }, viewport);
+    onSizeChange?.(newSize);
+  };
+
+  const handleResizePointerEnd = (event: PointerEvent<HTMLElement>) => {
+    if (resizeRef.current?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    resizeRef.current = null;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
 
@@ -184,7 +252,12 @@ export function SelectionPanel({
         e.stopPropagation();
         e.preventDefault();
       }}
-      style={{ left: position.x, top: position.y }}
+      style={{
+        left: position.x,
+        top: position.y,
+        width: size.width,
+        height: size.height,
+      }}
     >
       <header
         className="salto-selection-panel__header"
@@ -246,6 +319,7 @@ export function SelectionPanel({
           </Button>
           <Button
             aria-label="Close panel"
+            autoFocus
             onClick={onClose}
             onPointerDown={preserveSelection}
             size="icon"
@@ -262,6 +336,27 @@ export function SelectionPanel({
           </Button>
         </div>
       </header>
+      <div
+        className="salto-selection-panel__resize-handle salto-selection-panel__resize-handle--right"
+        onPointerDown={(e) => handleResizePointerDown(e, "right")}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerEnd}
+        onPointerCancel={handleResizePointerEnd}
+      />
+      <div
+        className="salto-selection-panel__resize-handle salto-selection-panel__resize-handle--bottom"
+        onPointerDown={(e) => handleResizePointerDown(e, "bottom")}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerEnd}
+        onPointerCancel={handleResizePointerEnd}
+      />
+      <div
+        className="salto-selection-panel__resize-handle salto-selection-panel__resize-handle--bottom-right"
+        onPointerDown={(e) => handleResizePointerDown(e, "bottom-right")}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerEnd}
+        onPointerCancel={handleResizePointerEnd}
+      />
       <p
         aria-atomic="true"
         aria-live="polite"
@@ -269,7 +364,7 @@ export function SelectionPanel({
       >
         {announcement}
       </p>
-      <ScrollArea className="h-44">
+      <ScrollArea className="h-full">
         <div className="salto-selection-panel__content">
           {activeTemplate.status === "loading" ? (
             <p className="salto-selection-panel__status">
