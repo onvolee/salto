@@ -19,7 +19,11 @@ export default defineContentScript({
         if (!response.ok || response.type !== "list-highlight-terms") {
           throw new Error("Highlight snapshot unavailable");
         }
-        return { enabled: response.data.enabled, terms: response.data.terms };
+        return {
+          enabled: response.data.enabled,
+          terms: response.data.terms,
+          paths: response.data.paths,
+        };
       },
       subscribeSettings(listener) {
         const handleMessage = (message: unknown) => {

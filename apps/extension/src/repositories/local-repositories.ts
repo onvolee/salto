@@ -985,6 +985,9 @@ function normalizeStoredSettings(value: StoredExtensionSettings | undefined): St
     highlightEnabled: typeof raw.highlightEnabled === "boolean"
       ? raw.highlightEnabled
       : DEFAULT_EXTENSION_SETTINGS.highlightEnabled,
+    highlightSameWords: typeof raw.highlightSameWords === "boolean"
+      ? raw.highlightSameWords
+      : DEFAULT_EXTENSION_SETTINGS.highlightSameWords,
     themeMode: raw.themeMode === "system" || raw.themeMode === "light" || raw.themeMode === "dark"
       ? raw.themeMode
       : DEFAULT_EXTENSION_SETTINGS.themeMode,
@@ -1014,6 +1017,7 @@ function stripSettingsId({ id: _id, ...settings }: StoredExtensionSettings): Ext
     activeQueryTemplateId: settings.activeQueryTemplateId,
     targetLanguage: settings.targetLanguage,
     highlightEnabled: settings.highlightEnabled,
+    highlightSameWords: settings.highlightSameWords,
     themeMode: settings.themeMode,
     activeDictionaryProvider: "youdao-web"
   };

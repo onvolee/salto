@@ -98,6 +98,7 @@ describe("@salto/core public contract", () => {
       activeQueryTemplateId: "system-default",
       targetLanguage: "zh-CN",
       highlightEnabled: true,
+      highlightSameWords: false,
       themeMode: "system",
       activeDictionaryProvider: "youdao-web"
     });

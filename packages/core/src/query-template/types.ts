@@ -119,6 +119,7 @@ export interface ExtensionSettings {
   readonly activeQueryTemplateId: string;
   readonly targetLanguage: string;
   readonly highlightEnabled: boolean;
+  readonly highlightSameWords: boolean;
   readonly themeMode: "system" | "light" | "dark";
   readonly activeDictionaryProvider: "youdao-web";
 }
@@ -127,6 +128,7 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   activeQueryTemplateId: "system-default",
   targetLanguage: "zh-CN",
   highlightEnabled: true,
+  highlightSameWords: false,
   themeMode: "system",
   activeDictionaryProvider: "youdao-web"
 };
@@ -192,10 +194,11 @@ export function isValidTemplateFieldDefinitionInput(value: unknown): value is Te
 
 export function isValidExtensionSettings(value: unknown): value is ExtensionSettings {
   return isRecord(value)
-    && Object.keys(value).length === 5
+    && Object.keys(value).length === 6
     && isNonEmptyString(value.activeQueryTemplateId)
     && isNonEmptyString(value.targetLanguage)
     && typeof value.highlightEnabled === "boolean"
+    && typeof value.highlightSameWords === "boolean"
     && (value.themeMode === "system" || value.themeMode === "light" || value.themeMode === "dark")
     && value.activeDictionaryProvider === "youdao-web";
 }

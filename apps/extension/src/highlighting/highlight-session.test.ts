@@ -8,6 +8,7 @@ import {
   createIncrementalHighlightScanner,
 } from "./incremental-highlighter";
 import { createHighlightSession } from "./highlight-session";
+import { extractSelectionPath } from "../selection/selection-path";
 
 type ScheduledCallback = () => void;
 
@@ -53,15 +54,16 @@ describe("highlight session", () => {
   it("uses startup and re-enable snapshots, adds only successful saved terms, and tears down", async () => {
     const scheduler = createScheduler();
     const snapshots = [
-      { enabled: true, terms: ["known"] },
-      { enabled: true, terms: ["known", "saved", "restarted"] },
+      { enabled: true, terms: ["known"], paths: [] },
+      { enabled: true, terms: ["known"], paths: [] },
+      { enabled: true, terms: ["known", "saved", "restarted"], paths: [] },
     ];
     let settingsListener: ((settings: ExtensionSettings) => void) | undefined;
     let unsubscribeCalls = 0;
     let scannerStarts = 0;
     const session = createHighlightSession({
       document,
-      loadSnapshot: async () => snapshots.shift() ?? { enabled: true, terms: [] },
+      loadSnapshot: async () => snapshots.shift() ?? { enabled: true, terms: [], paths: [] },
       subscribeSettings(listener) {
         settingsListener = listener;
         return () => {
@@ -82,6 +84,7 @@ describe("highlight session", () => {
     });
 
     session.start();
+    settingsListener?.({ ...DEFAULT_EXTENSION_SETTINGS, highlightSameWords: true });
     await settle();
     scheduler.runIdle();
     scheduler.drainFrames();
@@ -99,7 +102,7 @@ describe("highlight session", () => {
     session.addSavedTerm("ＳＡＶＥＤ");
     expect(scannerStarts).toBe(2);
 
-    settingsListener?.({ ...DEFAULT_EXTENSION_SETTINGS, highlightEnabled: false });
+    settingsListener?.({ ...DEFAULT_EXTENSION_SETTINGS, highlightEnabled: false, highlightSameWords: true });
     expect(document.querySelectorAll("[data-salto-highlight]")).toHaveLength(0);
     const disabledDynamic = document.createElement("p");
     disabledDynamic.textContent = "saved";
@@ -108,7 +111,7 @@ describe("highlight session", () => {
     scheduler.drainFrames();
     expect(disabledDynamic.querySelector("[data-salto-highlight]")).toBeNull();
 
-    settingsListener?.({ ...DEFAULT_EXTENSION_SETTINGS, highlightEnabled: true });
+    settingsListener?.({ ...DEFAULT_EXTENSION_SETTINGS, highlightEnabled: true, highlightSameWords: true });
     await settle();
     scheduler.runIdle();
     scheduler.drainFrames();
@@ -134,10 +137,14 @@ describe("highlight session", () => {
   it("restores wrappers before rescanning so a newly saved longer term wins", async () => {
     document.body.innerHTML = "<p>new york</p>";
     const scheduler = createScheduler();
+    let settingsListener: ((settings: ExtensionSettings) => void) | undefined;
     const session = createHighlightSession({
       document,
-      loadSnapshot: async () => ({ enabled: true, terms: ["new"] }),
-      subscribeSettings: () => () => undefined,
+      loadSnapshot: async () => ({ enabled: true, terms: ["new"], paths: [] }),
+      subscribeSettings(listener) {
+        settingsListener = listener;
+        return () => undefined;
+      },
       createScanner(options) {
         return createIncrementalHighlightScanner({
           ...options,
@@ -150,6 +157,7 @@ describe("highlight session", () => {
     });
 
     session.start();
+    settingsListener?.({ ...DEFAULT_EXTENSION_SETTINGS, highlightSameWords: true });
     await settle();
     scheduler.runIdle();
     scheduler.drainFrames();
@@ -161,6 +169,34 @@ describe("highlight session", () => {
 
     expect(document.querySelectorAll("[data-salto-highlight]")).toHaveLength(1);
     expect(document.querySelector("[data-salto-highlight]")?.textContent).toBe("new york");
+    session.teardown();
+  });
+
+  it("uses path-based highlighting when highlightSameWords is false", async () => {
+    document.body.innerHTML = "<p>word word word</p>";
+    const paragraph = document.querySelector("p")!;
+    const textNode = paragraph.firstChild! as Text;
+    const range = document.createRange();
+    range.setStart(textNode, 5);
+    range.setEnd(textNode, 9);
+    const path = extractSelectionPath(range)!;
+    expect(path).not.toBeNull();
+
+    const session = createHighlightSession({
+      document,
+      loadSnapshot: async () => ({
+        enabled: true,
+        terms: [],
+        paths: [{ term: "word", path }],
+      }),
+      subscribeSettings: () => () => undefined,
+    });
+
+    session.start();
+    await settle();
+    const highlights = document.querySelectorAll("[data-salto-highlight]");
+    expect(highlights).toHaveLength(1);
+    expect(highlights[0]?.textContent).toBe("word");
     session.teardown();
   });
 });

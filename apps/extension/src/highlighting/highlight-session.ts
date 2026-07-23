@@ -1,14 +1,18 @@
-import { normalizeSavedTerms, type ExtensionSettings } from "@salto/core";
+import { normalizeSavedTerms, type ExtensionSettings, type SelectionPath } from "@salto/core";
 
 import {
   createIncrementalHighlightScanner,
   type IncrementalHighlightScanner,
 } from "./incremental-highlighter";
-import { cleanupSavedTermHighlights } from "./single-pass-highlighter";
+import { cleanupSavedTermHighlights, highlightSavedTerms } from "./single-pass-highlighter";
 
 export type HighlightSnapshot = {
   readonly enabled: boolean;
   readonly terms: readonly string[];
+  readonly paths: readonly {
+    readonly term: string;
+    readonly path: SelectionPath;
+  }[];
 };
 
 type ScannerFactory = (options: {
@@ -36,9 +40,11 @@ export function createHighlightSession(
 ): HighlightSession {
   const createScanner = dependencies.createScanner ?? createIncrementalHighlightScanner;
   const terms = new Map<string, string>();
+  const paths = new Map<string, SelectionPath>();
   const locallySavedTerms = new Map<string, string>();
   let active = false;
   let highlightEnabled: boolean | undefined;
+  let highlightSameWords: boolean | undefined;
   let snapshotGeneration = 0;
   let scanner: IncrementalHighlightScanner | undefined;
   let unsubscribeSettings: (() => void) | undefined;
@@ -48,11 +54,17 @@ export function createHighlightSession(
     scanner = undefined;
   };
 
-  const startScanner = () => {
+  const applyHighlighting = () => {
     stopScanner();
     cleanupSavedTermHighlights(dependencies.document);
-    if (active && highlightEnabled && terms.size > 0) {
+    if (!active || !highlightEnabled) {
+      return;
+    }
+    if (highlightSameWords && terms.size > 0) {
       scanner = createScanner({ document: dependencies.document, terms: [...terms.values()] });
+    } else if (!highlightSameWords && paths.size > 0) {
+      const pathEntries = [...paths.entries()].map(([term, path]) => ({ term, path }));
+      highlightSavedTerms(dependencies.document, pathEntries);
     }
   };
 
@@ -76,13 +88,17 @@ export function createHighlightSession(
 
       highlightEnabled = true;
       terms.clear();
+      paths.clear();
       for (const term of normalizeSavedTerms(snapshot.terms)) {
         terms.set(term.canonicalKey, term.term);
+      }
+      for (const { term, path } of snapshot.paths) {
+        paths.set(term.toLowerCase(), path);
       }
       for (const [canonicalKey, term] of locallySavedTerms) {
         terms.set(canonicalKey, term);
       }
-      startScanner();
+      applyHighlighting();
     }).catch(() => {
       // Highlighting remains inactive when the background snapshot is unavailable.
     });
@@ -99,11 +115,14 @@ export function createHighlightSession(
           disable();
           return;
         }
-        if (highlightEnabled !== true) {
+        const sameWordsChanged = highlightSameWords !== settings.highlightSameWords;
+        highlightSameWords = settings.highlightSameWords;
+        if (highlightEnabled !== true || sameWordsChanged) {
           highlightEnabled = true;
           loadSnapshot();
         }
       });
+      highlightSameWords = false;
       loadSnapshot();
     },
 
@@ -115,7 +134,7 @@ export function createHighlightSession(
       locallySavedTerms.set(normalized.canonicalKey, normalized.term);
       terms.set(normalized.canonicalKey, normalized.term);
       if (active && highlightEnabled) {
-        startScanner();
+        applyHighlighting();
       }
     },
 
@@ -128,6 +147,7 @@ export function createHighlightSession(
       unsubscribeSettings?.();
       unsubscribeSettings = undefined;
       stopScanner();
+      cleanupSavedTermHighlights(dependencies.document);
     },
   };
 }
