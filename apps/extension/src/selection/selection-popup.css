@@ -15,7 +15,7 @@
   --color-border: var(--salto-border);
   --color-ring: var(--salto-ring);
   --color-input: var(--salto-border);
-  --color-success: var(--salto-success);
+  --color-salto-success: var(--salto-success);
   --color-destructive: var(--salto-destructive);
 }
 

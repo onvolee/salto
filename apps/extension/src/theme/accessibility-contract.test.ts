@@ -79,6 +79,12 @@ function contrast(foreground: string, background: string): number {
 }
 
 describe("theme accessibility contract", () => {
+  it("scopes dark utilities to the selected theme mode", () => {
+    expect(themeCss).toContain('@custom-variant dark {');
+    expect(themeCss).toContain('&:where([data-theme="dark"], [data-theme="dark"] *)');
+    expect(themeCss).toContain('&:where([data-theme="system"], [data-theme="system"] *)');
+  });
+
   it("defines the spacing and radius primitives used by extension UI", () => {
     expect(rootTokens.get("--salto-space-xs")).toBe("4px");
     expect(rootTokens.get("--salto-space-sm")).toBe("8px");

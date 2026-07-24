@@ -190,7 +190,7 @@ export function SourcesSection({
               <p
                 aria-live="polite"
                 className={status === "success"
-                  ? "mt-2 text-xs/relaxed text-success"
+                  ? "mt-2 text-xs/relaxed text-salto-success"
                   : "mt-2 text-xs/relaxed text-destructive"}
               >
                 {statusMessage}
