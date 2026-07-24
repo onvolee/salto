@@ -21,6 +21,5 @@
 }
 
 .salto-translation-field-list__items {
-  padding-inline-start: 1.25rem;
-  list-style: disc;
+  list-style: none;
 }
