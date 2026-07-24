@@ -3,6 +3,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "../../src/theme/linear-theme.css";
+@import "../../src/query-template/translation-field-list.css";
 
 @source "./main.tsx";
 @source "../../src/options/**/*.tsx";

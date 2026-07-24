@@ -55,7 +55,7 @@ describe("selection panel Shadow DOM focus", () => {
     vi.restoreAllMocks();
   });
 
-  it("loops Tab and Shift+Tab using the focused control inside a shadow root", async () => {
+  it("does not autofocus and loops Tab once focus enters the shadow-root panel", async () => {
     const target = createShadowRootRenderTarget();
     roots.push(target.root);
     await act(async () => target.root.render(
@@ -79,6 +79,9 @@ describe("selection panel Shadow DOM focus", () => {
     const panel = within(target.container);
     const regenerate = panel.getByRole("button", { name: "Regenerate translation" });
     const close = panel.getByRole("button", { name: "Close panel" });
+    expect(target.shadowRoot.activeElement).not.toBe(close);
+
+    close.focus();
     expect(target.shadowRoot.activeElement).toBe(close);
     expect(document.activeElement).not.toBe(close);
 
@@ -141,7 +144,7 @@ describe("selection panel Shadow DOM focus", () => {
 
     const panel = within(target.container);
     expect(panel.getByText("Translation")).toHaveStyle({ color: "rgb(1, 2, 3)" });
-    expect(panel.getByText("翻译").closest("dd")).toHaveStyle({ fontWeight: "700" });
+    expect(panel.getByText("翻译")).toHaveStyle({ fontWeight: "700" });
     expect(panel.getByText("Context")).not.toHaveAttribute("style");
     expect(panel.getByText("上下文").closest("dd")).not.toHaveAttribute("style");
   });
@@ -191,6 +194,9 @@ describe("selection panel Shadow DOM focus", () => {
     const popup = within(target.container);
     fireEvent.click(await popup.findByRole("button", { name: "Open selection panel" }));
     const close = await popup.findByRole("button", { name: "Close panel" });
+    expect(target.shadowRoot.activeElement).not.toBe(close);
+
+    close.focus();
     expect(target.shadowRoot.activeElement).toBe(close);
 
     fireEvent.click(close);
