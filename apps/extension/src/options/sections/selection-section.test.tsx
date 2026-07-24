@@ -222,13 +222,14 @@ describe("selection settings", () => {
     };
     const moveField = vi.fn();
     const updateField = vi.fn();
+    const draft = templateDraftFromQueryTemplate(userTemplate);
     const editor = {
       activeTemplateId: userTemplate.id,
       addField: vi.fn(),
       cancelDraft: vi.fn(),
       copyTemplate: vi.fn(),
       deleteTemplate: vi.fn(),
-      draft: templateDraftFromQueryTemplate(userTemplate),
+      draft,
       errors: { field: {} },
       isSystemTemplate: false,
       message: null,
@@ -244,7 +245,7 @@ describe("selection settings", () => {
       updateDraft: vi.fn(),
       updateField,
     } as unknown as ReturnType<typeof useQueryTemplates>;
-    render(
+    const rendered = render(
       <SelectionSection
         activeTemplateId={userTemplate.id}
         definitions={definitionEditor()}
@@ -260,6 +261,16 @@ describe("selection settings", () => {
     expect(moveField).toHaveBeenCalledWith(0, 1);
 
     await user.click(screen.getByRole("button", { name: "编辑Translation外观" }));
+    const appearanceDialog = screen.getByRole("dialog", { name: "翻译外观 · Translation" });
+    expect(appearanceDialog).toHaveTextContent("调整当前模板字段的标签和值样式；修改会保留在模板草稿中。");
+    expect(appearanceDialog).toHaveTextContent("字段样式");
+    expect(appearanceDialog).toHaveTextContent("使用标准 CSS 声明块分别控制标签和值。");
+    expect(appearanceDialog).toHaveTextContent("无效声明会被忽略，不影响其他字段。");
+    expect(appearanceDialog).toHaveTextContent("实时预览");
+    expect(appearanceDialog).toHaveTextContent("模拟结果 · 无需请求翻译");
+    expect(appearanceDialog).toHaveTextContent("更改保留在模板草稿中");
+    expect(within(appearanceDialog).getByRole("button", { name: "取消" })).toBeEnabled();
+    expect(within(appearanceDialog).getByRole("button", { name: "完成" })).toBeEnabled();
     const preview = screen.getByLabelText("当前模板预览");
     expect(preview).toHaveTextContent("Reading");
     expect(preview).toHaveTextContent("Context");
@@ -271,5 +282,38 @@ describe("selection settings", () => {
     expect(updateField).toHaveBeenCalledWith("translation", expect.objectContaining({
       keyCss: expect.stringContaining("color: tomato;"),
     }));
+
+    rendered.rerender(
+      <SelectionSection
+        activeTemplateId={userTemplate.id}
+        definitions={definitionEditor()}
+        editor={{
+          ...editor,
+          draft: {
+            ...draft,
+            fields: draft.fields.map((draftField) => draftField.id === "translation"
+              ? { ...draftField, keyCss: "color: tomato;" }
+              : draftField),
+          },
+        } as ReturnType<typeof useQueryTemplates>}
+        onActiveTemplateChange={vi.fn()}
+        onViewChange={vi.fn()}
+        view="templates"
+      />,
+    );
+    expect(within(screen.getByLabelText("当前模板预览")).getByText("Translation"))
+      .toHaveStyle({ color: "tomato" });
+
+    await user.click(within(appearanceDialog).getByRole("button", { name: "重置当前字段样式" }));
+    expect(updateField).toHaveBeenLastCalledWith("translation", { keyCss: "", valueCss: "" });
+
+    await user.click(within(appearanceDialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "翻译外观 · Translation" }))
+      .not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "编辑Translation外观" }));
+    await user.click(screen.getByRole("button", { name: "完成" }));
+    expect(screen.queryByRole("dialog", { name: "翻译外观 · Translation" }))
+      .not.toBeInTheDocument();
   });
 });

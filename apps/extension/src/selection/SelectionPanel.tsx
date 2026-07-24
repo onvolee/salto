@@ -7,10 +7,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   useMemo,
   useRef,
+  type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
-  type CSSProperties,
-  type ReactNode,
   type RefObject,
 } from "react";
 
@@ -18,6 +17,10 @@ import { Button } from "salto-src/components/ui/button";
 import { ScrollArea } from "salto-src/components/ui/scroll-area";
 import { Skeleton } from "salto-src/components/ui/skeleton";
 import { parseCssDeclarations } from "salto-src/query-template/css-declarations";
+import {
+  TranslationFieldList,
+  TranslationFieldValue,
+} from "salto-src/query-template/translation-field-list";
 
 import { clampResizeSize, clampToViewport, getPanelSize, type Point, type Size } from "./positioning";
 import type {
@@ -319,7 +322,6 @@ export function SelectionPanel({
           </Button>
           <Button
             aria-label="Close panel"
-            autoFocus
             onClick={onClose}
             onPointerDown={preserveSelection}
             size="icon"
@@ -439,10 +441,10 @@ function TranslationResults({
     .map(({ id, content }) => ({ id, label: content.label }));
   if (translation.status === "loading") {
     return (
-      <TranslationFields
+      <TranslationFieldList
         fieldStyles={fieldStyles}
         schema={schema}
-        renderResult={() => (
+        renderValue={() => (
           <Skeleton className="salto-selection-panel__loading-field"></Skeleton>
         )}
       />
@@ -454,10 +456,10 @@ function TranslationResults({
         <p className="salto-selection-panel__status salto-selection-panel__status--error">
           {translation.message}
         </p>
-        <TranslationFields
+        <TranslationFieldList
           fieldStyles={fieldStyles}
           schema={schema}
-          renderResult={() => (
+          renderValue={() => (
             <span className="salto-selection-panel__error">
               Translation unavailable
             </span>
@@ -478,51 +480,24 @@ function TranslationResults({
     return <p className="salto-selection-panel__status">No results</p>;
   }
   return (
-    <TranslationFields
+    <TranslationFieldList
       fieldStyles={fieldStyles}
       schema={data.schema}
-      renderResult={(fieldId) =>
+      renderValue={(fieldId, valueStyle) =>
         renderFieldResult(
           results.get(fieldId),
           translation.status === "streaming",
+          valueStyle,
         )
       }
     />
   );
 }
 
-function TranslationFields({
-  fieldStyles,
-  schema,
-  renderResult,
-}: {
-  readonly fieldStyles: ReadonlyMap<string, {
-    readonly key: CSSProperties;
-    readonly value: CSSProperties;
-  }>;
-  readonly schema: readonly { readonly id: string; readonly label: string }[];
-  readonly renderResult: (fieldId: string) => ReactNode;
-}) {
-  return (
-    <div className="salto-selection-panel__results">
-      <dl>
-        {schema.map((field) => {
-          const styles = fieldStyles.get(field.id);
-          return (
-            <div className="salto-selection-panel__field" key={field.id}>
-              <dt style={styles?.key}>{field.label}</dt>
-              <dd style={styles?.value}>{renderResult(field.id)}</dd>
-            </div>
-          );
-        })}
-      </dl>
-    </div>
-  );
-}
-
 function renderFieldResult(
   result: QueryFieldResult | undefined,
   isStreaming: boolean = false,
+  valueStyle?: CSSProperties,
 ) {
   if (!result) {
     return isStreaming ? (
@@ -545,14 +520,5 @@ function renderFieldResult(
       </span>
     );
   }
-  if (result.type === "list") {
-    return (
-      <ul>
-        {result.value.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    );
-  }
-  return result.value;
+  return <TranslationFieldValue style={valueStyle} value={result.value} />;
 }

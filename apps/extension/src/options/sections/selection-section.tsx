@@ -8,6 +8,7 @@ import {
   Delete02Icon,
   DragDropVerticalIcon,
   FloppyDiskIcon,
+  InformationCircleIcon,
   PencilEdit02Icon,
   Refresh01Icon,
 } from "@hugeicons/core-free-icons";
@@ -29,6 +30,7 @@ import {
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -42,6 +44,11 @@ import {
   type TemplateFieldDefinitionInput,
 } from "@salto/core";
 
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "salto-src/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -99,6 +106,10 @@ import { Switch } from "salto-src/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "salto-src/components/ui/tabs";
 import { Textarea } from "salto-src/components/ui/textarea";
 import { parseCssDeclarations } from "salto-src/query-template/css-declarations";
+import {
+  TranslationFieldList,
+  TranslationFieldValue,
+} from "salto-src/query-template/translation-field-list";
 
 import type { useQueryTemplates } from "../hooks/use-query-templates";
 import type { useTemplateFieldDefinitions } from "../hooks/use-template-field-definitions";
@@ -470,36 +481,64 @@ function TemplatePreview({
   readonly fields: readonly TemplateFieldDraft[];
   readonly templateName: string;
 }) {
+  const enabledFields = useMemo(
+    () => fields.filter(({ enabled }) => enabled),
+    [fields],
+  );
+  const fieldsById = useMemo(
+    () => new Map(enabledFields.map((field) => [field.id, field])),
+    [enabledFields],
+  );
+  const fieldStyles = useMemo(
+    () => new Map(enabledFields.map((field) => [
+      field.id,
+      {
+        key: parseCssDeclarations(field.keyCss),
+        value: parseCssDeclarations(field.valueCss),
+      },
+    ])),
+    [enabledFields],
+  );
+
   return (
-    <div aria-label="当前模板预览" className="overflow-hidden rounded-md border bg-background">
-      <div className="relative flex min-h-11 items-center gap-2 border-b bg-muted/50 px-3 py-1.5">
-        <span aria-hidden="true" className="absolute left-1/2 h-1 w-8 -translate-x-1/2 bg-border" />
-        <p className="max-w-[45%] truncate text-xs font-medium">{templateName}</p>
-        <div className="ml-auto flex items-center gap-1">
-          <Button aria-label="重新生成模拟翻译" disabled size="icon-sm" type="button" variant="ghost">
+    <div
+      aria-label="当前模板预览"
+      className="h-[220px] overflow-hidden rounded-md border bg-background"
+    >
+      <div className="relative flex min-h-11 items-center gap-2 border-b bg-muted/50 py-1.5 pr-2 pl-3">
+        <span
+          aria-hidden="true"
+          className="absolute left-1/2 h-1 w-[34px] -translate-x-1/2 rounded-sm bg-border"
+        />
+        <p className="max-w-[138px] truncate text-xs font-semibold">{templateName}</p>
+        <div className="ml-auto flex items-center gap-0.5">
+          <Button aria-label="重新生成模拟翻译" disabled size="icon" type="button" variant="ghost">
             <HugeiconsIcon data-icon="inline-start" icon={Refresh01Icon} strokeWidth={2} />
           </Button>
-          <Button aria-label="保存模拟选词" disabled size="icon-sm" type="button" variant="ghost">
+          <Button aria-label="保存模拟选词" disabled size="icon" type="button" variant="ghost">
             <HugeiconsIcon data-icon="inline-start" icon={Bookmark01Icon} strokeWidth={2} />
           </Button>
-          <Button aria-label="关闭模拟面板" disabled size="icon-sm" type="button" variant="ghost">
+          <Button aria-label="关闭模拟面板" disabled size="icon" type="button" variant="ghost">
             <HugeiconsIcon data-icon="inline-start" icon={Cancel01Icon} strokeWidth={2} />
           </Button>
         </div>
       </div>
-      <div className="flex flex-col gap-3 p-3">
-        {fields.filter(({ enabled }) => enabled).map((field) => (
-          <div key={field.id}>
-            <div className="text-xs font-medium" style={parseCssDeclarations(field.keyCss)}>
-              {field.content.label}
-            </div>
-            <div className="mt-1 text-sm" style={parseCssDeclarations(field.valueCss)}>
-              {field.content.type === "list" ? (
-                <ul className="list-disc pl-5"><li>示例结果一</li><li>示例结果二</li></ul>
-              ) : "这是该字段的模拟翻译结果。"}
-            </div>
-          </div>
-        ))}
+      <div className="max-h-[175px] overflow-y-auto p-3">
+        <TranslationFieldList
+          fieldStyles={fieldStyles}
+          renderValue={(fieldId, valueStyle) => {
+            const field = fieldsById.get(fieldId);
+            return (
+              <TranslationFieldValue
+                style={valueStyle}
+                value={field?.content.type === "list"
+                  ? ["示例结果一", "示例结果二"]
+                  : "这是该字段的模拟翻译结果。"}
+              />
+            );
+          }}
+          schema={enabledFields.map(({ id, content }) => ({ id, label: content.label }))}
+        />
       </div>
     </div>
   );
@@ -525,51 +564,100 @@ function AppearanceDialog({
       }>
         <HugeiconsIcon data-icon="inline-start" icon={PencilEdit02Icon} strokeWidth={2} />
       </DialogTrigger>
-      <DialogContent className="max-h-[min(48rem,calc(100dvh-2rem))] sm:max-w-4xl lg:max-w-5xl">
-        <DialogHeader>
-          <DialogTitle>{field.content.label} 外观</DialogTitle>
-          <DialogDescription>样式保存在当前模板快照中，保存模板后才会持久化。</DialogDescription>
+      <DialogContent
+        className="h-[min(606px,calc(100dvh-2rem))] max-h-[calc(100dvh-2rem)] max-w-[760px] rounded-md"
+        showCloseButton={false}
+        style={{
+          "--primary": "var(--salto-primary)",
+          "--primary-foreground": "var(--salto-primary-foreground)",
+          "--ring": "var(--salto-ring)",
+        } as CSSProperties}
+      >
+        <DialogHeader className="flex-row items-center gap-3 border-b-0 p-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <DialogTitle>翻译外观 · {field.content.label}</DialogTitle>
+            <DialogDescription>
+              调整当前模板字段的标签和值样式；修改会保留在模板草稿中。
+            </DialogDescription>
+          </div>
+          <DialogClose
+            render={(
+              <Button aria-label="关闭外观编辑器" size="icon-lg" type="button" variant="ghost" />
+            )}
+          >
+            <HugeiconsIcon aria-hidden="true" data-icon="inline-start" icon={Cancel01Icon} strokeWidth={2} />
+          </DialogClose>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] lg:items-start">
-            <FieldGroup className="gap-5">
-              <Field>
-                <FieldLabel htmlFor={`${field.id}-key-css`}>Key CSS</FieldLabel>
-                <Textarea
-                  className="min-h-40 font-mono"
-                  id={`${field.id}-key-css`}
-                  onChange={(event) => onUpdate(field.id, { keyCss: event.target.value })}
-                  placeholder="font-weight: 600; color: #111827;"
-                  rows={9}
-                  value={field.keyCss}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor={`${field.id}-value-css`}>Value CSS</FieldLabel>
-                <Textarea
-                  className="min-h-40 font-mono"
-                  id={`${field.id}-value-css`}
-                  onChange={(event) => onUpdate(field.id, { valueCss: event.target.value })}
-                  placeholder="line-height: 1.7;"
-                  rows={9}
-                  value={field.valueCss}
-                />
-              </Field>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <div className="grid min-h-full gap-5 md:grid-cols-[minmax(0,336px)_minmax(0,1fr)] md:items-start">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-0.5">
+                <h3 className="text-xs font-semibold">字段样式</h3>
+                <p className="text-[0.625rem]/relaxed text-muted-foreground">
+                  使用标准 CSS 声明块分别控制标签和值。
+                </p>
+              </div>
+              <FieldGroup className="gap-3">
+                <Field>
+                  <FieldLabel htmlFor={`${field.id}-key-css`}>Key CSS</FieldLabel>
+                  <Textarea
+                    className="h-[122px] min-h-[122px] max-h-[122px]"
+                    id={`${field.id}-key-css`}
+                    onChange={(event) => onUpdate(field.id, { keyCss: event.target.value })}
+                    placeholder={"font-weight: 600;\ncolor: #19191F;"}
+                    rows={6}
+                    spellCheck={false}
+                    value={field.keyCss}
+                    variant="code"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`${field.id}-value-css`}>Value CSS</FieldLabel>
+                  <Textarea
+                    className="h-[122px] min-h-[122px] max-h-[122px]"
+                    id={`${field.id}-value-css`}
+                    onChange={(event) => onUpdate(field.id, { valueCss: event.target.value })}
+                    placeholder={"line-height: 1.7;\ncolor: #454550;"}
+                    rows={6}
+                    spellCheck={false}
+                    value={field.valueCss}
+                    variant="code"
+                  />
+                </Field>
+              </FieldGroup>
+              <Alert role="note" variant="muted">
+                <HugeiconsIcon aria-hidden="true" icon={InformationCircleIcon} strokeWidth={2} />
+                <AlertTitle className="sr-only">CSS 声明说明</AlertTitle>
+                <AlertDescription>无效声明会被忽略，不影响其他字段。</AlertDescription>
+              </Alert>
               <Button
+                className="self-start"
                 onClick={() => onUpdate(field.id, { keyCss: "", valueCss: "" })}
                 type="button"
                 variant="outline"
               >
-                <HugeiconsIcon data-icon="inline-start" icon={Refresh01Icon} strokeWidth={2} />
                 重置当前字段样式
               </Button>
-            </FieldGroup>
-            <div className="min-w-0 lg:sticky lg:top-0">
+            </div>
+            <div className="flex min-w-0 flex-col gap-2 md:sticky md:top-0">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-xs font-semibold">实时预览</h3>
+                <p className="text-[0.625rem]/relaxed text-muted-foreground">模拟结果 · 无需请求翻译</p>
+              </div>
               <TemplatePreview fields={fields} templateName={templateName} />
+              <p className="text-[0.625rem]/relaxed text-muted-foreground">
+                默认面板尺寸 360 × 220 · 内容区域可滚动
+              </p>
             </div>
           </div>
         </div>
-        <DialogFooter><DialogClose render={<Button type="button" />}>完成</DialogClose></DialogFooter>
+        <DialogFooter className="flex-wrap justify-between px-4 py-3">
+          <p className="text-[0.625rem]/relaxed text-muted-foreground">更改保留在模板草稿中</p>
+          <div className="flex items-center gap-2">
+            <DialogClose render={<Button type="button" variant="outline" />}>取消</DialogClose>
+            <DialogClose render={<Button type="button" />}>完成</DialogClose>
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

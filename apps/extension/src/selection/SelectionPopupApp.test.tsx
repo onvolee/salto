@@ -201,7 +201,7 @@ describe("SelectionPopupApp", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows a trigger for a valid selection and opens only on click", async () => {
+  it("shows a trigger for a valid selection and opens without moving focus into the panel", async () => {
     render(<SelectionPopupApp />);
     selectText(0, 10);
 
@@ -215,8 +215,9 @@ describe("SelectionPopupApp", () => {
     await user.click(trigger);
 
     expect(trigger).not.toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Selection panel for unfamiliar" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close panel" })).toHaveFocus();
+    const panel = screen.getByRole("dialog", { name: "Selection panel for unfamiliar" });
+    expect(panel).toBeInTheDocument();
+    expect(panel.contains(document.activeElement)).toBe(false);
   });
 
   it("opens from the browser command only for a valid selection", async () => {
@@ -243,9 +244,9 @@ describe("SelectionPopupApp", () => {
     selectText(0, 10);
     act(() => openFromCommand?.());
 
-    expect(screen.getByRole("dialog", { name: "Selection panel for unfamiliar" }))
-      .toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Close panel" })).toHaveFocus();
+    const panel = screen.getByRole("dialog", { name: "Selection panel for unfamiliar" });
+    expect(panel).toBeInTheDocument();
+    expect(panel.contains(document.activeElement)).toBe(false);
   });
 
   it("contains Tab focus inside the open panel", async () => {
@@ -261,6 +262,9 @@ describe("SelectionPopupApp", () => {
     const user = userEvent.setup();
     const close = screen.getByRole("button", { name: "Close panel" });
     const regenerate = screen.getByRole("button", { name: "Regenerate translation" });
+    expect(close).not.toHaveFocus();
+
+    close.focus();
     expect(close).toHaveFocus();
 
     await user.tab();

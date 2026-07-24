@@ -1,0 +1,25 @@
+.salto-translation-field-list dl {
+  margin: 0;
+}
+
+.salto-translation-field-list__field + .salto-translation-field-list__field {
+  margin-top: 10px;
+}
+
+.salto-translation-field-list__field dt {
+  color: var(--salto-muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.625;
+}
+
+.salto-translation-field-list__field dd,
+.salto-translation-field-list__field ul {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.salto-translation-field-list__items {
+  list-style: none;
+}
