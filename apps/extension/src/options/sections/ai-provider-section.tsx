@@ -81,7 +81,7 @@ export function AiProviderSection({
   const connectionStatusClassName = cn(
     "flex items-center gap-1.5 text-xs",
     connectionStatus.status === "error" && "text-destructive",
-    connectionStatus.status === "success" && "text-success",
+    connectionStatus.status === "success" && "text-salto-success",
     connectionStatus.status !== "error"
       && connectionStatus.status !== "success"
       && "text-muted-foreground",

@@ -1,4 +1,16 @@
 /* Linear runtime colors mapped to Salto's semantic theme contract. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    &:where([data-theme="system"], [data-theme="system"] *) {
+      @slot;
+    }
+  }
+}
+
 :where(:root, .salto-theme-scope) {
   --linear-color-bg-primary: lch(98.94% 0.5 282);
   --linear-color-bg-quaternary: lch(96.94% 0.5 282 / 1);

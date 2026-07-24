@@ -143,7 +143,7 @@ describe("OptionsApp", () => {
     await waitFor(() => {
       const status = screen.getByRole("status");
       expect(status).toHaveTextContent("已保存");
-      expect(status).toHaveClass("text-success");
+      expect(status).toHaveClass("text-salto-success");
     });
 
     expect(saveSettings).toHaveBeenCalledWith({
@@ -237,7 +237,7 @@ describe("OptionsApp", () => {
       const statusElements = screen.getAllByText("连接成功");
       const pStatus = statusElements.find(el => el.closest("p"));
       expect(pStatus).toBeInTheDocument();
-      expect(pStatus?.closest("p")).toHaveClass("text-success");
+      expect(pStatus?.closest("p")).toHaveClass("text-salto-success");
     });
   });
 
