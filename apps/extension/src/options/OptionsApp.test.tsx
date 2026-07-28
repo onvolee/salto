@@ -80,7 +80,7 @@ describe("OptionsApp", () => {
     await user.click(selectionMenu);
     expect(selectionMenu).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "添加字段" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "复制" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "复制当前模板" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "通用" }));
     await user.click(screen.getByRole("button", { name: "划词翻译" }));
@@ -93,13 +93,13 @@ describe("OptionsApp", () => {
 
     await screen.findByRole("heading", { name: "通用" });
     await user.click(screen.getByRole("button", { name: "划词翻译" }));
-    expect(screen.getByRole("tab", { name: "Templates" })).toHaveAttribute("aria-selected", "true");
-    await user.click(screen.getByRole("tab", { name: "Template fields" }));
+    expect(screen.getByRole("tab", { name: "翻译模板" })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: "模板字段" }));
     expect(window.location.hash).toBe("#/translate-template/fields");
     expect(await screen.findByRole("button", { name: "新建字段定义" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "新建字段定义" }));
-    expect(screen.getByRole("dialog", { name: "新建字段定义" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "新建字段" })).toBeInTheDocument();
     expect(screen.getByLabelText("字段名称")).toBeInTheDocument();
     expect(screen.getByLabelText("Instruction")).toBeInTheDocument();
   });
@@ -117,7 +117,7 @@ describe("OptionsApp", () => {
     await user.click(add);
     await user.click(add);
 
-    expect(screen.getAllByText("Translation")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "编辑Translation外观" })).toHaveLength(2);
     expect(screen.queryByLabelText("Instruction")).not.toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: "编辑Translation外观" })[0]);
     expect(screen.getByLabelText("Key CSS")).toBeInTheDocument();
