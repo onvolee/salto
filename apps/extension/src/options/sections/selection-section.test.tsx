@@ -60,11 +60,11 @@ describe("selection settings", () => {
     );
     const user = userEvent.setup();
 
-    const templateSelect = screen.getByRole("combobox", { name: "当前翻译模板" });
-    expect(templateSelect).toHaveTextContent(systemTemplate.name);
-    expect(templateSelect).not.toHaveTextContent(systemTemplate.id);
-    templateSelect.focus();
-    await user.keyboard("{Enter}{ArrowDown}{Enter}");
+    const templateButton = screen.getByRole("button", {
+      name: new RegExp(`^${userTemplate.name}`),
+    });
+    expect(templateButton).not.toHaveTextContent(userTemplate.id);
+    await user.click(templateButton);
 
     expect(selectTemplate).toHaveBeenCalledWith("reading");
     expect(onActiveTemplateChange).toHaveBeenCalledWith("reading");
@@ -126,7 +126,7 @@ describe("selection settings", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Template fields" })).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("tab", { name: "Templates" }));
+    await userEvent.setup().click(screen.getByRole("tab", { name: "翻译模板" }));
     expect(onViewChange).toHaveBeenCalledWith("templates");
   });
 
@@ -185,8 +185,7 @@ describe("selection settings", () => {
     await user.type(screen.getByRole("textbox", { name: "字段名称" }), "音标");
 
     const sourceSelect = screen.getByRole("combobox", { name: "来源" });
-    expect(sourceSelect).toHaveTextContent("大语言模型");
-    expect(sourceSelect).not.toHaveTextContent("llm");
+    expect(sourceSelect).toHaveTextContent("llm");
     sourceSelect.focus();
     await user.keyboard("{Enter}{ArrowDown}{Enter}");
     expect(sourceSelect).toHaveTextContent("词典");

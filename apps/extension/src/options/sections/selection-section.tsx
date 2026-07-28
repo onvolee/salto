@@ -9,6 +9,7 @@ import {
   DragDropVerticalIcon,
   FloppyDiskIcon,
   InformationCircleIcon,
+  PaintBrush01Icon,
   PencilEdit02Icon,
   Refresh01Icon,
 } from "@hugeicons/core-free-icons";
@@ -67,7 +68,6 @@ import {
   CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "salto-src/components/ui/card";
@@ -373,15 +373,17 @@ function DefinitionDialog({
                   role="group"
                 >
                   {PROMPT_CONTEXT_VARIABLES.map((variable) => (
-                    <Badge
+                    <Button
                       aria-label={`插入 {{${variable}}}`}
-                      className="font-mono cursor-pointer"
+                      className="font-mono"
                       key={variable}
                       onClick={() => insertInstructionVariable(variable)}
+                      size="xs"
+                      type="button"
                       variant="outline"
                     >
                       {`{{${variable}}}`}
-                    </Badge>
+                    </Button>
                   ))}
                 </div>
                 <FieldError>{instructionError}</FieldError>
@@ -560,9 +562,9 @@ function AppearanceDialog({
   return (
     <Dialog>
       <DialogTrigger render={
-        <Button aria-label={`编辑${field.content.label}外观`} disabled={disabled} size="icon-sm" type="button" variant="ghost" />
+        <Button aria-label={`编辑${field.content.label}外观`} disabled={disabled} size="icon-sm" type="button" variant="outline" />
       }>
-        <HugeiconsIcon data-icon="inline-start" icon={PencilEdit02Icon} strokeWidth={2} />
+        <HugeiconsIcon data-icon="inline-start" icon={PaintBrush01Icon} strokeWidth={2} />
       </DialogTrigger>
       <DialogContent
         className="h-[min(606px,calc(100dvh-2rem))] max-h-[calc(100dvh-2rem)] max-w-[760px] rounded-md"
@@ -691,11 +693,11 @@ function SortableField({
   return (
     <Card
       ref={sortable.setNodeRef}
-      size="sm"
+      className="rounded-lg py-0 shadow-none"
       style={{ transform, transition: sortable.transition } as CSSProperties}
     >
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+      <CardContent className="flex min-h-14 items-center justify-between gap-3 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           <button
             {...sortable.attributes}
             {...sortable.listeners}
@@ -704,10 +706,14 @@ function SortableField({
             disabled={disabled}
             type="button"
           ><HugeiconsIcon icon={DragDropVerticalIcon} strokeWidth={2} /></button>
-          {field.content.label}
-        </CardTitle>
-        <CardDescription>{field.content.description || (field.content.source === "llm" ? "LLM 字段快照" : "词典字段快照")}</CardDescription>
-        <CardAction className="flex items-center gap-1">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium">{field.content.label}</p>
+            <p className="truncate text-[0.625rem] text-muted-foreground">
+              {field.content.description || (field.content.source === "llm" ? "LLM 字段快照" : "词典字段快照")}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
           <AppearanceDialog
             disabled={disabled}
             field={field}
@@ -717,6 +723,7 @@ function SortableField({
           />
           <Button
             aria-label={`上移${field.content.label}`}
+            className="sr-only"
             disabled={disabled || index === 0}
             onClick={() => onMove(index, index - 1)}
             size="icon-sm"
@@ -725,12 +732,19 @@ function SortableField({
           ><HugeiconsIcon data-icon="inline-start" icon={ArrowUp01Icon} strokeWidth={2} /></Button>
           <Button
             aria-label={`下移${field.content.label}`}
+            className="sr-only"
             disabled={disabled || index === fields.length - 1}
             onClick={() => onMove(index, index + 1)}
             size="icon-sm"
             type="button"
             variant="ghost"
           ><HugeiconsIcon data-icon="inline-start" icon={ArrowDown01Icon} strokeWidth={2} /></Button>
+          <Switch
+            aria-label={`${field.enabled ? "停用" : "启用"}${field.content.label}`}
+            checked={field.enabled}
+            disabled={disabled}
+            onCheckedChange={() => onToggle(field.id)}
+          />
           <Button
             aria-label={`移除${field.content.label}`}
             disabled={disabled}
@@ -739,20 +753,8 @@ function SortableField({
             type="button"
             variant="destructive"
           ><HugeiconsIcon data-icon="inline-start" icon={Delete02Icon} strokeWidth={2} /></Button>
-        </CardAction>
-      </CardHeader>
-      <CardFooter className="justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">{field.content.source === "llm" ? "LLM" : "词典"}</Badge>
-          <Badge variant="outline">{field.content.type === "list" ? "列表" : "文本"}</Badge>
         </div>
-        <Switch
-          aria-label={`${field.enabled ? "停用" : "启用"}${field.content.label}`}
-          checked={field.enabled}
-          disabled={disabled}
-          onCheckedChange={() => onToggle(field.id)}
-        />
-      </CardFooter>
+      </CardContent>
     </Card>
   );
 }
@@ -805,6 +807,8 @@ function TemplateComposer({
   const draft = editor.draft;
   const readOnly = editor.isSystemTemplate;
   const busy = editor.status === "saving";
+  const activeTemplate = editor.templates.find(({ id }) => id === activeTemplateId);
+  const activeFieldCount = activeTemplate?.fields.filter(({ enabled }) => enabled).length ?? 0;
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!draft || !over || active.id === over.id) return;
@@ -814,119 +818,167 @@ function TemplateComposer({
   };
 
   return (
-    <section aria-label="划词翻译模板" className="flex flex-col gap-5 py-5">
-      <div className="flex flex-wrap items-end gap-2">
-        <Field className="min-w-56 flex-1">
-          <FieldLabel htmlFor="query-template">当前模板</FieldLabel>
-          <Select
-            items={editor.templates.map(({ id, name }) => ({ label: name, value: id }))}
-            onValueChange={(value) => {
-              if (!value) return;
-              editor.selectTemplate(value);
-              onActiveTemplateChange(value);
-            }}
-            value={editor.selectedTemplateId ?? activeTemplateId}
-          >
-            <SelectTrigger aria-label="当前翻译模板" className="w-full" id="query-template"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectGroup>
-              {editor.templates.map((template) => (
-                <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>
-              ))}
-            </SelectGroup></SelectContent>
-          </Select>
-        </Field>
-        <Button onClick={editor.startNewTemplate} type="button" variant="outline">
-          <HugeiconsIcon data-icon="inline-start" icon={Add01Icon} strokeWidth={2} />新建模板
-        </Button>
-        {editor.selectedTemplateId ? (
-          <Button onClick={() => void editor.copyTemplate(editor.selectedTemplateId!)} type="button" variant="outline">
-            <HugeiconsIcon data-icon="inline-start" icon={Copy01Icon} strokeWidth={2} />复制
-          </Button>
-        ) : null}
+    <section aria-label="划词翻译模板" className="flex flex-col gap-3 py-5">
+      <div className="flex items-center justify-between gap-3 rounded-md border bg-salto-surface-subtle px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-salto-primary" />
+          <p className="truncate text-xs font-medium">当前生效模板：{activeTemplate?.name ?? "未选择"}</p>
+        </div>
+        <p className="shrink-0 text-[0.625rem] text-muted-foreground">{activeFieldCount} 个启用字段</p>
       </div>
 
-      {draft ? (
-        <>
-          <Field data-disabled={readOnly} data-invalid={Boolean(editor.errors.name)}>
-            <FieldLabel htmlFor="query-template-name">模板名称</FieldLabel>
-            <Input
-              aria-invalid={Boolean(editor.errors.name)}
-              disabled={readOnly}
-              id="query-template-name"
-              onChange={(event) => editor.updateDraft((current) => ({ ...current, name: event.target.value }))}
-              value={draft.name}
-            />
-            <FieldError>{editor.errors.name}</FieldError>
-          </Field>
+      <div className="grid min-h-[34rem] gap-3 lg:grid-cols-[13.75rem_minmax(0,1fr)]">
+        <aside aria-label="模板列表" className="flex min-h-0 flex-col rounded-lg border bg-salto-surface-subtle p-3">
+          <div className="flex items-center justify-between gap-2 pb-2">
+            <h3 className="text-xs font-semibold">模板</h3>
+            <span className="text-[0.625rem] text-muted-foreground">{editor.templates.length}</span>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+            {editor.templates.map((template) => {
+              const selected = template.id === editor.selectedTemplateId;
+              const summary = template.fields
+                .filter(({ enabled }) => enabled)
+                .map(({ content }) => content.label)
+                .join(" · ");
+              return (
+                <button
+                  aria-pressed={selected}
+                  className={`flex min-h-13 flex-col gap-1 rounded-md px-2 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${selected
+                    ? "border border-border bg-background"
+                    : "hover:bg-background/60"}`}
+                  key={template.id}
+                  onClick={() => {
+                    editor.selectTemplate(template.id);
+                    onActiveTemplateChange(template.id);
+                  }}
+                  type="button"
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-medium">{template.name}</span>
+                    {template.id === "system-default" ? <span className="text-[0.5625rem] font-semibold text-muted-foreground">系统</span> : null}
+                    {template.id === activeTemplateId && template.id !== "system-default" ? <span className="text-[0.5625rem] font-semibold text-salto-primary">生效</span> : null}
+                  </span>
+                  <span className="truncate text-[0.625rem] text-muted-foreground">{summary || "尚未添加字段"}</span>
+                </button>
+              );
+            })}
+          </div>
+          <Button
+            className="mt-3 w-full"
+            disabled={!editor.selectedTemplateId || busy}
+            onClick={() => editor.selectedTemplateId && void editor.copyTemplate(editor.selectedTemplateId)}
+            type="button"
+            variant="outline"
+          >
+            <HugeiconsIcon data-icon="inline-start" icon={Copy01Icon} strokeWidth={2} />复制当前模板
+          </Button>
+        </aside>
 
-          <div className="flex flex-wrap items-end gap-2">
-            <Field className="min-w-56 flex-1" data-disabled={readOnly}>
-              <FieldLabel htmlFor="template-field-definition">添加字段快照</FieldLabel>
-              <Select
-                items={definitions.map(({ id, label }) => ({ label, value: id }))}
-                onValueChange={setDefinitionId}
-                value={definitionId}
-              >
-                <SelectTrigger className="w-full" disabled={readOnly} id="template-field-definition"><SelectValue placeholder="选择字段定义" /></SelectTrigger>
-                <SelectContent><SelectGroup>
-                  {definitions.map((definition) => (
-                    <SelectItem key={definition.id} value={definition.id}>{definition.label}</SelectItem>
-                  ))}
-                </SelectGroup></SelectContent>
-              </Select>
-            </Field>
-            <Button
-              disabled={readOnly || !definitionId}
-              onClick={() => {
-                const definition = definitions.find(({ id }) => id === definitionId);
-                if (definition) editor.addField(definition);
-              }}
-              type="button"
-            >
-              <HugeiconsIcon data-icon="inline-start" icon={Add01Icon} strokeWidth={2} />添加字段
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">模板编排</h3>
+              <p className="mt-0.5 text-[0.625rem] text-muted-foreground">从字段库选择已定义字段；模板只管理顺序、启用状态与独立外观。</p>
+            </div>
+            <Button disabled={busy} onClick={editor.startNewTemplate} type="button" variant="outline">
+              <HugeiconsIcon data-icon="inline-start" icon={Add01Icon} strokeWidth={2} />新建模板
             </Button>
           </div>
 
-          {editor.errors.fields ? <p className="text-xs text-destructive" role="alert">{editor.errors.fields}</p> : null}
-          {draft.fields.length === 0 ? (
-            <Empty className="border">
-              <EmptyHeader>
-                <EmptyDescription>从字段库选择一个字段定义开始编排。</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
-            <DndContext onDragEnd={handleDragEnd} sensors={sensors}>
-              <SortableContext items={draft.fields.map(({ id }) => id)} strategy={verticalListSortingStrategy}>
-                <div className="flex flex-col gap-3">
-                  {draft.fields.map((field, index) => (
-                    <SortableField
+          {draft ? (
+            <>
+              <div className="rounded-lg border bg-salto-surface-subtle p-3">
+                <div className="flex flex-wrap items-end gap-2">
+                  <Field className="min-w-48 flex-1" data-disabled={readOnly} data-invalid={Boolean(editor.errors.name)}>
+                    <FieldLabel htmlFor="query-template-name">模板名称</FieldLabel>
+                    <Input
+                      aria-invalid={Boolean(editor.errors.name)}
                       disabled={readOnly}
-                      field={field}
-                      fields={draft.fields}
-                      index={index}
-                      key={field.id}
-                      templateName={draft.name}
-                      onMove={editor.moveField}
-                      onRemove={editor.removeField}
-                      onToggle={editor.toggleField}
-                      onUpdate={editor.updateField}
+                      id="query-template-name"
+                      onChange={(event) => editor.updateDraft((current) => ({ ...current, name: event.target.value }))}
+                      value={draft.name}
                     />
-                  ))}
+                    <FieldError>{editor.errors.name}</FieldError>
+                  </Field>
+                  <Button disabled={readOnly || busy} onClick={() => void editor.saveDraft()} type="button">
+                    <HugeiconsIcon data-icon="inline-start" icon={FloppyDiskIcon} strokeWidth={2} />保存
+                  </Button>
                 </div>
-              </SortableContext>
-            </DndContext>
-          )}
+              </div>
 
-          {editor.message ? <p className="text-xs text-muted-foreground" role="status">{editor.message}</p> : null}
-          <div className="flex flex-wrap justify-end gap-2">
-            {!readOnly ? <Button onClick={editor.cancelDraft} type="button" variant="outline">取消更改</Button> : null}
-            {!readOnly ? <DeleteTemplateDialog editor={editor} /> : null}
-            <Button disabled={readOnly || busy} onClick={() => void editor.saveDraft()} type="button">
-              <HugeiconsIcon data-icon="inline-start" icon={FloppyDiskIcon} strokeWidth={2} />保存模板
-            </Button>
-          </div>
-        </>
-      ) : null}
+              <div className="flex flex-wrap items-end gap-2">
+                <Field className="min-w-52 flex-1" data-disabled={readOnly}>
+                  <FieldLabel htmlFor="template-field-definition">添加字段快照</FieldLabel>
+                  <Select
+                    items={definitions.map(({ id, label }) => ({ label, value: id }))}
+                    onValueChange={setDefinitionId}
+                    value={definitionId}
+                  >
+                    <SelectTrigger className="w-full" disabled={readOnly} id="template-field-definition"><SelectValue placeholder="选择字段定义" /></SelectTrigger>
+                    <SelectContent><SelectGroup>
+                      {definitions.map((definition) => (
+                        <SelectItem key={definition.id} value={definition.id}>{definition.label}</SelectItem>
+                      ))}
+                    </SelectGroup></SelectContent>
+                  </Select>
+                </Field>
+                <Button
+                  disabled={readOnly || !definitionId}
+                  onClick={() => {
+                    const definition = definitions.find(({ id }) => id === definitionId);
+                    if (definition) editor.addField(definition);
+                  }}
+                  type="button"
+                >
+                  <HugeiconsIcon data-icon="inline-start" icon={Add01Icon} strokeWidth={2} />添加字段
+                </Button>
+              </div>
+
+              {editor.errors.fields ? <p className="text-xs text-destructive" role="alert">{editor.errors.fields}</p> : null}
+              {draft.fields.length === 0 ? (
+                <Empty className="border">
+                  <EmptyHeader>
+                    <EmptyDescription>从字段库选择一个字段定义开始编排。</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : (
+                <DndContext onDragEnd={handleDragEnd} sensors={sensors}>
+                  <SortableContext items={draft.fields.map(({ id }) => id)} strategy={verticalListSortingStrategy}>
+                    <div className="flex flex-col gap-2">
+                      {draft.fields.map((field, index) => (
+                        <SortableField
+                          disabled={readOnly}
+                          field={field}
+                          fields={draft.fields}
+                          index={index}
+                          key={field.id}
+                          templateName={draft.name}
+                          onMove={editor.moveField}
+                          onRemove={editor.removeField}
+                          onToggle={editor.toggleField}
+                          onUpdate={editor.updateField}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              )}
+
+              <div className="rounded-md bg-salto-surface-subtle px-2.5 py-2 text-[0.625rem] text-muted-foreground">
+                <HugeiconsIcon aria-hidden="true" className="mr-1 inline-block align-text-bottom" icon={InformationCircleIcon} size={13} strokeWidth={2} />
+                同一个字段定义可以重复添加；每次都会生成独立快照。
+              </div>
+              {editor.message ? <p className="text-xs text-muted-foreground" role="status">{editor.message}</p> : null}
+              {!readOnly ? (
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button onClick={editor.cancelDraft} type="button" variant="outline">取消更改</Button>
+                  <DeleteTemplateDialog editor={editor} />
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 }
