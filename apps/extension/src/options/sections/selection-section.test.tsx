@@ -10,6 +10,7 @@ import {
   createDefaultQueryTemplate,
   createDefaultTemplateFieldDefinitions,
   PROMPT_CONTEXT_VARIABLES,
+  type QueryTemplate,
 } from "@salto/core";
 
 import type { useQueryTemplates } from "../hooks/use-query-templates";
@@ -182,7 +183,7 @@ describe("selection settings", () => {
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("button", { name: "新建字段定义" }));
-    await user.type(screen.getByRole("textbox", { name: "字段名称" }), "音标");
+    await user.type(screen.getByRole("textbox", { name: "字段名称" }), "例句");
 
     const sourceSelect = screen.getByRole("combobox", { name: "来源" });
     expect(sourceSelect).toHaveTextContent("llm");
@@ -192,31 +193,46 @@ describe("selection settings", () => {
     expect(sourceSelect).not.toHaveTextContent("dictionary");
 
     const dictionaryFieldSelect = screen.getByRole("combobox", { name: "词典字段" });
-    expect(dictionaryFieldSelect).toHaveTextContent("释义");
-    expect(dictionaryFieldSelect).not.toHaveTextContent("meaning");
-    dictionaryFieldSelect.focus();
-    await user.keyboard("{Enter}{Home}{Enter}");
-    expect(dictionaryFieldSelect).toHaveTextContent("音标");
-    expect(dictionaryFieldSelect).not.toHaveTextContent("phonetic");
+    expect(dictionaryFieldSelect).toHaveTextContent("翻译");
+    await user.click(dictionaryFieldSelect);
+    for (const label of ["翻译", "基础释义", "音标", "词性", "同义词", "词形", "例句"]) {
+      expect(screen.getByRole("option", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("option", { name: "释义" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "例句" }));
+    expect(dictionaryFieldSelect).toHaveTextContent("例句");
+    expect(dictionaryFieldSelect).not.toHaveTextContent("examples");
 
     await user.click(screen.getByRole("button", { name: "保存" }));
     expect(definitions.createDefinition).toHaveBeenCalledWith({
-      dictionaryField: "phonetic",
-      label: "音标",
+      dictionaryField: "examples",
+      label: "例句",
       source: "dictionary",
-      type: "text",
+      type: "examples",
     });
   });
 
   it("reorders snapshots with keyboard controls and edits appearance in the draft", async () => {
     const systemTemplate = createDefaultQueryTemplate("2026-07-19T00:00:00.000Z");
-    const userTemplate = {
+    const userTemplate: QueryTemplate = {
       ...systemTemplate,
       id: "reading",
       name: "Reading",
       fields: [
         { ...systemTemplate.fields[0], id: "translation", content: { ...systemTemplate.fields[0].content, label: "Translation" }, order: 0 },
         { ...systemTemplate.fields[0], id: "context", content: { ...systemTemplate.fields[0].content, label: "Context" }, order: 1 },
+        {
+          id: "examples",
+          definitionId: "definition-examples",
+          content: {
+            label: "例句",
+            source: "dictionary",
+            dictionaryField: "examples",
+            type: "examples",
+          },
+          order: 2,
+          enabled: true,
+        },
       ],
     };
     const moveField = vi.fn();
@@ -256,6 +272,9 @@ describe("selection settings", () => {
     );
     const user = userEvent.setup();
 
+    expect(screen.queryByRole("button", { name: "编辑例句外观" }))
+      .not.toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: "下移Translation" }));
     expect(moveField).toHaveBeenCalledWith(0, 1);
 
@@ -273,6 +292,9 @@ describe("selection settings", () => {
     const preview = screen.getByLabelText("当前模板预览");
     expect(preview).toHaveTextContent("Reading");
     expect(preview).toHaveTextContent("Context");
+    expect(within(preview).getByText("Let me give you an example.")).toHaveAttribute("lang", "en");
+    expect(within(preview).getByText("让我来举一个例子吧。")).toHaveAttribute("lang", "zh-CN");
+    expect(within(preview).getByText("《牛津词典》")).toBeInTheDocument();
     expect(within(preview).getByRole("button", { name: "重新生成模拟翻译" }))
       .toBeDisabled();
     fireEvent.change(screen.getByLabelText("Key CSS"), {

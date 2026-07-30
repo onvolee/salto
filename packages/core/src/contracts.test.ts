@@ -3,6 +3,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   DEFAULT_EXTENSION_SETTINGS,
   DICTIONARY_FIELD_TYPES,
+  DICTIONARY_QUERY_FIELD_TYPES,
   createTemplateFieldSnapshot,
   createDefaultQueryTemplate,
   createDefaultTemplateFieldDefinitions,
@@ -52,21 +53,32 @@ describe("@salto/core public contract", () => {
     expectTypeOf<LearningCard>().toHaveProperty("cardType").toEqualTypeOf<"meaning-recall">();
   });
 
-  it("uses the dictionary contract as the query-template field source", () => {
+  it("exposes the seven dictionary fields available to query templates", () => {
     expect(DICTIONARY_FIELD_TYPES).toEqual({
+      basicDefinition: "text",
       phonetic: "text",
       partOfSpeech: "text",
       meaning: "text",
       synonyms: "list",
-      wordForms: "list"
+      wordForms: "list",
+      examples: "examples",
     });
-    expectTypeOf<DictionaryQueryField>().toEqualTypeOf<DictionaryFieldKey>();
+    expect(DICTIONARY_QUERY_FIELD_TYPES).toEqual({
+      translation: "text",
+      basicDefinition: "text",
+      phonetic: "text",
+      partOfSpeech: "text",
+      synonyms: "list",
+      wordForms: "list",
+      examples: "examples",
+    });
+    expectTypeOf<DictionaryFieldKey>().toMatchTypeOf<DictionaryQueryField>();
     expectTypeOf<DictionaryQueryFieldSpec>()
-      .toEqualTypeOf<typeof DICTIONARY_FIELD_TYPES>();
+      .toEqualTypeOf<typeof DICTIONARY_QUERY_FIELD_TYPES>();
   });
 
   it("freezes query result and prompt context shapes", () => {
-    expectTypeOf<QuerySchemaFieldType>().toEqualTypeOf<"text" | "list">();
+    expectTypeOf<QuerySchemaFieldType>().toEqualTypeOf<"text" | "list" | "examples">();
     expectTypeOf<PromptContext>().toEqualTypeOf<{
       readonly selection: string;
       readonly sentence: string;
@@ -80,11 +92,18 @@ describe("@salto/core public contract", () => {
     const results: readonly QueryFieldResult[] = [
       { fieldId: "translation", status: "ready", type: "text", value: "陌生的" },
       { fieldId: "notes", status: "ready", type: "list", value: ["adjective"] },
+      {
+        fieldId: "examples",
+        status: "ready",
+        type: "examples",
+        value: [{ english: "An example helps.", chinese: "例子会有帮助。", source: "词典" }],
+      },
       { fieldId: "phonetic", status: "unavailable", reason: "not-found" },
       { fieldId: "meaning", status: "failed", error: { code: "provider-error", message: "Unavailable" } }
     ];
 
     expect(results.map((result) => result.status)).toEqual([
+      "ready",
       "ready",
       "ready",
       "unavailable",
@@ -107,24 +126,28 @@ describe("@salto/core public contract", () => {
     expect(createDefaultTemplateFieldDefinitions("2026-07-16T00:00:00.000Z")).toEqual([
       {
         id: "system-field:translation",
-        label: "Translation",
-        source: "llm",
+        label: "翻译",
+        source: "dictionary",
         type: "text",
-        instruction:
-          "Translate {{selection}} into {{targetLanguage}}. " +
-          "Use {{sentence}} only when needed for disambiguation. " +
-          "Return only the translation.",
+        dictionaryField: "translation",
         createdAt: "2026-07-16T00:00:00.000Z",
         updatedAt: "2026-07-16T00:00:00.000Z",
       },
       {
-        id: "system-field:key-points",
-        label: "Key points",
-        source: "llm",
-        type: "list",
-        instruction:
-          "List the key meanings or usage notes for {{selection}} in " +
-          "{{sentence}}. Write each item in {{targetLanguage}}.",
+        id: "system-field:phonetic",
+        label: "音标",
+        source: "dictionary",
+        type: "text",
+        dictionaryField: "phonetic",
+        createdAt: "2026-07-16T00:00:00.000Z",
+        updatedAt: "2026-07-16T00:00:00.000Z",
+      },
+      {
+        id: "system-field:part-of-speech",
+        label: "词性",
+        source: "dictionary",
+        type: "text",
+        dictionaryField: "partOfSpeech",
         createdAt: "2026-07-16T00:00:00.000Z",
         updatedAt: "2026-07-16T00:00:00.000Z",
       },
@@ -139,29 +162,36 @@ describe("@salto/core public contract", () => {
           id: "system-default:translation",
           definitionId: "system-field:translation",
           content: {
-            label: "Translation",
-            source: "llm",
+            label: "翻译",
+            source: "dictionary",
             type: "text",
-            instruction:
-              "Translate {{selection}} into {{targetLanguage}}. " +
-              "Use {{sentence}} only when needed for disambiguation. " +
-              "Return only the translation.",
+            dictionaryField: "translation",
           },
           order: 0,
           enabled: true
         },
         {
-          id: "system-default:key-points",
-          definitionId: "system-field:key-points",
+          id: "system-default:phonetic",
+          definitionId: "system-field:phonetic",
           content: {
-            label: "Key points",
-            source: "llm",
-            type: "list",
-            instruction:
-              "List the key meanings or usage notes for {{selection}} in " +
-              "{{sentence}}. Write each item in {{targetLanguage}}.",
+            label: "音标",
+            source: "dictionary",
+            type: "text",
+            dictionaryField: "phonetic",
           },
           order: 1,
+          enabled: true
+        },
+        {
+          id: "system-default:part-of-speech",
+          definitionId: "system-field:part-of-speech",
+          content: {
+            label: "词性",
+            source: "dictionary",
+            type: "text",
+            dictionaryField: "partOfSpeech",
+          },
+          order: 2,
           enabled: true
         }
       ]

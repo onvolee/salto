@@ -2,6 +2,7 @@ import {
   createTemplateFieldSnapshot,
   isValidQueryTemplateInput,
   isValidTemplateFieldDefinitionInput,
+  templateFieldSupportsCustomCss,
   type QuerySchemaField,
   type QueryTemplate,
   type QueryTemplateInput,
@@ -67,14 +68,15 @@ function templateExtensionData(template: QueryTemplate): Record<string, unknown>
 }
 
 export function fieldDraftFromQueryField(field: QuerySchemaField): TemplateFieldDraft {
+  const supportsCustomCss = templateFieldSupportsCustomCss(field.content);
   return {
     id: field.id,
     definitionId: field.definitionId,
     content: { ...field.content },
     order: field.order,
     enabled: field.enabled,
-    keyCss: field.keyCss ?? "",
-    valueCss: field.valueCss ?? "",
+    keyCss: supportsCustomCss ? field.keyCss ?? "" : "",
+    valueCss: supportsCustomCss ? field.valueCss ?? "" : "",
     extensions: fieldExtensionData(field),
   };
 }
@@ -101,6 +103,7 @@ export function templateDraftFromQueryTemplate(template: QueryTemplate): Templat
 }
 
 export function queryFieldFromDraft(field: TemplateFieldDraft): QuerySchemaField {
+  const supportsCustomCss = templateFieldSupportsCustomCss(field.content);
   return {
     ...field.extensions,
     id: field.id,
@@ -108,8 +111,8 @@ export function queryFieldFromDraft(field: TemplateFieldDraft): QuerySchemaField
     content: { ...field.content },
     order: field.order,
     enabled: field.enabled,
-    ...(field.keyCss.trim() ? { keyCss: field.keyCss.trim() } : {}),
-    ...(field.valueCss.trim() ? { valueCss: field.valueCss.trim() } : {}),
+    ...(supportsCustomCss && field.keyCss.trim() ? { keyCss: field.keyCss.trim() } : {}),
+    ...(supportsCustomCss && field.valueCss.trim() ? { valueCss: field.valueCss.trim() } : {}),
   } as QuerySchemaField;
 }
 

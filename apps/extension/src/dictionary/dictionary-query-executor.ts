@@ -22,13 +22,21 @@ function mapDictionaryField(
   field: DictionaryQuerySchemaField,
   lookup: Awaited<ReturnType<DictionaryClient["lookup"]>>,
 ): QueryFieldResult {
-  const result = lookup.fields[field.content.dictionaryField];
+  const lookupField = field.content.dictionaryField === "translation"
+    || field.content.dictionaryField === "meaning"
+    ? "meaning"
+    : field.content.dictionaryField;
+  const result = lookup.fields[lookupField];
   if (result.status === "unavailable") {
     return { fieldId: field.id, status: "unavailable", reason: result.reason };
   }
-  return result.type === "text"
-    ? { fieldId: field.id, status: "ready", type: "text", value: result.value }
-    : { fieldId: field.id, status: "ready", type: "list", value: result.value };
+  if (result.type === "text") {
+    return { fieldId: field.id, status: "ready", type: "text", value: result.value };
+  }
+  if (result.type === "list") {
+    return { fieldId: field.id, status: "ready", type: "list", value: result.value };
+  }
+  return { fieldId: field.id, status: "ready", type: "examples", value: result.value };
 }
 
 function dictionaryFailure(fieldId: string, error: unknown): QueryFieldResult {

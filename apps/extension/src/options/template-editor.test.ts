@@ -8,6 +8,7 @@ import {
 import {
   createFieldDraftFromDefinition,
   normalizeFieldOrders,
+  queryFieldFromDraft,
   templateDraftFromQueryTemplate,
   validateTemplateDraft,
 } from "./template-editor";
@@ -73,5 +74,34 @@ describe("template editor", () => {
       keyCss: "color: red;",
       valueCss: "font-weight: 700;",
     }));
+  });
+
+  it("drops custom CSS from structured example snapshots", () => {
+    const draft = createFieldDraftFromDefinition({
+      id: "definition-examples",
+      label: "例句",
+      source: "dictionary",
+      dictionaryField: "examples",
+      type: "examples",
+      createdAt: "2026-07-18T00:00:00.000Z",
+      updatedAt: "2026-07-18T00:00:00.000Z",
+    }, "examples", 0);
+
+    expect(queryFieldFromDraft({
+      ...draft,
+      keyCss: "color: red;",
+      valueCss: "display: none;",
+    })).toEqual({
+      id: "examples",
+      definitionId: "definition-examples",
+      content: {
+        label: "例句",
+        source: "dictionary",
+        dictionaryField: "examples",
+        type: "examples",
+      },
+      order: 0,
+      enabled: true,
+    });
   });
 });

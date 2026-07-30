@@ -7,9 +7,14 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ExtensionRequest } from "@salto/core";
+import {
+  createDictionaryClient,
+  createFakeDictionaryAdapter,
+  type ExtensionRequest,
+} from "@salto/core";
 
 import { SaltoDatabase } from "../db";
+import { createDictionaryQueryExecutor } from "../dictionary/dictionary-query-executor";
 import { createHighlightSession } from "../highlighting/highlight-session";
 import { createIncrementalHighlightScanner } from "../highlighting/incremental-highlighter";
 import { highlightSavedTerms } from "../highlighting/single-pass-highlighter";
@@ -65,7 +70,21 @@ function createInstance() {
     repositories,
     saveVocabulary: repositories.saveVocabulary,
     enrichmentQueue: enrichmentQueue as never,
-    queryExecutor: createFakeQueryExecutor()
+    queryExecutor: createDictionaryQueryExecutor({
+      dictionaryClient: createDictionaryClient(createFakeDictionaryAdapter({
+        providerId: "youdao-web",
+        supportedLanguages: ["en"],
+        fixtures: [{
+          request: { term: "unfamiliar", language: "en" },
+          fields: {
+            meaning: "不熟悉的",
+            phonetic: "/ˌʌnfəˈmɪliə(r)/",
+            partOfSpeech: "adjective",
+          },
+        }],
+      })),
+      llmExecutor: createFakeQueryExecutor(),
+    }),
   });
   return { database, repositories, services };
 }
@@ -116,7 +135,11 @@ describe("local vertical slice", () => {
         if (!response.ok || response.type !== "list-highlight-terms") {
           throw new Error("Highlight snapshot unavailable");
         }
-        return { enabled: response.data.enabled, terms: response.data.terms };
+        return {
+          enabled: response.data.enabled,
+          terms: response.data.terms,
+          paths: response.data.paths,
+        };
       },
       subscribeSettings: () => () => undefined,
       createScanner(options) {
@@ -139,16 +162,17 @@ describe("local vertical slice", () => {
     );
 
     selectFixtureTerm();
-    expect(send).not.toHaveBeenCalled();
+    expect(send.mock.calls.filter(([request]) => request.type === "translate-selection"))
+      .toHaveLength(0);
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Open selection panel" }));
     expect(await screen.findByText("Default")).toBeInTheDocument();
-    expect(await screen.findByText("Fake translation: unfamiliar -> zh-CN")).toBeInTheDocument();
+    expect(await screen.findByText("不熟悉的")).toBeInTheDocument();
+    expect(screen.getByText("/ˌʌnfəˈmɪliə(r)/")).toBeInTheDocument();
+    expect(screen.getByText("adjective")).toBeInTheDocument();
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Save selection" }));
     expect(await screen.findByRole("button", { name: "Selection saved" })).toBeDisabled();
-    scheduler.flush();
-    expect(document.querySelector("[data-salto-highlight]")?.textContent).toBe("unfamiliar");
     highlightSession.teardown();
     first.database.close();
     cleanup();

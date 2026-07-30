@@ -14,9 +14,12 @@ The parser uses these provider-owned DOM anchors observed on 2026-07-19:
 
 - `#phrsListTab` and `.keyword` identify a dictionary entry.
 - `.phonetic` supplies pronunciation text.
-- `.trans-container ul > li` supplies part-of-speech and meaning pairs.
+- `.trans-container ul > li` supplies the original part-of-speech-prefixed basic
+  definition, the normalized part of speech, and the clean translation text.
 - `.additional` supplies known word-form label/value pairs.
 - `#synonyms .contentTitle a` supplies synonyms.
+- `#examples #bilingual li` and `#blng_sents_part li` supply structured English,
+  Chinese, and source example values.
 - `#noResult` identifies an explicit missing entry.
 
 If the entry anchors change, the parser returns `parser-failure`. Optional sections may be

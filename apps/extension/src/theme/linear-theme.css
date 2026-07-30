@@ -59,6 +59,7 @@
   --salto-radius-max: 12px;
   --salto-radius-pill: 999px;
   --salto-panel-shadow: 0 4px 8px lch(9.894% 0 282 / 0.2);
+  --salto-panel-auto-fit-duration: 180ms;
   --salto-trigger-shadow: 0 3px 8px lch(9.894% 0 282 / 0.24);
   --salto-trigger-shadow-hover: 0 4px 8px lch(9.894% 0 282 / 0.28);
 

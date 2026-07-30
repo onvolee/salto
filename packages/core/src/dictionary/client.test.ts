@@ -22,11 +22,17 @@ dictionaryAdapterContract("deterministic fake", {
               fields: scenario === "missing-fields"
                 ? { meaning: "a financial institution" }
                 : {
+                    basicDefinition: "n. the land beside a river",
                     phonetic: "/baenk/",
                     partOfSpeech: "noun",
                     meaning: "the land beside a river",
                     synonyms: ["shore", "riverside"],
-                    wordForms: ["banks", "banked", "banking"]
+                    wordForms: ["banks", "banked", "banking"],
+                    examples: [{
+                      english: "She sat on the bank.",
+                      chinese: "她坐在河岸上。",
+                      source: "Example dictionary",
+                    }],
                   }
             })
       }]
@@ -42,11 +48,17 @@ describe("dictionary client contract", () => {
       fixtures: [{
         request: { term: "bank", language: "en" },
         fields: {
+          basicDefinition: "n. the land beside a river",
           phonetic: "/baenk/",
           partOfSpeech: "noun",
           meaning: "the land beside a river",
           synonyms: ["shore", "riverside"],
-          wordForms: ["banks", "banked", "banking"]
+          wordForms: ["banks", "banked", "banking"],
+          examples: [{
+            english: "She sat on the bank.",
+            chinese: "她坐在河岸上。",
+            source: "Example dictionary",
+          }],
         }
       }]
     });
@@ -60,11 +72,25 @@ describe("dictionary client contract", () => {
       term: "bank",
       language: "en",
       fields: {
+        basicDefinition: {
+          status: "ready",
+          type: "text",
+          value: "n. the land beside a river",
+        },
         phonetic: { status: "ready", type: "text", value: "/baenk/" },
         partOfSpeech: { status: "ready", type: "text", value: "noun" },
         meaning: { status: "ready", type: "text", value: "the land beside a river" },
         synonyms: { status: "ready", type: "list", value: ["shore", "riverside"] },
-        wordForms: { status: "ready", type: "list", value: ["banks", "banked", "banking"] }
+        wordForms: { status: "ready", type: "list", value: ["banks", "banked", "banking"] },
+        examples: {
+          status: "ready",
+          type: "examples",
+          value: [{
+            english: "She sat on the bank.",
+            chinese: "她坐在河岸上。",
+            source: "Example dictionary",
+          }],
+        },
       }
     });
   });

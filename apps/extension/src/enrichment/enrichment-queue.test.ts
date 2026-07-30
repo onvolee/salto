@@ -248,11 +248,13 @@ describe("enrichment queue", () => {
       term: "unfamiliar",
       language: "en",
       fields: {
+        basicDefinition: { status: "unavailable", type: "text", reason: "unsupported" },
         phonetic: { status: "ready", type: "text", value: "/unfamiliar/" },
         partOfSpeech: { status: "ready", type: "text", value: "adjective" },
         meaning: { status: "ready", type: "text", value: "Not familiar" },
         synonyms: { status: "ready", type: "list", value: ["unknown"] },
         wordForms: { status: "ready", type: "list", value: ["unfamiliarly"] },
+        examples: { status: "unavailable", type: "examples", reason: "unsupported" },
       },
     };
     const lookup = vi.fn<DictionaryAdapter["lookup"]>()

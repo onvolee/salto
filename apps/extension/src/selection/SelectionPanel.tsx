@@ -5,8 +5,11 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
@@ -22,13 +25,21 @@ import {
   TranslationFieldValue,
 } from "salto-src/query-template/translation-field-list";
 
-import { clampResizeSize, clampToViewport, getPanelSize, type Point, type Size } from "./positioning";
+import {
+  clampAutoFitSize,
+  clampResizeSize,
+  clampToViewport,
+  PANEL_AUTO_FIT_MAX_SIZE,
+  type Point,
+  type Size,
+} from "./positioning";
 import type {
   ActiveQueryTemplateResolution,
   ExtensionSuccessResponse,
   QueryFieldResult,
   QueryTemplate,
 } from "@salto/core";
+import { templateFieldSupportsCustomCss } from "@salto/core";
 
 export type TranslationData = Extract<
   ExtensionSuccessResponse,
@@ -73,6 +84,8 @@ export type SelectionPanelProps = {
   onSizeChange?: (size: Size) => void;
 };
 
+export type PanelResizePhase = "locked" | "animating" | "manual";
+
 type DragState = {
   pointerId: number;
   offsetX: number;
@@ -95,6 +108,8 @@ function getViewportSize() {
 }
 
 const DEFAULT_PANEL_SIZE = { width: 360, height: 220 };
+const AUTO_FIT_TRANSITION_MS = 180;
+const AUTO_FIT_TRANSITION_FALLBACK_MS = AUTO_FIT_TRANSITION_MS + 70;
 
 export function SelectionPanel({
   activeTemplate,
@@ -112,12 +127,112 @@ export function SelectionPanel({
 }: SelectionPanelProps) {
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
+  const lastAutoFitDataRef = useRef<TranslationData | null>(null);
+  const pendingAutoFitTransitionsRef = useRef(new Set<"width" | "height">());
+  const [resizePhase, setResizePhase] = useState<PanelResizePhase>("locked");
   const saveLabel =
     saveState === "saving"
       ? "Saving selection"
       : saveState === "saved"
         ? "Selection saved"
         : "Save selection";
+  const effectiveResizePhase = translation.status === "complete" ? resizePhase : "locked";
+  const canResize = effectiveResizePhase === "manual";
+
+  useLayoutEffect(() => {
+    if (
+      translation.status !== "complete"
+      || lastAutoFitDataRef.current === translation.data
+    ) {
+      return;
+    }
+    lastAutoFitDataRef.current = translation.data;
+
+    if (!onSizeChange) {
+      setResizePhase("manual");
+      return;
+    }
+
+    const panel = panelRef.current;
+    const scrollViewport = panel?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    const content = panel?.querySelector<HTMLElement>(".salto-selection-panel__content");
+    if (!panel || !scrollViewport || !content) {
+      setResizePhase("manual");
+      return;
+    }
+
+    const viewport = getViewportSize();
+    const maximumSize = clampAutoFitSize(
+      PANEL_AUTO_FIT_MAX_SIZE,
+      size,
+      viewport,
+      position,
+    );
+    const horizontalChrome = Math.max(0, panel.offsetWidth - scrollViewport.clientWidth);
+    const verticalChrome = Math.max(0, panel.offsetHeight - scrollViewport.clientHeight);
+    const previousWidth = content.style.width;
+    const previousMaxWidth = content.style.maxWidth;
+
+    content.style.width = "max-content";
+    content.style.maxWidth = `${Math.max(0, maximumSize.width - horizontalChrome)}px`;
+    const naturalContentWidth = Math.ceil(Math.max(
+      content.scrollWidth,
+      content.getBoundingClientRect().width,
+    ));
+    const targetWidth = clampAutoFitSize(
+      { width: naturalContentWidth + horizontalChrome, height: size.height },
+      size,
+      viewport,
+      position,
+    ).width;
+
+    content.style.width = `${Math.max(0, targetWidth - horizontalChrome)}px`;
+    const contentHeight = Math.ceil(Math.max(
+      content.scrollHeight,
+      content.getBoundingClientRect().height,
+    ));
+    content.style.width = previousWidth;
+    content.style.maxWidth = previousMaxWidth;
+
+    const nextSize = clampAutoFitSize(
+      { width: naturalContentWidth + horizontalChrome, height: contentHeight + verticalChrome },
+      size,
+      viewport,
+      position,
+    );
+    const pending = new Set<"width" | "height">();
+    if (nextSize.width !== size.width) pending.add("width");
+    if (nextSize.height !== size.height) pending.add("height");
+    pendingAutoFitTransitionsRef.current = pending;
+    onSizeChange(nextSize);
+
+    const reduceMotion = typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setResizePhase(pending.size > 0 && !reduceMotion ? "animating" : "manual");
+  }, [onSizeChange, panelRef, position, size, translation]);
+
+  useEffect(() => {
+    if (translation.status !== "complete") {
+      pendingAutoFitTransitionsRef.current.clear();
+      setResizePhase("locked");
+    }
+  }, [translation.status]);
+
+  useEffect(() => {
+    if (resizePhase !== "animating") return;
+    const timeout = window.setTimeout(() => {
+      pendingAutoFitTransitionsRef.current.clear();
+      setResizePhase("manual");
+    }, AUTO_FIT_TRANSITION_FALLBACK_MS);
+    return () => window.clearTimeout(timeout);
+  }, [resizePhase]);
+
+  const finishAutoFitTransition = (property: "width" | "height") => {
+    pendingAutoFitTransitionsRef.current.delete(property);
+    if (pendingAutoFitTransitionsRef.current.size === 0) {
+      setResizePhase("manual");
+    }
+  };
 
   const handleHeaderPointerDown = (event: PointerEvent<HTMLElement>) => {
     if (
@@ -163,7 +278,7 @@ export function SelectionPanel({
   };
 
   const handleResizePointerDown = (event: PointerEvent<HTMLElement>, handle: ResizeHandle) => {
-    if (!event.isPrimary || event.button !== 0) {
+    if (!canResize || !event.isPrimary || event.button !== 0) {
       return;
     }
 
@@ -199,12 +314,17 @@ export function SelectionPanel({
       newHeight = resize.startHeight + deltaY;
     }
 
-    const newSize = clampResizeSize({ width: newWidth, height: newHeight }, viewport);
+    const newSize = clampResizeSize(
+      { width: newWidth, height: newHeight },
+      viewport,
+      position,
+    );
     onSizeChange?.(newSize);
   };
 
   const handleResizePointerEnd = (event: PointerEvent<HTMLElement>) => {
-    if (resizeRef.current?.pointerId !== event.pointerId) {
+    const resize = resizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) {
       return;
     }
 
@@ -248,19 +368,29 @@ export function SelectionPanel({
     <section
       aria-label={`Selection panel for ${selectionText}`}
       className="salto-selection-panel"
+      data-resize-phase={effectiveResizePhase}
       ref={panelRef}
       role="dialog"
       onKeyDown={containKeyboardFocus}
+      onTransitionEnd={(event) => {
+        if (
+          effectiveResizePhase === "animating"
+          && event.target === event.currentTarget
+          && (event.propertyName === "width" || event.propertyName === "height")
+        ) {
+          finishAutoFitTransition(event.propertyName);
+        }
+      }}
       onWheel={(e) => {
         e.stopPropagation();
-        e.preventDefault();
       }}
       style={{
         left: position.x,
         top: position.y,
         width: size.width,
         height: size.height,
-      }}
+        "--salto-panel-auto-fit-duration": `${AUTO_FIT_TRANSITION_MS}ms`,
+      } as CSSProperties}
     >
       <header
         className="salto-selection-panel__header"
@@ -339,21 +469,27 @@ export function SelectionPanel({
         </div>
       </header>
       <div
+        aria-hidden="true"
         className="salto-selection-panel__resize-handle salto-selection-panel__resize-handle--right"
+        data-disabled={!canResize}
         onPointerDown={(e) => handleResizePointerDown(e, "right")}
         onPointerMove={handleResizePointerMove}
         onPointerUp={handleResizePointerEnd}
         onPointerCancel={handleResizePointerEnd}
       />
       <div
+        aria-hidden="true"
         className="salto-selection-panel__resize-handle salto-selection-panel__resize-handle--bottom"
+        data-disabled={!canResize}
         onPointerDown={(e) => handleResizePointerDown(e, "bottom")}
         onPointerMove={handleResizePointerMove}
         onPointerUp={handleResizePointerEnd}
         onPointerCancel={handleResizePointerEnd}
       />
       <div
+        aria-hidden="true"
         className="salto-selection-panel__resize-handle salto-selection-panel__resize-handle--bottom-right"
+        data-disabled={!canResize}
         onPointerDown={(e) => handleResizePointerDown(e, "bottom-right")}
         onPointerMove={handleResizePointerMove}
         onPointerUp={handleResizePointerEnd}
@@ -366,7 +502,7 @@ export function SelectionPanel({
       >
         {announcement}
       </p>
-      <ScrollArea className="h-full">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="salto-selection-panel__content">
           {activeTemplate.status === "loading" ? (
             <p className="salto-selection-panel__status">
@@ -428,13 +564,15 @@ function TranslationResults({
   readonly template: QueryTemplate;
   readonly translation: TranslationState;
 }) {
-  const fieldStyles = useMemo(() => new Map(template.fields.map((field) => [
-    field.id,
-    {
-      key: parseCssDeclarations(field.keyCss ?? ""),
-      value: parseCssDeclarations(field.valueCss ?? ""),
-    },
-  ])), [template.fields]);
+  const fieldStyles = useMemo(() => new Map(template.fields
+    .filter((field) => templateFieldSupportsCustomCss(field.content))
+    .map((field) => [
+      field.id,
+      {
+        key: parseCssDeclarations(field.keyCss ?? ""),
+        value: parseCssDeclarations(field.valueCss ?? ""),
+      },
+    ])), [template.fields]);
   const schema = template.fields
     .filter((field) => field.enabled)
     .toSorted((left, right) => left.order - right.order)

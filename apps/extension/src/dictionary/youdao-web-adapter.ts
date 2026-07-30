@@ -18,11 +18,13 @@ export const YOUDAO_ORIGIN = "https://dict.youdao.com";
 export const YOUDAO_PERMISSION_ORIGIN = `${YOUDAO_ORIGIN}/*`;
 
 const YOUDAO_FIELDS = [
+  "basicDefinition",
   "phonetic",
   "partOfSpeech",
   "meaning",
   "synonyms",
-  "wordForms"
+  "wordForms",
+  "examples",
 ] as const satisfies readonly DictionaryFieldKey[];
 
 export interface YoudaoWebAdapterDependencies {

@@ -13,6 +13,14 @@ export type Size = {
 export const VIEWPORT_MARGIN = 8;
 export const SURFACE_GAP = 8;
 export const PANEL_MIN_SIZE: Size = { width: 360, height: 220 };
+export const PANEL_AUTO_FIT_MAX_SIZE: Size = { width: 560, height: 420 };
+
+function getAvailablePanelSize(viewport: Size, position: Point): Size {
+  return {
+    width: Math.max(0, viewport.width - position.x - VIEWPORT_MARGIN),
+    height: Math.max(0, viewport.height - position.y - VIEWPORT_MARGIN),
+  };
+}
 
 export function clampPanelSize(size: Size, viewport: Size): Size {
   const maxWidth = Math.max(0, viewport.width - VIEWPORT_MARGIN * 2);
@@ -24,13 +32,30 @@ export function clampPanelSize(size: Size, viewport: Size): Size {
   };
 }
 
-export function clampResizeSize(size: Size, viewport: Size): Size {
-  const maxWidth = Math.max(0, viewport.width - VIEWPORT_MARGIN * 2);
-  const maxHeight = Math.max(0, viewport.height - VIEWPORT_MARGIN * 2);
+export function clampResizeSize(size: Size, viewport: Size, position: Point): Size {
+  const { width: maxWidth, height: maxHeight } = getAvailablePanelSize(viewport, position);
+  const minWidth = Math.min(PANEL_MIN_SIZE.width, maxWidth);
+  const minHeight = Math.min(PANEL_MIN_SIZE.height, maxHeight);
 
   return {
-    width: Math.max(PANEL_MIN_SIZE.width, Math.min(size.width, maxWidth)),
-    height: Math.max(PANEL_MIN_SIZE.height, Math.min(size.height, maxHeight)),
+    width: Math.max(minWidth, Math.min(size.width, maxWidth)),
+    height: Math.max(minHeight, Math.min(size.height, maxHeight)),
+  };
+}
+
+export function clampAutoFitSize(
+  desiredSize: Size,
+  currentSize: Size,
+  viewport: Size,
+  position: Point,
+): Size {
+  const available = getAvailablePanelSize(viewport, position);
+  const maxWidth = Math.min(PANEL_AUTO_FIT_MAX_SIZE.width, available.width);
+  const maxHeight = Math.min(PANEL_AUTO_FIT_MAX_SIZE.height, available.height);
+
+  return {
+    width: Math.min(maxWidth, Math.max(currentSize.width, desiredSize.width)),
+    height: Math.min(maxHeight, Math.max(currentSize.height, desiredSize.height)),
   };
 }
 

@@ -117,11 +117,11 @@ describe("OptionsApp", () => {
     await user.click(add);
     await user.click(add);
 
-    expect(screen.getAllByRole("button", { name: "编辑Translation外观" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "编辑翻译外观" })).toHaveLength(2);
     expect(screen.queryByLabelText("Instruction")).not.toBeInTheDocument();
-    await user.click(screen.getAllByRole("button", { name: "编辑Translation外观" })[0]);
+    await user.click(screen.getAllByRole("button", { name: "编辑翻译外观" })[0]);
     expect(screen.getByLabelText("Key CSS")).toBeInTheDocument();
-    expect(screen.getByLabelText("当前模板预览")).toHaveTextContent("Translation");
+    expect(screen.getByLabelText("当前模板预览")).toHaveTextContent("翻译");
   });
 
   it("previews and persists a changed theme", async () => {

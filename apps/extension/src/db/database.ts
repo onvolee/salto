@@ -193,9 +193,8 @@ function migrateLegacyTemplate(value: unknown): {
 
 function migratedDefinitionId(templateId: string, fieldId: string): string {
   if (templateId === "system-default") {
-    const defaultDefinitions = createDefaultTemplateFieldDefinitions("2000-01-01T00:00:00.000Z");
-    if (fieldId === "system-default:translation") return defaultDefinitions[0].id;
-    if (fieldId === "system-default:key-points") return defaultDefinitions[1].id;
+    if (fieldId === "system-default:translation") return "system-field:translation";
+    if (fieldId === "system-default:key-points") return "system-field:key-points";
   }
   return `migrated-field:${templateId}:${fieldId}`;
 }
