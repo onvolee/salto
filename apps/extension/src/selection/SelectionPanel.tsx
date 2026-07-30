@@ -1,4 +1,10 @@
 import {
+  failedFieldMessage,
+  selectionPanelMessages,
+  unavailableFieldMessage,
+} from "./selection-panel-messages";
+
+import {
   Bookmark01Icon,
   Cancel01Icon,
   RefreshIcon,
@@ -59,6 +65,8 @@ export type TranslationState =
     }
   | { readonly status: "complete"; readonly data: TranslationData }
   | { readonly status: "request-error"; readonly message: string };
+
+const PANEL_MESSAGES = selectionPanelMessages();
 
 export type ActiveTemplateState =
   | { readonly status: "loading" }
@@ -412,7 +420,7 @@ export function SelectionPanel({
           <span className="salto-selection-panel__title">
             {activeTemplate.status === "loading"
               ? "Loading template..."
-              : "Template unavailable"}
+              : PANEL_MESSAGES.templateUnavailable}
           </span>
         )}
         <div className="salto-selection-panel__actions">
@@ -510,7 +518,7 @@ export function SelectionPanel({
             </p>
           ) : activeTemplate.status === "error" ? (
             <p className="salto-selection-panel__status salto-selection-panel__status--error">
-              {activeTemplate.message}
+              {PANEL_MESSAGES.templateLoadFailed}
             </p>
           ) : (
             <>
@@ -519,8 +527,7 @@ export function SelectionPanel({
                   className="salto-selection-panel__recovery"
                   data-code={activeTemplate.resolution.code}
                 >
-                  The active template was unavailable. Using{" "}
-                  {activeTemplate.template.name}.
+                  {PANEL_MESSAGES.activeTemplateRecovered(activeTemplate.template.name)}
                 </p>
               ) : null}
               <TranslationResults
@@ -531,7 +538,7 @@ export function SelectionPanel({
           )}
           {saveState === "error" ? (
             <p className="salto-selection-panel__save-error">
-              Could not save selection
+              {PANEL_MESSAGES.saveFailed}
             </p>
           ) : saveState === "saving" ? (
             <p className="salto-selection-panel__status">Saving selection...</p>
@@ -547,12 +554,12 @@ function getPanelAnnouncement(
   translation: TranslationState,
   saveState: SelectionPanelProps["saveState"],
 ): string {
-  if (saveState === "error") return "Could not save selection";
+  if (saveState === "error") return PANEL_MESSAGES.saveFailed;
   if (saveState === "saved") return "Selection saved";
   if (activeTemplate.status === "error")
-    return `Template unavailable: ${activeTemplate.message}`;
+    return PANEL_MESSAGES.templateLoadFailed;
   if (translation.status === "request-error")
-    return `Translation unavailable: ${translation.message}`;
+    return PANEL_MESSAGES.translationRequestFailed;
   if (translation.status === "complete") return "Translation ready";
   return "";
 }
@@ -592,14 +599,14 @@ function TranslationResults({
     return (
       <>
         <p className="salto-selection-panel__status salto-selection-panel__status--error">
-          {translation.message}
+          {PANEL_MESSAGES.translationRequestFailed}
         </p>
         <TranslationFieldList
           fieldStyles={fieldStyles}
           schema={schema}
           renderValue={() => (
             <span className="salto-selection-panel__error">
-              Translation unavailable
+              {PANEL_MESSAGES.translationUnavailable}
             </span>
           )}
         />
@@ -641,20 +648,20 @@ function renderFieldResult(
     return isStreaming ? (
       <Skeleton className="salto-selection-panel__loading-field"></Skeleton>
     ) : (
-      <span className="salto-selection-panel__error">Missing field result</span>
+      <span className="salto-selection-panel__error">{PANEL_MESSAGES.missingFieldResult}</span>
     );
   }
   if (result.status === "failed") {
     return (
       <span className="salto-selection-panel__error">
-        {result.error.message}
+        {failedFieldMessage(result)}
       </span>
     );
   }
   if (result.status === "unavailable") {
     return (
       <span className="salto-selection-panel__unavailable">
-        Field unavailable
+        {unavailableFieldMessage(result)}
       </span>
     );
   }

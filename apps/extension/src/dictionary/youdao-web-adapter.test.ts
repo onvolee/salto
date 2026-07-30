@@ -82,6 +82,33 @@ describe("youdao-web adapter", () => {
     });
   });
 
+  it("keeps the exact selected term while returning a partial entry", async () => {
+    const getText = vi.fn().mockResolvedValue(fixture("web-only-entry"));
+    const signal = new AbortController().signal;
+    const adapter = createYoudaoWebAdapter({
+      httpClient: { getText },
+      hasOriginPermission: async () => true,
+    });
+
+    const result = await adapter.lookup({ term: "Addons", language: "en" }, signal);
+
+    expect(result.term).toBe("Addons");
+    expect(result.fields.meaning).toEqual({
+      status: "ready",
+      type: "text",
+      value: "扩展\n插件",
+    });
+    expect(result.fields.phonetic).toEqual({
+      status: "unavailable",
+      type: "text",
+      reason: "missing",
+    });
+    expect(getText).toHaveBeenCalledWith({
+      url: "https://dict.youdao.com/w/eng/Addons/",
+      signal,
+    });
+  });
+
   it("rejects missing origin permission before starting HTTP", async () => {
     const getText = vi.fn();
     const adapter = createYoudaoWebAdapter({
