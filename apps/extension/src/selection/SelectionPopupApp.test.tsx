@@ -93,6 +93,32 @@ function withActiveTemplate(
   };
 }
 
+function createDeferredTranslationClient(template: QueryTemplate = defaultTemplate) {
+  let resolveTranslation: ((
+    response: Awaited<ReturnType<ExtensionMessageClient["send"]>>,
+  ) => void) | undefined;
+  const messageClient = withActiveTemplate((request) => {
+    if (request.type === "translate-selection") {
+      return new Promise((resolve) => {
+        resolveTranslation = resolve;
+      });
+    }
+    return Promise.resolve({
+      ok: false,
+      type: request.type,
+      error: { code: "unknown-message", message: "Unexpected request" },
+    });
+  }, template);
+
+  return {
+    messageClient,
+    resolve(response: Awaited<ReturnType<ExtensionMessageClient["send"]>>) {
+      if (!resolveTranslation) throw new Error("Translation request has not started");
+      resolveTranslation(response);
+    },
+  };
+}
+
 function selectNodeText(source: Element | null, start: number, end: number) {
   const text = source?.firstChild;
   if (!text) {
@@ -123,6 +149,8 @@ async function openPanel() {
 }
 
 describe("SelectionPopupApp", () => {
+  let browserSendMessage: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
@@ -130,63 +158,64 @@ describe("SelectionPopupApp", () => {
     vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([
       anchorRect,
     ] as unknown as DOMRectList);
+    browserSendMessage = vi.fn((request: { type: string }) => {
+      if (request.type === "get-extension-settings") {
+        return Promise.resolve({
+          ok: true,
+          type: "get-extension-settings",
+          data: {
+            activeQueryTemplateId: "system-default",
+            targetLanguage: "zh-CN",
+            highlightEnabled: true,
+            highlightSameWords: false,
+            themeMode: "system",
+            activeDictionaryProvider: "youdao-web",
+            panelWidth: 360,
+            panelHeight: 220,
+          },
+        });
+      }
+      if (request.type === "save-extension-settings") {
+        return Promise.resolve({
+          ok: true,
+          type: "save-extension-settings",
+          data: undefined,
+        });
+      }
+      if (request.type === "get-active-query-template") {
+        return Promise.resolve({
+          ok: true,
+          type: "get-active-query-template",
+          data: {
+            template: defaultTemplate,
+            resolution: { status: "active" },
+          },
+        });
+      }
+      if (request.type === "check-vocabulary-exists") {
+        return Promise.resolve({
+          ok: true,
+          type: "check-vocabulary-exists",
+          data: { exists: false },
+        });
+      }
+      if (request.type === "translate-selection") {
+        return Promise.resolve({
+          ok: true,
+          type: "translate-selection",
+          data: {
+            templateId: "system-default",
+            templateName: "Default",
+            schema: [{ id: "translation", label: "Translation" }],
+            fields: [{ fieldId: "translation", status: "ready", type: "text", value: "陌生的" }],
+          },
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
     vi.stubGlobal("browser", {
       runtime: {
-        sendMessage: vi.fn((request: { type: string }) => {
-          if (request.type === "get-extension-settings") {
-            return Promise.resolve({
-              ok: true,
-              type: "get-extension-settings",
-              data: {
-                activeQueryTemplateId: "system-default",
-                targetLanguage: "zh-CN",
-                highlightEnabled: true,
-                highlightSameWords: false,
-                themeMode: "system",
-                activeDictionaryProvider: "youdao-web",
-                panelWidth: 360,
-                panelHeight: 220,
-              },
-            });
-          }
-          if (request.type === "save-extension-settings") {
-            return Promise.resolve({
-              ok: true,
-              type: "save-extension-settings",
-              data: undefined,
-            });
-          }
-          if (request.type === "get-active-query-template") {
-            return Promise.resolve({
-              ok: true,
-              type: "get-active-query-template",
-              data: {
-                template: defaultTemplate,
-                resolution: { status: "active" },
-              },
-            });
-          }
-          if (request.type === "check-vocabulary-exists") {
-            return Promise.resolve({
-              ok: true,
-              type: "check-vocabulary-exists",
-              data: { exists: false },
-            });
-          }
-          if (request.type === "translate-selection") {
-            return Promise.resolve({
-              ok: true,
-              type: "translate-selection",
-              data: {
-                templateId: "system-default",
-                templateName: "Default",
-                schema: [{ id: "translation", label: "Translation" }],
-                fields: [{ fieldId: "translation", status: "ready", type: "text", value: "陌生的" }],
-              },
-            });
-          }
-          return Promise.resolve({ ok: false });
-        }),
+        sendMessage: browserSendMessage,
         onMessage: {
           addListener: vi.fn(),
           removeListener: vi.fn(),
@@ -325,6 +354,22 @@ describe("SelectionPopupApp", () => {
           },
         };
       }
+      if (request.type === "get-extension-settings") {
+        return {
+          ok: true,
+          type: "get-extension-settings",
+          data: {
+            activeQueryTemplateId: "system-default",
+            targetLanguage: "zh-CN",
+            highlightEnabled: true,
+            highlightSameWords: false,
+            themeMode: "system",
+            activeDictionaryProvider: "youdao-web",
+            panelWidth: 360,
+            panelHeight: 220,
+          },
+        };
+      }
       throw new Error(`Unexpected request: ${request.type}`);
     });
     render(<SelectionPopupApp messageClient={{ send }} />);
@@ -445,6 +490,22 @@ describe("SelectionPopupApp", () => {
             templateName: defaultTemplate.name,
             schema: [],
             fields: [],
+          },
+        };
+      }
+      if (request.type === "get-extension-settings") {
+        return {
+          ok: true,
+          type: "get-extension-settings",
+          data: {
+            activeQueryTemplateId: "system-default",
+            targetLanguage: "zh-CN",
+            highlightEnabled: true,
+            highlightSameWords: false,
+            themeMode: "system",
+            activeDictionaryProvider: "youdao-web",
+            panelWidth: 360,
+            panelHeight: 220,
           },
         };
       }
@@ -604,6 +665,29 @@ describe("SelectionPopupApp", () => {
           ok: true,
           type: "get-active-query-template",
           data: { template, resolution: { status: "active" } },
+        });
+      }
+      if (request.type === "get-extension-settings") {
+        return Promise.resolve({
+          ok: true,
+          type: "get-extension-settings",
+          data: {
+            activeQueryTemplateId: "system-default",
+            targetLanguage: "zh-CN",
+            highlightEnabled: true,
+            highlightSameWords: false,
+            themeMode: "system",
+            activeDictionaryProvider: "youdao-web",
+            panelWidth: 360,
+            panelHeight: 220,
+          },
+        });
+      }
+      if (request.type === "check-vocabulary-exists") {
+        return Promise.resolve({
+          ok: true,
+          type: "check-vocabulary-exists",
+          data: { exists: false },
         });
       }
       return new Promise((resolve) => translationResolvers.push(resolve));
@@ -862,6 +946,269 @@ describe("SelectionPopupApp", () => {
     fireEvent.pointerUp(header, { clientX: 700, clientY: 600, pointerId: 4 });
 
     expect(panel).toHaveStyle({ left: "418px", top: "350px" });
+  });
+
+  it.each([
+    {
+      handle: "right",
+      selector: ".salto-selection-panel__resize-handle--right",
+      expectedWidth: 1004,
+      expectedHeight: 220,
+    },
+    {
+      handle: "bottom",
+      selector: ".salto-selection-panel__resize-handle--bottom",
+      expectedWidth: 360,
+      expectedHeight: 572,
+    },
+    {
+      handle: "bottom-right",
+      selector: ".salto-selection-panel__resize-handle--bottom-right",
+      expectedWidth: 1004,
+      expectedHeight: 572,
+    },
+  ])("resizes from the $handle handle up to the viewport margin", async ({
+    selector,
+    expectedWidth,
+    expectedHeight,
+  }) => {
+    render(<SelectionPopupApp />);
+    const panel = await openPanel();
+    const handle = panel.querySelector<HTMLElement>(selector);
+    expect(handle).not.toBeNull();
+
+    fireEvent.pointerDown(handle!, {
+      button: 0,
+      clientX: 628,
+      clientY: 440,
+      isPrimary: true,
+      pointerId: 9,
+    });
+    fireEvent.pointerMove(handle!, {
+      clientX: 2000,
+      clientY: 2000,
+      pointerId: 9,
+    });
+
+    expect(panel).toHaveStyle({
+      left: "268px",
+      top: "220px",
+      width: `${expectedWidth}px`,
+      height: `${expectedHeight}px`,
+    });
+
+    fireEvent.pointerUp(handle!, {
+      clientX: 2000,
+      clientY: 2000,
+      pointerId: 9,
+    });
+    await act(async () => undefined);
+    expect(browserSendMessage.mock.calls.filter(([request]) => (
+      request.type === "save-extension-settings"
+    ))).toHaveLength(0);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open selection panel" }));
+
+    expect(screen.getByRole("dialog", { name: "Selection panel for unfamiliar" })).toHaveStyle({
+      width: "360px",
+      height: "220px",
+    });
+  });
+
+  it("auto-fits the completed result before enabling manual resizing", async () => {
+    const autoFitTemplate: QueryTemplate = {
+      ...defaultTemplate,
+      fields: [
+        defaultTemplate.fields[0],
+        {
+          ...defaultTemplate.fields[0],
+          id: "example",
+          definitionId: "definition-example",
+          content: {
+            ...defaultTemplate.fields[0].content,
+            label: "Example",
+          },
+          order: 1,
+        },
+      ],
+    };
+    const deferred = createDeferredTranslationClient(autoFitTemplate);
+    render(<SelectionPopupApp messageClient={deferred.messageClient} />);
+    const panel = await openPanel();
+    await screen.findByRole("heading", { name: "Default" });
+    const handle = panel.querySelector<HTMLElement>(
+      ".salto-selection-panel__resize-handle--bottom-right",
+    );
+    const viewport = panel.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    const content = panel.querySelector<HTMLElement>(".salto-selection-panel__content");
+    expect(handle).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(content).not.toBeNull();
+
+    Object.defineProperties(panel, {
+      offsetWidth: { configurable: true, value: 360 },
+      offsetHeight: { configurable: true, value: 220 },
+    });
+    Object.defineProperties(viewport!, {
+      clientWidth: { configurable: true, value: 358 },
+      clientHeight: { configurable: true, value: 174 },
+    });
+    let widthMeasurements = 0;
+    let heightMeasurements = 0;
+    Object.defineProperties(content!, {
+      scrollWidth: {
+        configurable: true,
+        get() {
+          widthMeasurements += 1;
+          return content!.querySelectorAll("dt").length === 2 ? 900 : 360;
+        },
+      },
+      scrollHeight: {
+        configurable: true,
+        get() {
+          heightMeasurements += 1;
+          return content!.querySelectorAll("dd").length === 2 ? 700 : 174;
+        },
+      },
+    });
+
+    expect(panel).toHaveAttribute("data-resize-phase", "locked");
+    fireEvent.pointerDown(handle!, {
+      button: 0,
+      clientX: 628,
+      clientY: 440,
+      isPrimary: true,
+      pointerId: 10,
+    });
+    fireEvent.pointerMove(handle!, { clientX: 700, clientY: 500, pointerId: 10 });
+    expect(panel).toHaveStyle({ width: "360px", height: "220px" });
+
+    await act(async () => deferred.resolve({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: autoFitTemplate.id,
+        templateName: autoFitTemplate.name,
+        schema: [
+          { id: "translation", label: "Translation" },
+          { id: "example", label: "Example" },
+        ],
+        fields: [
+          {
+            fieldId: "translation",
+            status: "ready",
+            type: "text",
+            value: "A long final translation that needs more room.",
+          },
+          {
+            fieldId: "example",
+            status: "ready",
+            type: "text",
+            value: "A long final example that also participates in measurement.",
+          },
+        ],
+      },
+    }));
+
+    expect(screen.getAllByRole("term")).toHaveLength(2);
+    expect(widthMeasurements).toBe(1);
+    expect(heightMeasurements).toBe(1);
+    expect(panel).toHaveAttribute("data-resize-phase", "animating");
+    expect(panel).toHaveStyle({
+      left: "268px",
+      top: "220px",
+      width: "560px",
+      height: "420px",
+    });
+    fireEvent.pointerDown(handle!, {
+      button: 0,
+      clientX: 828,
+      clientY: 640,
+      isPrimary: true,
+      pointerId: 11,
+    });
+    fireEvent.pointerMove(handle!, { clientX: 858, clientY: 674, pointerId: 11 });
+    expect(panel).toHaveStyle({ width: "560px", height: "420px" });
+
+    const finishTransition = (propertyName: "width" | "height") => {
+      const event = new Event("transitionend", { bubbles: true });
+      Object.defineProperty(event, "propertyName", { value: propertyName });
+      fireEvent(panel, event);
+    };
+    finishTransition("width");
+    expect(panel).toHaveAttribute("data-resize-phase", "animating");
+    finishTransition("height");
+    expect(panel).toHaveAttribute("data-resize-phase", "manual");
+
+    fireEvent.pointerDown(handle!, {
+      button: 0,
+      clientX: 828,
+      clientY: 640,
+      isPrimary: true,
+      pointerId: 12,
+    });
+    fireEvent.pointerMove(handle!, { clientX: 858, clientY: 674, pointerId: 12 });
+    expect(panel).toHaveStyle({ width: "590px", height: "454px" });
+    fireEvent.pointerUp(handle!, { clientX: 858, clientY: 674, pointerId: 12 });
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Close panel" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open selection panel" }));
+    expect(screen.getByRole("dialog", { name: "Selection panel for unfamiliar" })).toHaveStyle({
+      width: "360px",
+      height: "220px",
+    });
+  });
+
+  it("skips the auto-fit transition when reduced motion is preferred", async () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+      media: "(prefers-reduced-motion: reduce)",
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    });
+    const deferred = createDeferredTranslationClient();
+    render(<SelectionPopupApp messageClient={deferred.messageClient} />);
+    const panel = await openPanel();
+    await screen.findByRole("heading", { name: "Default" });
+    const viewport = panel.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    const content = panel.querySelector<HTMLElement>(".salto-selection-panel__content");
+
+    Object.defineProperties(panel, {
+      offsetWidth: { configurable: true, value: 360 },
+      offsetHeight: { configurable: true, value: 220 },
+    });
+    Object.defineProperties(viewport!, {
+      clientWidth: { configurable: true, value: 358 },
+      clientHeight: { configurable: true, value: 174 },
+    });
+    Object.defineProperties(content!, {
+      scrollWidth: { configurable: true, value: 500 },
+      scrollHeight: { configurable: true, value: 300 },
+    });
+
+    await act(async () => deferred.resolve({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        templateId: defaultTemplate.id,
+        templateName: defaultTemplate.name,
+        schema: [{ id: "translation", label: "Translation" }],
+        fields: [{
+          fieldId: "translation",
+          status: "ready",
+          type: "text",
+          value: "A long result shown without motion.",
+        }],
+      },
+    }));
+
+    expect(panel).toHaveStyle({ width: "502px", height: "346px" });
+    expect(panel).toHaveAttribute("data-resize-phase", "manual");
   });
 
   it("does not start dragging from a non-primary pointer", async () => {

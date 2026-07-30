@@ -7,7 +7,7 @@ Salto is a browser extension for reading-time translation, word saving, and late
 - **Selection**: The text selected by the user on a web page. MVP v0.1 supports words and short phrases up to 500 characters.
 - **Selection translation**: The explicit reading-time query that turns a selection and its prompt context into transient query-field results.
 - **Floating trigger**: The small UI shown near a selection before any lookup runs. Clicking it starts translation.
-- **Translation panel**: The floating panel anchored near the selection that displays query template output. Its size can be manually adjusted from the right edge, bottom edge, or bottom-right corner.
+- **Translation panel**: The floating panel anchored near the selection that displays query template output. It opens at its default size, fits itself once to complete output, and can then be manually resized for the current opening from the right edge, bottom edge, or bottom-right corner.
 - **Query template**: A user-editable ordered schema for selection translation output. Each field chooses an LLM or dictionary source.
 - **Template field definition**: A reusable authoring preset for a query-template output field. It supplies the label, optional description, source, type, and either an LLM instruction or a normalized dictionary field. Its description is shown in field-library and template configuration views when present, not in translation-panel results.
 - **Query schema field**: One output block inside a saved query template. It is a snapshot created from a template field definition and has its own order and enabled state plus the copied definition.
@@ -27,7 +27,7 @@ Salto is a browser extension for reading-time translation, word saving, and late
 - **OpenAI-compatible LLM configuration**: The one extension-local provider origin, model, options, and separately stored API-key secret used by background LLM requests.
 - **Dictionary adapter**: An extension-owned integration that maps one Web dictionary provider into Salto's normalized lookup contract.
 - **Database inspector**: A deferred personal, read-only extension page for quickly browsing all current IndexedDB tables and their records. It is a table browser, not a vocabulary-management or data-editing interface.
-- **Extension setting**: Extension-local workflow configuration such as the active query template, target language, active dictionary adapter, highlighting, theme mode, or translation-panel size; it is not syncable vocabulary data.
+- **Extension setting**: Extension-local workflow configuration such as the active query template, target language, active dictionary adapter, highlighting, or theme mode; it is not syncable vocabulary data.
 - **Saved-vocabulary highlighting**: The page behavior that marks saved vocabulary without changing vocabulary records. It can mark an original saved selection location or, when same-word highlighting is enabled, all matching occurrences of a saved term.
 - **Same-word highlighting**: The optional page-wide matching mode of saved-vocabulary highlighting. When disabled, only a saved selection's original location may be marked; an unavailable or changed location does not fall back to matching identical words elsewhere on the page.
 - **Canonical key**: The stable saved-word identity key, such as `en:running`. MVP v0.1 does not perform lemmatization.
@@ -41,7 +41,7 @@ Salto is a browser extension for reading-time translation, word saving, and late
 - Translation panel results are transient reading output and do not populate vocabulary fields.
 - Query templates are editable by users.
 - Query templates are extension-local reading-time translation schemas and do not create syncable vocabulary fields.
-- The translation panel starts with the current `360 x 220` minimum size. Users may resize it from the right edge, bottom edge, or bottom-right corner; its maximum stays within the viewport with an 8px margin, its top-left position remains stable while resizing, and the last chosen size is saved as a global extension setting.
+- The translation panel opens at `360 x 220` whenever the viewport permits. Manual resizing remains locked until translation completes and the panel automatically fits all final fields once, width first and then height, up to `560 x 420`; the fit keeps the top-left position stable, animates unless reduced motion is preferred, and stays within the viewport with an 8px margin. Users may then resize it temporarily from the right edge, bottom edge, or bottom-right corner, and closing the panel discards both automatic and manual sizes.
 - The system default template is read-only and always retains at least one enabled field; users copy it before changing its field composition.
 - Every template must retain at least one enabled field.
 - A template field definition is copied into a template when selected. Later edits or deletion of the definition never alter saved templates that were created from it.

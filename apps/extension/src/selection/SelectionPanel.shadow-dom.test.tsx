@@ -92,6 +92,47 @@ describe("selection panel Shadow DOM focus", () => {
     expect(target.shadowRoot.activeElement).toBe(close);
   });
 
+  it("leaves wheel scrolling enabled and sizes the scroll area below the header", async () => {
+    const target = createShadowRootRenderTarget();
+    roots.push(target.root);
+    await act(async () => target.root.render(
+      <SelectionPanel
+        activeTemplate={{ status: "ready", template, resolution: { status: "active" } }}
+        onClose={vi.fn()}
+        onPositionChange={vi.fn()}
+        onRegenerate={vi.fn()}
+        onSave={vi.fn()}
+        panelRef={createRef<HTMLElement>()}
+        position={{ x: 20, y: 20 }}
+        saveState="idle"
+        selectionText="unfamiliar"
+        size={{ width: 360, height: 220 }}
+        translation={{
+          status: "complete",
+          data: {
+            templateId: template.id,
+            templateName: template.name,
+            schema: [{ id: "translation", label: "Translation" }],
+            fields: [{ fieldId: "translation", status: "ready", type: "text", value: "translated" }],
+          },
+        }}
+      />,
+    ));
+
+    const panel = within(target.container).getByRole("dialog");
+    const scrollArea = panel.querySelector('[data-slot="scroll-area"]');
+    expect(scrollArea).toHaveClass("min-h-0", "flex-1");
+    expect(scrollArea).not.toHaveClass("h-full");
+
+    const wheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 100,
+    });
+    panel.dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(false);
+  });
+
   it("applies each saved snapshot style without leaking invalid declarations", async () => {
     const styledTemplate: QueryTemplate = {
       ...template,
@@ -147,6 +188,65 @@ describe("selection panel Shadow DOM focus", () => {
     expect(panel.getByText("翻译")).toHaveStyle({ fontWeight: "700" });
     expect(panel.getByText("Context")).not.toHaveAttribute("style");
     expect(panel.getByText("上下文").closest("dd")).not.toHaveAttribute("style");
+  });
+
+  it("renders structured dictionary examples without applying saved snapshot styles", async () => {
+    const examplesTemplate: QueryTemplate = {
+      ...template,
+      fields: [{
+        id: "examples",
+        definitionId: "definition-examples",
+        content: {
+          label: "例句",
+          source: "dictionary",
+          dictionaryField: "examples",
+          type: "examples",
+        },
+        keyCss: "display: none;",
+        valueCss: "display: none;",
+        order: 0,
+        enabled: true,
+      }],
+    };
+    const target = createShadowRootRenderTarget();
+    roots.push(target.root);
+    await act(async () => target.root.render(
+      <SelectionPanel
+        activeTemplate={{ status: "ready", template: examplesTemplate, resolution: { status: "active" } }}
+        onClose={vi.fn()}
+        onPositionChange={vi.fn()}
+        onRegenerate={vi.fn()}
+        onSave={vi.fn()}
+        panelRef={createRef<HTMLElement>()}
+        position={{ x: 20, y: 20 }}
+        saveState="idle"
+        selectionText="example"
+        translation={{
+          status: "complete",
+          data: {
+            templateId: examplesTemplate.id,
+            templateName: examplesTemplate.name,
+            schema: [{ id: "examples", label: "例句" }],
+            fields: [{
+              fieldId: "examples",
+              status: "ready",
+              type: "examples",
+              value: [{
+                english: "Let me give you an example.",
+                chinese: "让我来举一个例子吧。",
+                source: "牛津词典",
+              }],
+            }],
+          },
+        }}
+      />,
+    ));
+
+    const panel = within(target.container);
+    expect(panel.getByText("例句")).not.toHaveAttribute("style");
+    expect(panel.getByText("Let me give you an example.")).toHaveAttribute("lang", "en");
+    expect(panel.getByText("让我来举一个例子吧。")).toHaveAttribute("lang", "zh-CN");
+    expect(panel.getByText("《牛津词典》")).not.toHaveAttribute("style");
   });
 
   it("restores focus to the floating trigger after closing inside a shadow root", async () => {
