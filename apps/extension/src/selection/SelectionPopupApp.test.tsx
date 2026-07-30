@@ -397,7 +397,8 @@ describe("SelectionPopupApp", () => {
         { ...defaultTemplate.fields[0], id: "ready", content: { ...defaultTemplate.fields[0].content, label: "Ready" }, order: 2 },
         { ...defaultTemplate.fields[0], id: "failed", content: { ...defaultTemplate.fields[0].content, label: "Failed" }, order: 0 },
         { ...defaultTemplate.fields[0], id: "unavailable", content: { ...defaultTemplate.fields[0].content, label: "Unavailable" }, order: 1 },
-        { ...defaultTemplate.fields[0], id: "disabled", content: { ...defaultTemplate.fields[0].content, label: "Disabled" }, order: 3, enabled: false },
+        { ...defaultTemplate.fields[0], id: "missing", content: { ...defaultTemplate.fields[0].content, label: "Missing" }, order: 3 },
+        { ...defaultTemplate.fields[0], id: "disabled", content: { ...defaultTemplate.fields[0].content, label: "Disabled" }, order: 4, enabled: false },
       ],
     };
     let resolveTranslation!: (response: Awaited<ReturnType<ExtensionMessageClient["send"]>>) => void;
@@ -441,9 +442,9 @@ describe("SelectionPopupApp", () => {
 
     expect(await screen.findByRole("heading", { name: "Field states" })).toBeInTheDocument();
     expect(screen.getAllByRole("term").map((node) => node.textContent))
-      .toEqual(["Failed", "Unavailable", "Ready"]);
+      .toEqual(["Failed", "Unavailable", "Ready", "Missing"]);
     expect(screen.queryByText("Disabled")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Loading field...")).toHaveLength(3);
+    expect(document.querySelectorAll(".salto-selection-panel__loading-field")).toHaveLength(4);
 
     await act(async () => resolveTranslation({
       ok: true,
@@ -455,6 +456,7 @@ describe("SelectionPopupApp", () => {
           { id: "failed", label: "Failed" },
           { id: "unavailable", label: "Unavailable" },
           { id: "ready", label: "Ready" },
+          { id: "missing", label: "Missing" },
         ],
         fields: [
           { fieldId: "ready", status: "ready", type: "text", value: "Ready sibling" },
@@ -465,8 +467,10 @@ describe("SelectionPopupApp", () => {
     }));
 
     expect(screen.getByText("Ready sibling")).toBeInTheDocument();
-    expect(screen.getByText("Field failed")).toBeInTheDocument();
-    expect(screen.getByText("Field unavailable")).toBeInTheDocument();
+    expect(screen.getByText("字段加载失败")).toBeInTheDocument();
+    expect(screen.getByText("未找到相关内容")).toBeInTheDocument();
+    expect(screen.getByText("缺少字段结果")).toBeInTheDocument();
+    expect(screen.queryByText("Field failed")).not.toBeInTheDocument();
   });
 
   it("shows a stable non-secret diagnostic when the active template is recovered", async () => {
@@ -514,7 +518,7 @@ describe("SelectionPopupApp", () => {
     render(<SelectionPopupApp messageClient={{ send }} />);
     await openPanel();
 
-    const diagnostic = await screen.findByText("The active template was unavailable. Using Default.");
+    const diagnostic = await screen.findByText("当前模板不可用，已使用 Default。");
     expect(diagnostic).toHaveAttribute("data-code", "active-template-unavailable");
     expect(document.body.textContent).not.toContain("apiKey");
   });
@@ -543,7 +547,7 @@ describe("SelectionPopupApp", () => {
     render(<SelectionPopupApp messageClient={withActiveTemplate(send)} onSaveSuccess={onSaveSuccess} />);
     await openPanel();
 
-    expect(await screen.findByText("Field unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("字段加载失败")).toBeInTheDocument();
     const save = screen.getByRole("button", { name: "Save selection" });
     await userEvent.setup().click(save);
     await userEvent.setup().click(save);
@@ -562,7 +566,9 @@ describe("SelectionPopupApp", () => {
     render(<SelectionPopupApp messageClient={withActiveTemplate(send)} />);
     const panel = await openPanel();
 
-    expect(await screen.findByText("The extension request could not be completed")).toBeInTheDocument();
+    expect((await screen.findAllByText("翻译请求失败")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("翻译不可用").length).toBeGreaterThan(0);
+    expect(screen.queryByText("The extension request could not be completed")).not.toBeInTheDocument();
     expect(panel).toHaveStyle({ left: "268px", top: "220px" });
   });
 
@@ -590,7 +596,7 @@ describe("SelectionPopupApp", () => {
     const user = userEvent.setup();
     save.focus();
     await user.keyboard("{Enter}");
-    expect(await screen.findByText("Could not save selection", {
+    expect(await screen.findByText("无法保存划词", {
       selector: ".salto-selection-panel__save-error",
     })).toBeInTheDocument();
     expect(onSaveSuccess).not.toHaveBeenCalled();

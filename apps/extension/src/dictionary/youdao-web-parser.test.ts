@@ -181,4 +181,23 @@ describe("Youdao Web DOM parser", () => {
       expect.objectContaining({ code: "parser-failure" })
     );
   });
+
+  it("returns available web meanings for an entry without standard definitions", () => {
+    expect(parseYoudaoHtml(fixture("web-only-entry"))).toEqual({
+      status: "found",
+      fields: {
+        meaning: "扩展\n插件",
+      },
+    });
+  });
+
+  it("previews an entry that only provides web meanings", () => {
+    expect(parseYoudaoPreviewHtml(fixture("web-only-entry"))).toEqual({
+      status: "found",
+      preview: {
+        term: "Addons",
+        sections: [{ kind: "web-or-specialized", entries: ["扩展", "插件"] }],
+      },
+    });
+  });
 });

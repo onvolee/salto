@@ -303,4 +303,28 @@ describe("selection panel Shadow DOM focus", () => {
     const trigger = await popup.findByRole("button", { name: "Open selection panel" });
     await waitFor(() => expect(target.shadowRoot.activeElement).toBe(trigger));
   });
+
+  it("renders template failures from the Chinese message catalog", async () => {
+    const target = createShadowRootRenderTarget();
+    roots.push(target.root);
+    await act(async () => target.root.render(
+      <SelectionPanel
+        activeTemplate={{ status: "error", message: "Template provider failed" }}
+        onClose={vi.fn()}
+        onPositionChange={vi.fn()}
+        onRegenerate={vi.fn()}
+        onSave={vi.fn()}
+        panelRef={createRef<HTMLElement>()}
+        position={{ x: 20, y: 20 }}
+        saveState="idle"
+        selectionText="unfamiliar"
+        translation={{ status: "loading" }}
+      />,
+    ));
+
+    const panel = within(target.container);
+    expect(panel.getByText("模板不可用")).toBeInTheDocument();
+    expect(panel.getAllByText("无法加载当前模板").length).toBeGreaterThan(0);
+    expect(panel.queryByText("Template provider failed")).not.toBeInTheDocument();
+  });
 });

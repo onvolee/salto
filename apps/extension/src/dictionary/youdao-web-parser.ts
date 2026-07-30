@@ -143,6 +143,20 @@ function parseWordForms(container: Element): readonly string[] {
   return unique(forms);
 }
 
+function parseWebMeanings(document: Document): readonly string[] {
+  return unique(textEntries(document, "#tWebTrans .wt-container > .title > span"));
+}
+
+function webOrSpecializedEntries(document: Document): readonly string[] {
+  const webMeanings = parseWebMeanings(document);
+  return unique([
+    ...(webMeanings.length > 0
+      ? webMeanings
+      : textEntries(document, "#tWebTrans, #webTrans")),
+    ...textEntries(document, "#special, #specialEng"),
+  ]);
+}
+
 export function parseYoudaoHtml(html: string): YoudaoParseResult {
   const { document } = parseHTML(html);
   if (document.querySelector("#noResult")) {
@@ -152,7 +166,7 @@ export function parseYoudaoHtml(html: string): YoudaoParseResult {
   const root = document.querySelector("#phrsListTab");
   const keyword = root?.querySelector(".keyword");
   const definitions = root?.querySelector(".trans-container");
-  if (!root || !keyword || !normalizedText(keyword.textContent) || !definitions) {
+  if (!root || !keyword || !normalizedText(keyword.textContent)) {
     return parserFailure();
   }
 
@@ -164,8 +178,9 @@ export function parseYoudaoHtml(html: string): YoudaoParseResult {
     [...document.querySelectorAll("#synonyms .contentTitle a")]
       .map((element) => normalizedText(element.textContent))
   );
-  const wordForms = parseWordForms(definitions);
-  const definitionFields = parseDefinitions(definitions);
+  const wordForms = definitions ? parseWordForms(definitions) : [];
+  const definitionFields = definitions ? parseDefinitions(definitions) : {};
+  const webMeanings = definitionFields.meaning ? [] : parseWebMeanings(document);
   const examples = parseExamples(document);
 
   return {
@@ -173,8 +188,9 @@ export function parseYoudaoHtml(html: string): YoudaoParseResult {
     fields: {
       ...(phonetics.length > 0 ? { phonetic: phonetics.join("; ") } : {}),
       ...definitionFields,
+      ...(webMeanings.length > 0 ? { meaning: webMeanings.join("\n") } : {}),
       ...(synonyms.length > 0 ? { synonyms } : {}),
-      ...(wordForms.length > 0 ? { wordForms } : {})
+      ...(wordForms.length > 0 ? { wordForms } : {}),
       ...(examples.length > 0 ? { examples } : {}),
     }
   };
@@ -190,17 +206,17 @@ export function parseYoudaoPreviewHtml(html: string): YoudaoPreviewParseResult {
   const keyword = root?.querySelector(".keyword");
   const definitions = root?.querySelector(".trans-container");
   const term = normalizedText(keyword?.textContent);
-  if (!root || !term || !definitions) {
+  if (!root || !term) {
     return parserFailure();
   }
 
   const sections = [
     textSection("basic", [
       ...textEntries(root, ".phonetic"),
-      ...textEntries(definitions, "ul > li"),
+      ...(definitions ? textEntries(definitions, "ul > li") : []),
     ]),
-    wordFormSection(definitions),
-    textSection("web-or-specialized", textEntries(document, "#tWebTrans, #webTrans, #special, #specialEng")),
+    definitions ? wordFormSection(definitions) : null,
+    textSection("web-or-specialized", webOrSpecializedEntries(document)),
     textSection("english-or-bilingual", textEntries(document, "#ee, #eng, #english")),
     phraseSection(document),
     textSection("synonyms", textEntries(document, "#synonyms .contentTitle a")),
