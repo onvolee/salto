@@ -38,7 +38,9 @@ import {
 } from "react";
 import {
   PROMPT_CONTEXT_VARIABLES,
+  templateFieldSupportsCustomCss,
   type DictionaryQueryField,
+  type LlmQuerySchemaFieldType,
   type PromptContextVariable,
   type QuerySchemaFieldType,
   type TemplateFieldDefinition,
@@ -124,11 +126,13 @@ const DICTIONARY_FIELDS: readonly {
   label: string;
   type: QuerySchemaFieldType;
 }[] = [
+  { value: "translation", label: "翻译", type: "text" },
+  { value: "basicDefinition", label: "基础释义", type: "text" },
   { value: "phonetic", label: "音标", type: "text" },
   { value: "partOfSpeech", label: "词性", type: "text" },
-  { value: "meaning", label: "释义", type: "text" },
   { value: "synonyms", label: "同义词", type: "list" },
   { value: "wordForms", label: "词形", type: "list" },
+  { value: "examples", label: "例句", type: "examples" },
 ];
 
 const DEFINITION_SOURCE_LABELS = {
@@ -139,13 +143,14 @@ const DEFINITION_SOURCE_LABELS = {
 const DEFINITION_TYPE_LABELS = {
   text: "文本",
   list: "列表",
+  examples: "例句",
 } as const satisfies Record<QuerySchemaFieldType, string>;
 
 type DefinitionFormState = {
   readonly label: string;
   readonly description: string;
   readonly source: "llm" | "dictionary";
-  readonly type: QuerySchemaFieldType;
+  readonly type: LlmQuerySchemaFieldType;
   readonly instruction: string;
   readonly dictionaryField: DictionaryQueryField;
 };
@@ -156,7 +161,7 @@ const EMPTY_DEFINITION: DefinitionFormState = {
   source: "llm",
   type: "text",
   instruction: "",
-  dictionaryField: "meaning",
+  dictionaryField: "translation",
 };
 
 function formStateFromDefinition(
@@ -167,11 +172,11 @@ function formStateFromDefinition(
     label: definition.label,
     description: definition.description ?? "",
     source: definition.source,
-    type: definition.type,
+    type: definition.type === "examples" ? "text" : definition.type,
     instruction: definition.source === "llm" ? definition.instruction : "",
     dictionaryField: definition.source === "dictionary"
       ? definition.dictionaryField
-      : "meaning",
+      : "translation",
   };
 }
 
@@ -327,7 +332,7 @@ function DefinitionDialog({
                   <FieldLabel htmlFor="definition-type">结果类型</FieldLabel>
                   <Select
                     items={DEFINITION_TYPE_LABELS}
-                    onValueChange={(value) => update("type", value as QuerySchemaFieldType)}
+                    onValueChange={(value) => update("type", value as LlmQuerySchemaFieldType)}
                     value={state.type}
                   >
                     <SelectTrigger className="w-full" id="definition-type"><SelectValue /></SelectTrigger>
@@ -467,7 +472,7 @@ function DefinitionLibrary({ editor }: { readonly editor: DefinitionEditor }) {
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
               <Badge variant="secondary">{definition.source === "llm" ? "LLM" : "词典"}</Badge>
-              <Badge variant="outline">{definition.type === "list" ? "列表" : "文本"}</Badge>
+              <Badge variant="outline">{DEFINITION_TYPE_LABELS[definition.type]}</Badge>
             </CardContent>
           </Card>
         ))}
@@ -492,13 +497,15 @@ function TemplatePreview({
     [enabledFields],
   );
   const fieldStyles = useMemo(
-    () => new Map(enabledFields.map((field) => [
-      field.id,
-      {
-        key: parseCssDeclarations(field.keyCss),
-        value: parseCssDeclarations(field.valueCss),
-      },
-    ])),
+    () => new Map(enabledFields
+      .filter((field) => templateFieldSupportsCustomCss(field.content))
+      .map((field) => [
+        field.id,
+        {
+          key: parseCssDeclarations(field.keyCss),
+          value: parseCssDeclarations(field.valueCss),
+        },
+      ])),
     [enabledFields],
   );
 
@@ -533,9 +540,15 @@ function TemplatePreview({
             return (
               <TranslationFieldValue
                 style={valueStyle}
-                value={field?.content.type === "list"
-                  ? ["示例结果一", "示例结果二"]
-                  : "这是该字段的模拟翻译结果。"}
+                value={field?.content.type === "examples"
+                  ? [{
+                      english: "Let me give you an example.",
+                      chinese: "让我来举一个例子吧。",
+                      source: "牛津词典",
+                    }]
+                  : field?.content.type === "list"
+                    ? ["示例结果一", "示例结果二"]
+                    : "这是该字段的模拟翻译结果。"}
               />
             );
           }}
@@ -714,13 +727,15 @@ function SortableField({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <AppearanceDialog
-            disabled={disabled}
-            field={field}
-            fields={fields}
-            templateName={templateName}
-            onUpdate={onUpdate}
-          />
+          {templateFieldSupportsCustomCss(field.content) ? (
+            <AppearanceDialog
+              disabled={disabled}
+              field={field}
+              fields={fields}
+              templateName={templateName}
+              onUpdate={onUpdate}
+            />
+          ) : null}
           <Button
             aria-label={`上移${field.content.label}`}
             className="sr-only"

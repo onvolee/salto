@@ -1,13 +1,29 @@
 import {
-  DICTIONARY_FIELD_TYPES,
+  type DictionaryExample,
   type DictionaryFieldKey
 } from "../dictionary/types";
 import type { ClientGeneratedId, IsoDateTimeString } from "../shared/sync";
 
-export type QuerySchemaFieldType = "text" | "list";
+export type QuerySchemaFieldType = "text" | "list" | "examples";
+export type LlmQuerySchemaFieldType = Exclude<QuerySchemaFieldType, "examples">;
 export type QuerySchemaFieldSource = "llm" | "dictionary";
-export type DictionaryQueryField = DictionaryFieldKey;
-export type DictionaryQueryFieldSpec = typeof DICTIONARY_FIELD_TYPES;
+export const DICTIONARY_QUERY_FIELD_TYPES = {
+  translation: "text",
+  basicDefinition: "text",
+  phonetic: "text",
+  partOfSpeech: "text",
+  synonyms: "list",
+  wordForms: "list",
+  examples: "examples",
+} as const;
+export type DictionaryQueryFieldSpec = typeof DICTIONARY_QUERY_FIELD_TYPES;
+export type DictionaryQueryField = keyof DictionaryQueryFieldSpec
+  | Extract<DictionaryFieldKey, "meaning">;
+
+type DictionaryQueryFieldType<K extends DictionaryQueryField> =
+  K extends keyof DictionaryQueryFieldSpec
+    ? DictionaryQueryFieldSpec[K]
+    : "text";
 
 type TemplateFieldContentBase = {
   readonly label: string;
@@ -16,7 +32,7 @@ type TemplateFieldContentBase = {
 
 export type LlmTemplateFieldContent = TemplateFieldContentBase & {
   readonly source: "llm";
-  readonly type: QuerySchemaFieldType;
+  readonly type: LlmQuerySchemaFieldType;
   readonly instruction: string;
   readonly dictionaryField?: never;
 };
@@ -25,7 +41,7 @@ export type DictionaryTemplateFieldContent = {
   [K in DictionaryQueryField]: TemplateFieldContentBase & {
     readonly source: "dictionary";
     readonly dictionaryField: K;
-    readonly type: DictionaryQueryFieldSpec[K];
+    readonly type: DictionaryQueryFieldType<K>;
     readonly instruction?: never;
   };
 }[DictionaryQueryField];
@@ -33,6 +49,10 @@ export type DictionaryTemplateFieldContent = {
 export type TemplateFieldContent =
   | LlmTemplateFieldContent
   | DictionaryTemplateFieldContent;
+
+export function templateFieldSupportsCustomCss(content: TemplateFieldContent): boolean {
+  return content.type !== "examples";
+}
 
 type TemplateFieldDefinitionMetadata = {
   readonly id: ClientGeneratedId;
@@ -100,6 +120,12 @@ export type QueryFieldResult =
       readonly status: "ready";
       readonly type: "list";
       readonly value: readonly string[];
+    }
+  | {
+      readonly fieldId: ClientGeneratedId;
+      readonly status: "ready";
+      readonly type: "examples";
+      readonly value: readonly DictionaryExample[];
     }
   | {
       readonly fieldId: ClientGeneratedId;
@@ -244,7 +270,7 @@ function isValidTemplateFieldContent(value: unknown): value is TemplateFieldCont
     if (!("dictionaryField" in value) || !isDictionaryQueryField(value.dictionaryField)) {
       return false;
     }
-    return value.type === DICTIONARY_FIELD_TYPES[value.dictionaryField]
+    return value.type === dictionaryQueryFieldType(value.dictionaryField)
       && !("instruction" in value);
   }
 
@@ -252,7 +278,12 @@ function isValidTemplateFieldContent(value: unknown): value is TemplateFieldCont
 }
 
 function isDictionaryQueryField(value: unknown): value is DictionaryQueryField {
-  return typeof value === "string" && Object.hasOwn(DICTIONARY_FIELD_TYPES, value);
+  return value === "meaning"
+    || (typeof value === "string" && Object.hasOwn(DICTIONARY_QUERY_FIELD_TYPES, value));
+}
+
+function dictionaryQueryFieldType(field: DictionaryQueryField): QuerySchemaFieldType {
+  return field === "meaning" ? "text" : DICTIONARY_QUERY_FIELD_TYPES[field];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -268,7 +299,8 @@ function isIsoDateTime(value: unknown): value is IsoDateTimeString {
 }
 
 export function createDefaultQueryTemplate(seedTime: IsoDateTimeString): QueryTemplate {
-  const [translationDefinition, keyPointsDefinition] = createDefaultTemplateFieldDefinitions(seedTime);
+  const [translationDefinition, phoneticDefinition, partOfSpeechDefinition] =
+    createDefaultTemplateFieldDefinitions(seedTime);
   return {
     id: "system-default",
     name: "Default",
@@ -281,9 +313,14 @@ export function createDefaultQueryTemplate(seedTime: IsoDateTimeString): QueryTe
         0,
       ),
       createTemplateFieldSnapshot(
-        keyPointsDefinition,
-        "system-default:key-points",
+        phoneticDefinition,
+        "system-default:phonetic",
         1,
+      ),
+      createTemplateFieldSnapshot(
+        partOfSpeechDefinition,
+        "system-default:part-of-speech",
+        2,
       ),
     ]
   };
@@ -291,28 +328,36 @@ export function createDefaultQueryTemplate(seedTime: IsoDateTimeString): QueryTe
 
 export function createDefaultTemplateFieldDefinitions(
   seedTime: IsoDateTimeString,
-): readonly [LlmTemplateFieldDefinition, LlmTemplateFieldDefinition] {
+): readonly [
+  DictionaryTemplateFieldDefinition,
+  DictionaryTemplateFieldDefinition,
+  DictionaryTemplateFieldDefinition,
+] {
   return [
     {
       id: "system-field:translation",
-      label: "Translation",
-      source: "llm",
+      label: "翻译",
+      source: "dictionary",
       type: "text",
-      instruction:
-        "Translate {{selection}} into {{targetLanguage}}. " +
-        "Use {{sentence}} only when needed for disambiguation. " +
-        "Return only the translation.",
+      dictionaryField: "translation",
       createdAt: seedTime,
       updatedAt: seedTime,
     },
     {
-      id: "system-field:key-points",
-      label: "Key points",
-      source: "llm",
-      type: "list",
-      instruction:
-        "List the key meanings or usage notes for {{selection}} in " +
-        "{{sentence}}. Write each item in {{targetLanguage}}.",
+      id: "system-field:phonetic",
+      label: "音标",
+      source: "dictionary",
+      type: "text",
+      dictionaryField: "phonetic",
+      createdAt: seedTime,
+      updatedAt: seedTime,
+    },
+    {
+      id: "system-field:part-of-speech",
+      label: "词性",
+      source: "dictionary",
+      type: "text",
+      dictionaryField: "partOfSpeech",
       createdAt: seedTime,
       updatedAt: seedTime,
     },

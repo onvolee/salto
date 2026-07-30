@@ -21,6 +21,14 @@ describe("Youdao Web DOM parser", () => {
             { label: "现在分词", value: "banking" },
           ] },
           { kind: "synonyms", entries: ["shore", "riverside"] },
+          {
+            kind: "examples",
+            entries: [{
+              english: "She sat on the bank.",
+              chinese: "她坐在河岸上。",
+              source: "Example dictionary",
+            }],
+          },
         ],
       },
     });
@@ -125,11 +133,17 @@ describe("Youdao Web DOM parser", () => {
     expect(parseYoudaoHtml(fixture("common-word"))).toEqual({
       status: "found",
       fields: {
+        basicDefinition: "n. the land beside a river",
         phonetic: "/baenk/",
         partOfSpeech: "noun",
         meaning: "the land beside a river",
         synonyms: ["shore", "riverside"],
-        wordForms: ["banks", "banked", "banking"]
+        wordForms: ["banks", "banked", "banking"],
+        examples: [{
+          english: "She sat on the bank.",
+          chinese: "她坐在河岸上。",
+          source: "Example dictionary",
+        }],
       }
     });
   });
@@ -138,6 +152,7 @@ describe("Youdao Web DOM parser", () => {
     expect(parseYoudaoHtml(fixture("multi-part-of-speech"))).toEqual({
       status: "found",
       fields: {
+        basicDefinition: "n. stored information\nv. to store information",
         phonetic: "/rekord/; /rikord/",
         partOfSpeech: "noun, verb",
         meaning: "stored information\nto store information",
@@ -151,6 +166,7 @@ describe("Youdao Web DOM parser", () => {
     expect(parseYoudaoHtml(fixture("missing-fields"))).toEqual({
       status: "found",
       fields: {
+        basicDefinition: "n. a financial institution",
         partOfSpeech: "noun",
         meaning: "a financial institution"
       }

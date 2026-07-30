@@ -22,4 +22,35 @@
 
 .salto-translation-field-list__items {
   list-style: none;
+  padding: 0;
+}
+
+.salto-translation-field-list__text {
+  white-space: pre-line;
+}
+
+.salto-translation-field-list__examples {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.salto-translation-field-list__example + .salto-translation-field-list__example {
+  margin-top: 0.75rem;
+}
+
+.salto-translation-field-list__example p {
+  margin: 0;
+}
+
+.salto-translation-field-list__example-chinese,
+.salto-translation-field-list__example-source {
+  margin-top: 0.1875rem;
+}
+
+.salto-translation-field-list__example-source {
+  color: var(--salto-muted-foreground);
+  display: block;
+  font-size: 0.6875rem;
+  font-style: normal;
 }

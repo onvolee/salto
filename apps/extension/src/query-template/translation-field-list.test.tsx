@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -46,5 +46,39 @@ describe("translation field value", () => {
     expect(screen.getByText("First result")).toHaveStyle(style);
     expect(screen.getByText("Second result")).toHaveStyle(style);
     expect(screen.getByRole("list")).not.toHaveAttribute("style");
+  });
+
+  it("renders dictionary examples as fixed bilingual blocks", () => {
+    render(
+      <TranslationFieldValue
+        style={{ display: "none" }}
+        value={[
+          {
+            english: "Let me give you an example.",
+            chinese: "让我来举一个例子吧。",
+            source: "牛津词典",
+          },
+          {
+            english: "She is a shining example to us all.",
+            chinese: "她是我们所有人的光辉榜样。",
+          },
+        ]}
+      />,
+    );
+
+    const examples = screen.getByRole("list");
+    expect(within(examples).getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText("Let me give you an example.")).toHaveAttribute("lang", "en");
+    expect(screen.getByText("让我来举一个例子吧。")).toHaveAttribute("lang", "zh-CN");
+    expect(screen.getByText("《牛津词典》").tagName).toBe("CITE");
+    expect(examples).not.toHaveAttribute("style");
+    expect(screen.getByText("She is a shining example to us all.").closest("li"))
+      .not.toHaveTextContent("《");
+  });
+
+  it("preserves line breaks in text fields", () => {
+    render(<TranslationFieldValue value={"n. 例子\nv. 举例说明"} />);
+
+    expect(screen.getByText(/n\. 例子/)).toHaveClass("salto-translation-field-list__text");
   });
 });

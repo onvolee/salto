@@ -66,11 +66,13 @@ describe("dictionary enrichment source", () => {
       term: "bank",
       language: "en",
       fields: {
+        basicDefinition: { status: "unavailable", type: "text", reason: "unsupported" },
         phonetic: { status: "ready", type: "text", value: "/bæŋk/" },
         partOfSpeech: { status: "unavailable", type: "text", reason: "missing" },
         meaning: { status: "unavailable", type: "text", reason: "missing" },
         synonyms: { status: "ready", type: "list", value: ["shore"] },
         wordForms: { status: "unavailable", type: "list", reason: "missing" },
+        examples: { status: "unavailable", type: "examples", reason: "unsupported" },
       },
     });
     const source = createDictionaryEnrichmentSource({

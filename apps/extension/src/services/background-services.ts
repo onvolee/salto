@@ -4,6 +4,7 @@ import {
   isPromptContextWithinLimits,
   PROMPT_CONTEXT_LIMITS,
   isValidExtensionSettings,
+  isDictionaryExample,
   isValidQueryTemplate,
   isValidQueryTemplateInput,
   isValidTemplateFieldDefinitionInput,
@@ -318,10 +319,17 @@ function isValidFieldResult(
     if (value.type !== field.content.type) {
       return false;
     }
-    return value.type === "text"
-      ? typeof value.value === "string" && value.value.trim().length > 0
-      : Array.isArray(value.value)
+    if (value.type === "text") {
+      return typeof value.value === "string" && value.value.trim().length > 0;
+    }
+    if (value.type === "list") {
+      return Array.isArray(value.value)
         && value.value.every((item) => typeof item === "string" && item.trim().length > 0);
+    }
+    return value.type === "examples"
+      && Array.isArray(value.value)
+      && value.value.length > 0
+      && value.value.every(isDictionaryExample);
   }
   if (value.status === "unavailable") {
     return ["not-configured", "not-found", "unsupported", "missing"].includes(

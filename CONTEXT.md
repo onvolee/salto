@@ -65,7 +65,7 @@ Salto is a browser extension for reading-time translation, word saving, and late
 - MVP validation targets Chrome and Chromium while implementation keeps browser APIs behind WXT boundaries where practical.
 - Saved-vocabulary highlighting has a master switch and a same-word-highlighting switch. Same-word highlighting defaults to off; the master switch controls all highlighting, while disabling same-word highlighting leaves only original saved selection locations eligible to be marked.
 - Core syncable model names use `Vocabulary*`; saved word remains user-facing language for the save action.
-- Query schema field types are `text | list`; query results preserve that value shape and isolate failures per field.
+- Query schema field types are `text | list | examples`; example results preserve structured English, Chinese, and source values, while all result types isolate failures per field.
 - Prompt templates expose `selection`, `sentence`, `paragraphs`, `targetLanguage`, `webTitle`, `webUrl`, and `webContent` through one required-string `PromptContext` shape.
 - English canonical keys use NFKC normalization, collapsed whitespace, and fixed English lowercase without lemmatization or punctuation rewriting.
 - Re-saving an existing vocabulary item can append a deduplicated vocabulary context instead of creating another vocabulary item.

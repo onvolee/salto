@@ -420,6 +420,52 @@ describe("background message boundary", () => {
     });
   });
 
+  it("preserves structured dictionary examples at the message boundary", async () => {
+    const { settings } = createServices();
+    const examplesTemplate: QueryTemplate = {
+      ...template,
+      fields: [{
+        id: "examples",
+        definitionId: "definition:examples",
+        content: {
+          label: "例句",
+          source: "dictionary",
+          dictionaryField: "examples",
+          type: "examples",
+        },
+        order: 0,
+        enabled: true,
+      }],
+    };
+    const examples = [{
+      english: "Let me give you an example.",
+      chinese: "让我来举一个例子吧。",
+      source: "牛津词典",
+    }];
+    const services = createBackgroundServices({
+      repositories: { settings } as never,
+      saveVocabulary: { save: vi.fn() } as never,
+      enrichmentQueue: { wake: vi.fn(), recover: vi.fn(), retryFailed: vi.fn() } as never,
+      queryExecutor: {
+        execute: vi.fn().mockResolvedValue([
+          { fieldId: "examples", status: "ready", type: "examples", value: examples },
+        ]),
+      },
+    });
+
+    await expect(services.handleMessage({
+      ...translateRequest,
+      payload: { ...translateRequest.payload, template: examplesTemplate },
+    })).resolves.toMatchObject({
+      ok: true,
+      type: "translate-selection",
+      data: {
+        schema: [{ id: "examples", label: "例句" }],
+        fields: [{ fieldId: "examples", status: "ready", type: "examples", value: examples }],
+      },
+    });
+  });
+
   it("converts malformed executor output into isolated field failures", async () => {
     const { settings } = createServices();
     const services = createBackgroundServices({

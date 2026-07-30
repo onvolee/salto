@@ -220,7 +220,7 @@ describe("local repositories", () => {
     });
     expect((await database.queryTemplates.get(user.id) as (QueryTemplate & Record<string, unknown>) | undefined)?.recoveryMarker)
       .toBe("preserve-user");
-    expect((await database.queryTemplates.get("system-default"))?.fields).toHaveLength(2);
+    expect((await database.queryTemplates.get("system-default"))?.fields).toHaveLength(3);
   });
 
   it("clears the active-template recovery diagnostic after settings are explicitly saved", async () => {
@@ -341,6 +341,54 @@ describe("local repositories", () => {
     expect(await reopened.repositories.templates.get("legacy-reading")).toEqual(migrated);
     expect(await reopened.repositories.fieldDefinitions.list()).toHaveLength(definitionCount);
     expect((await reopened.repositories.settings.get()).activeQueryTemplateId).toBe("legacy-reading");
+  });
+
+  it("keeps stable definition ids when migrating the legacy system template", async () => {
+    const databaseName = "system-template-field-migration-test";
+    const legacy = new Dexie(databaseName);
+    defineLegacySchema(legacy, 7);
+    await legacy.open();
+    await legacy.table("queryTemplates").put({
+      id: "system-default",
+      name: "Default",
+      fields: [
+        {
+          id: "system-default:translation",
+          label: "Translation",
+          source: "llm",
+          type: "text",
+          instruction: "Translate {{selection}}.",
+          order: 0,
+          enabled: true,
+        },
+        {
+          id: "system-default:key-points",
+          label: "Key points",
+          source: "llm",
+          type: "list",
+          instruction: "List key meanings for {{selection}}.",
+          order: 1,
+          enabled: true,
+        },
+      ],
+      createdAt: "2026-07-15T00:00:00.000Z",
+      updatedAt: "2026-07-15T01:00:00.000Z",
+    });
+    legacy.close();
+
+    const upgraded = createTestRepositories(databaseName);
+    const migrated = await upgraded.repositories.templates.get("system-default");
+
+    expect(migrated?.fields.map(({ id, definitionId }) => ({ id, definitionId }))).toEqual([
+      {
+        id: "system-default:translation",
+        definitionId: "system-field:translation",
+      },
+      {
+        id: "system-default:key-points",
+        definitionId: "system-field:key-points",
+      },
+    ]);
   });
 
   it("keeps deleted default field definitions deleted across a database reopen", async () => {

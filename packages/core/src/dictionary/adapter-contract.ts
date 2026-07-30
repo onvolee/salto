@@ -29,11 +29,25 @@ export function dictionaryAdapterContract(
         term: "bank",
         language: "en",
         fields: {
+          basicDefinition: {
+            status: "ready",
+            type: "text",
+            value: "n. the land beside a river",
+          },
           phonetic: { status: "ready", type: "text", value: "/baenk/" },
           partOfSpeech: { status: "ready", type: "text", value: "noun" },
           meaning: { status: "ready", type: "text", value: "the land beside a river" },
           synonyms: { status: "ready", type: "list", value: ["shore", "riverside"] },
-          wordForms: { status: "ready", type: "list", value: ["banks", "banked", "banking"] }
+          wordForms: { status: "ready", type: "list", value: ["banks", "banked", "banking"] },
+          examples: {
+            status: "ready",
+            type: "examples",
+            value: [{
+              english: "She sat on the bank.",
+              chinese: "她坐在河岸上。",
+              source: "Example dictionary",
+            }],
+          },
         }
       });
     });

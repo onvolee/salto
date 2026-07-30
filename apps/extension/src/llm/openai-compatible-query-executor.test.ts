@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDefaultQueryTemplate, type PromptContext } from "@salto/core";
+import {
+  createDefaultQueryTemplate,
+  type PromptContext,
+  type QueryTemplate,
+} from "@salto/core";
 
 import type { LlmSettingsRepository } from "../repositories/local-repositories";
 import type { OpenAiCompatibleClient } from "./openai-compatible-client";
@@ -23,6 +27,36 @@ const credentials = {
     model: "model-a",
   },
   secret: { apiKey: "secret-a" },
+};
+
+const llmTemplate: QueryTemplate = {
+  ...createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"),
+  fields: [
+    {
+      id: "system-default:translation",
+      definitionId: "system-field:translation",
+      content: {
+        label: "Translation",
+        source: "llm",
+        type: "text",
+        instruction: "Translate {{selection}}.",
+      },
+      order: 0,
+      enabled: true,
+    },
+    {
+      id: "system-default:key-points",
+      definitionId: "system-field:key-points",
+      content: {
+        label: "Key points",
+        source: "llm",
+        type: "list",
+        instruction: "List the key meanings for {{selection}}.",
+      },
+      order: 1,
+      enabled: true,
+    },
+  ],
 };
 
 function createDependencies(overrides: {
@@ -53,7 +87,7 @@ describe("OpenAI-compatible query executor", () => {
   it("makes one provider call for all enabled LLM fields", async () => {
     const { complete, executor, hasOriginPermission } = createDependencies();
 
-    const result = await executor.execute(createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"), context);
+    const result = await executor.execute(llmTemplate, context);
 
     expect(result).toEqual([
       {
@@ -84,7 +118,7 @@ describe("OpenAI-compatible query executor", () => {
     const { complete, executor } = createDependencies({ credentials: null });
 
     await expect(executor.execute(
-      createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"),
+      llmTemplate,
       context,
     )).resolves.toEqual([
       { fieldId: "system-default:translation", status: "unavailable", reason: "not-configured" },
@@ -97,7 +131,7 @@ describe("OpenAI-compatible query executor", () => {
     const { complete, executor } = createDependencies({ permissionGranted: false });
 
     const result = await executor.execute(
-      createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"),
+      llmTemplate,
       context,
     );
 
@@ -125,7 +159,7 @@ describe("OpenAI-compatible query executor", () => {
     });
 
     const result = await executor.execute(
-      createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"),
+      llmTemplate,
       context,
     );
 
@@ -157,7 +191,7 @@ describe("OpenAI-compatible query executor", () => {
     });
 
     const result = await executor.execute(
-      createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"),
+      llmTemplate,
       context,
     );
 
@@ -174,7 +208,7 @@ describe("OpenAI-compatible query executor", () => {
     const controller = new AbortController();
 
     await executor.execute(
-      createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"),
+      llmTemplate,
       context,
       controller.signal,
     );
@@ -187,7 +221,7 @@ describe("OpenAI-compatible query executor", () => {
       output: { valid: "translated" },
     });
     const template = {
-      ...createDefaultQueryTemplate("2026-01-01T00:00:00.000Z"),
+      ...llmTemplate,
       id: "prompt-diagnostics",
       fields: [
         { id: "valid", definitionId: "definition-valid", content: { label: "Valid", source: "llm" as const, type: "text" as const, instruction: "Use {{selection}}." }, order: 0, enabled: true },

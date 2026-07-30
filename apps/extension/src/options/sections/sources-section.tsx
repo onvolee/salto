@@ -170,7 +170,7 @@ export function SourcesSection({
               </Badge>
             </div>
             <FieldDescription>
-              用于获取音标、词性、释义、同义词和词形。
+              用于获取翻译、基础释义、音标、词性、同义词、词形和例句。
             </FieldDescription>
             <div className="mt-3 flex max-w-sm items-center gap-2">
               <Label className="shrink-0 text-xs" htmlFor="youdao-test-term">

@@ -1,10 +1,12 @@
 import {
   DICTIONARY_FIELD_TYPES,
+  isDictionaryExample,
   type DictionaryAdapter,
   type DictionaryAdapterCapabilities,
   type DictionaryClient,
   type DictionaryFieldKey,
   type DictionaryFieldResults,
+  type DictionaryExample,
   type DictionaryLookupRequest,
   type DictionaryLookupResult,
   type DictionaryProviderId
@@ -13,11 +15,13 @@ import { DictionaryLookupError } from "./errors";
 import type { DictionaryLookupErrorCode } from "./errors";
 
 export type DictionaryFixtureFields = Partial<{
+  readonly basicDefinition: string;
   readonly phonetic: string;
   readonly partOfSpeech: string;
   readonly meaning: string;
   readonly synonyms: readonly string[];
   readonly wordForms: readonly string[];
+  readonly examples: readonly DictionaryExample[];
 }>;
 
 export type DictionaryFixture =
@@ -55,7 +59,7 @@ function parserFailure(): never {
 
 function normalizeTextField(
   fields: Record<string, unknown>,
-  field: "phonetic" | "partOfSpeech" | "meaning",
+  field: "basicDefinition" | "phonetic" | "partOfSpeech" | "meaning",
   supported: ReadonlySet<DictionaryFieldKey>,
   missingReason: "missing" | "not-found"
 ) {
@@ -70,6 +74,28 @@ function normalizeTextField(
     return parserFailure();
   }
   return { status: "ready", type: "text", value } as const;
+}
+
+function normalizeExamplesField(
+  fields: Record<string, unknown>,
+  supported: ReadonlySet<DictionaryFieldKey>,
+  missingReason: "missing" | "not-found",
+) {
+  if (!supported.has("examples")) {
+    return { status: "unavailable", type: "examples", reason: "unsupported" } as const;
+  }
+  const value = fields.examples;
+  if (value === undefined) {
+    return { status: "unavailable", type: "examples", reason: missingReason } as const;
+  }
+  if (!Array.isArray(value) || !value.every(isDictionaryExample)) {
+    return parserFailure();
+  }
+  return {
+    status: "ready",
+    type: "examples",
+    value: value.map((example) => ({ ...example })),
+  } as const;
 }
 
 function normalizeListField(
@@ -103,11 +129,13 @@ export function normalizeDictionaryFields(
   const missingReason = options.missingReason ?? "missing";
 
   return {
+    basicDefinition: normalizeTextField(value, "basicDefinition", supported, missingReason),
     phonetic: normalizeTextField(value, "phonetic", supported, missingReason),
     partOfSpeech: normalizeTextField(value, "partOfSpeech", supported, missingReason),
     meaning: normalizeTextField(value, "meaning", supported, missingReason),
     synonyms: normalizeListField(value, "synonyms", supported, missingReason),
-    wordForms: normalizeListField(value, "wordForms", supported, missingReason)
+    wordForms: normalizeListField(value, "wordForms", supported, missingReason),
+    examples: normalizeExamplesField(value, supported, missingReason),
   };
 }
 

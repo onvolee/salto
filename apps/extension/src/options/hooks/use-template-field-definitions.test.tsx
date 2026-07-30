@@ -62,7 +62,7 @@ describe("useTemplateFieldDefinitions", () => {
     const { result } = renderHook(() => useTemplateFieldDefinitions({ client }));
 
     await waitFor(() => expect(result.current.status).toBe("idle"));
-    expect(result.current.definitions).toHaveLength(2);
+    expect(result.current.definitions).toHaveLength(initial.length);
 
     await act(() => result.current.createDefinition({
       label: "Summary",

@@ -1,6 +1,7 @@
 import {
   DictionaryLookupError,
   type DictionaryFixtureFields,
+  type DictionaryExample,
   type YoudaoPreview,
   type YoudaoPreviewSection,
   type YoudaoTextPreviewSection,
@@ -83,8 +84,8 @@ function phraseSection(document: Document): YoudaoPreviewSection | null {
   return entries.length > 0 ? { kind: "phrases", entries } : null;
 }
 
-function exampleSection(document: Document): YoudaoPreviewSection | null {
-  const entries = [...document.querySelectorAll("#examples #bilingual li, #blng_sents_part li")]
+function parseExamples(document: Document): readonly DictionaryExample[] {
+  return [...document.querySelectorAll("#examples #bilingual li, #blng_sents_part li")]
     .flatMap((element) => {
       const paragraphs = [...element.querySelectorAll("p")].map((paragraph) => normalizedText(paragraph.textContent));
       const english = paragraphs[0];
@@ -93,13 +94,19 @@ function exampleSection(document: Document): YoudaoPreviewSection | null {
       const source = normalizedText(element.querySelector(".example-via")?.textContent);
       return [{ english, ...(chinese ? { chinese } : {}), ...(source ? { source } : {}) }];
     });
+}
+
+function exampleSection(document: Document): YoudaoPreviewSection | null {
+  const entries = parseExamples(document);
   return entries.length > 0 ? { kind: "examples", entries } : null;
 }
 
 function parseDefinitions(container: Element): {
+  readonly basicDefinition?: string;
   readonly partOfSpeech?: string;
   readonly meaning?: string;
 } {
+  const basicDefinitions: string[] = [];
   const partsOfSpeech: string[] = [];
   const meanings: string[] = [];
 
@@ -109,6 +116,7 @@ function parseDefinitions(container: Element): {
     if (!match?.[1] || !match[2]) {
       return parserFailure();
     }
+    basicDefinitions.push(text);
     const abbreviation = match[1].slice(0, -1).toLowerCase();
     partsOfSpeech.push(PART_OF_SPEECH_NAMES[abbreviation] ?? abbreviation);
     meanings.push(match[2]);
@@ -117,6 +125,9 @@ function parseDefinitions(container: Element): {
   const normalizedParts = unique(partsOfSpeech);
   const normalizedMeanings = unique(meanings);
   return {
+    ...(basicDefinitions.length > 0
+      ? { basicDefinition: unique(basicDefinitions).join("\n") }
+      : {}),
     ...(normalizedParts.length > 0 ? { partOfSpeech: normalizedParts.join(", ") } : {}),
     ...(normalizedMeanings.length > 0 ? { meaning: normalizedMeanings.join("\n") } : {})
   };
@@ -155,6 +166,7 @@ export function parseYoudaoHtml(html: string): YoudaoParseResult {
   );
   const wordForms = parseWordForms(definitions);
   const definitionFields = parseDefinitions(definitions);
+  const examples = parseExamples(document);
 
   return {
     status: "found",
@@ -163,6 +175,7 @@ export function parseYoudaoHtml(html: string): YoudaoParseResult {
       ...definitionFields,
       ...(synonyms.length > 0 ? { synonyms } : {}),
       ...(wordForms.length > 0 ? { wordForms } : {})
+      ...(examples.length > 0 ? { examples } : {}),
     }
   };
 }

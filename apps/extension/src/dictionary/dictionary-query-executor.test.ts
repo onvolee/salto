@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createDefaultQueryTemplate,
   createDictionaryClient,
+  createFakeDictionaryAdapter,
   DictionaryLookupError,
   type DictionaryAdapter,
   type PromptContext,
@@ -72,17 +74,95 @@ function createFakeAdapter(
 }
 
 describe("dictionary query executor", () => {
+  it("executes dictionary translation and structured fields without an LLM configuration", async () => {
+    const defaults = createDefaultQueryTemplate("2026-07-30T00:00:00.000Z");
+    const dictionaryTemplate: QueryTemplate = {
+      ...defaults,
+      fields: [
+        ...defaults.fields,
+        {
+          id: "basic-definition",
+          definitionId: "definition-basic-definition",
+          content: {
+            label: "基础释义",
+            source: "dictionary",
+            dictionaryField: "basicDefinition",
+            type: "text",
+          },
+          order: 3,
+          enabled: true,
+        },
+        {
+          id: "examples",
+          definitionId: "definition-examples",
+          content: {
+            label: "例句",
+            source: "dictionary",
+            dictionaryField: "examples",
+            type: "examples",
+          },
+          order: 4,
+          enabled: true,
+        },
+      ],
+    };
+    const llmExecutor: QueryExecutor = { execute: vi.fn() };
+    const executor = createDictionaryQueryExecutor({
+      dictionaryClient: createDictionaryClient(createFakeDictionaryAdapter({
+        providerId: "youdao-web",
+        supportedLanguages: ["en"],
+        fixtures: [{
+          request: { term: "bank", language: "en" },
+          fields: {
+            basicDefinition: "n. 河岸\nv. 把钱存入银行",
+            phonetic: "/baenk/",
+            partOfSpeech: "noun, verb",
+            meaning: "河岸\n把钱存入银行",
+            synonyms: ["shore"],
+            wordForms: ["banks", "banked", "banking"],
+            examples: [{
+              english: "She sat on the bank.",
+              chinese: "她坐在河岸上。",
+              source: "Example dictionary",
+            }],
+          },
+        }],
+      })),
+      llmExecutor,
+    });
+
+    await expect(executor.execute(dictionaryTemplate, context)).resolves.toEqual([
+      { fieldId: "system-default:translation", status: "ready", type: "text", value: "河岸\n把钱存入银行" },
+      { fieldId: "system-default:phonetic", status: "ready", type: "text", value: "/baenk/" },
+      { fieldId: "system-default:part-of-speech", status: "ready", type: "text", value: "noun, verb" },
+      { fieldId: "basic-definition", status: "ready", type: "text", value: "n. 河岸\nv. 把钱存入银行" },
+      {
+        fieldId: "examples",
+        status: "ready",
+        type: "examples",
+        value: [{
+          english: "She sat on the bank.",
+          chinese: "她坐在河岸上。",
+          source: "Example dictionary",
+        }],
+      },
+    ]);
+    expect(llmExecutor.execute).not.toHaveBeenCalled();
+  });
+
   it("shares one lookup across enabled dictionary fields and preserves schema order", async () => {
     const lookup = vi.fn<DictionaryAdapter["lookup"]>().mockResolvedValue({
       providerId: "youdao-web",
       term: "bank",
       language: "en",
       fields: {
+        basicDefinition: { status: "unavailable", type: "text", reason: "unsupported" },
         phonetic: { status: "unavailable", type: "text", reason: "missing" },
         partOfSpeech: { status: "unavailable", type: "text", reason: "missing" },
         meaning: { status: "ready", type: "text", value: "河岸" },
         synonyms: { status: "ready", type: "list", value: ["shore"] },
         wordForms: { status: "unavailable", type: "list", reason: "missing" },
+        examples: { status: "unavailable", type: "examples", reason: "unsupported" },
       },
     });
     const llmExecutor: QueryExecutor = {
@@ -148,11 +228,13 @@ describe("dictionary query executor", () => {
       term: "bank",
       language: "en",
       fields: {
+        basicDefinition: { status: "unavailable", type: "text", reason: "unsupported" },
         phonetic: { status: "unavailable", type: "text", reason: "missing" },
         partOfSpeech: { status: "unavailable", type: "text", reason: "missing" },
         meaning: { status: "ready", type: "text", value: "河岸" },
         synonyms: { status: "unavailable", type: "list", reason: "missing" },
         wordForms: { status: "unavailable", type: "list", reason: "missing" },
+        examples: { status: "unavailable", type: "examples", reason: "unsupported" },
       },
     });
     const llmExecutor: QueryExecutor = {

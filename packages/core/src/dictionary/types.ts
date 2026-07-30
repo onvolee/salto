@@ -1,23 +1,46 @@
 import type { YoudaoPreview } from "../messages";
 
 export const DICTIONARY_FIELD_TYPES = {
+  basicDefinition: "text",
   phonetic: "text",
   partOfSpeech: "text",
   meaning: "text",
   synonyms: "list",
-  wordForms: "list"
+  wordForms: "list",
+  examples: "examples",
 } as const;
 
 export type DictionaryFieldKey = keyof typeof DICTIONARY_FIELD_TYPES;
 export type DictionaryFieldType = (typeof DICTIONARY_FIELD_TYPES)[DictionaryFieldKey];
 export type DictionaryProviderId = "youdao-web" | "cambridge-web";
 
+export type DictionaryExample = {
+  readonly english: string;
+  readonly chinese?: string;
+  readonly source?: string;
+};
+
+export function isDictionaryExample(value: unknown): value is DictionaryExample {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const example = value as Record<string, unknown>;
+  return typeof example.english === "string"
+    && example.english.trim().length > 0
+    && (example.chinese === undefined
+      || (typeof example.chinese === "string" && example.chinese.trim().length > 0))
+    && (example.source === undefined
+      || (typeof example.source === "string" && example.source.trim().length > 0));
+}
+
 type DictionaryFieldValueSpec = {
+  readonly basicDefinition: string;
   readonly phonetic: string;
   readonly partOfSpeech: string;
   readonly meaning: string;
   readonly synonyms: readonly string[];
   readonly wordForms: readonly string[];
+  readonly examples: readonly DictionaryExample[];
 };
 
 export type DictionaryFieldResultFor<K extends DictionaryFieldKey> =

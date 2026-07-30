@@ -47,6 +47,14 @@ describe("youdao-web adapter", () => {
           { label: "现在分词", value: "banking" },
         ] },
         { kind: "synonyms", entries: ["shore", "riverside"] },
+        {
+          kind: "examples",
+          entries: [{
+            english: "She sat on the bank.",
+            chinese: "她坐在河岸上。",
+            source: "Example dictionary",
+          }],
+        },
       ],
     });
 
@@ -102,8 +110,10 @@ describe("youdao-web adapter", () => {
       { status: "unavailable", type: "text", reason: "not-found" },
       { status: "unavailable", type: "text", reason: "not-found" },
       { status: "unavailable", type: "text", reason: "not-found" },
+      { status: "unavailable", type: "text", reason: "not-found" },
       { status: "unavailable", type: "list", reason: "not-found" },
-      { status: "unavailable", type: "list", reason: "not-found" }
+      { status: "unavailable", type: "list", reason: "not-found" },
+      { status: "unavailable", type: "examples", reason: "not-found" },
     ]);
   });
 
