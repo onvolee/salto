@@ -222,8 +222,20 @@ export function isValidTemplateFieldDefinitionInput(value: unknown): value is Te
   return isValidTemplateFieldContent(value);
 }
 
+const EXTENSION_SETTINGS_KEYS: ReadonlySet<string> = new Set([
+  "activeQueryTemplateId",
+  "targetLanguage",
+  "highlightEnabled",
+  "highlightSameWords",
+  "themeMode",
+  "activeDictionaryProvider",
+  "panelWidth",
+  "panelHeight",
+]);
+
 export function isValidExtensionSettings(value: unknown): value is ExtensionSettings {
   return isRecord(value)
+    && Object.keys(value).every((key) => EXTENSION_SETTINGS_KEYS.has(key))
     && isNonEmptyString(value.activeQueryTemplateId)
     && isNonEmptyString(value.targetLanguage)
     && typeof value.highlightEnabled === "boolean"
